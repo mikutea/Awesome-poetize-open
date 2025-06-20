@@ -804,6 +804,22 @@ async function fetchCollects() {
   }
 }
 
+async function fetchFriends() {
+  try {
+    logger.debug('Fetching friends');
+    const res = await axios.get(`${JAVA_BACKEND_URL}/webInfo/listFriend`, { 
+      timeout: 5000,
+      headers: INTERNAL_SERVICE_HEADERS
+    });
+    const friends = (res.data && res.data.data) || {};
+    logger.debug('Friends fetched', { categories: Object.keys(friends).length });
+    return friends;
+  } catch (error) {
+    logger.warn('Failed to fetch friends, using empty object', { error: error.message });
+    return {};
+  }
+}
+
 async function fetchSortById(sortId) {
   try {
     logger.debug('Fetching sort by ID', { sortId });
@@ -1001,10 +1017,11 @@ async function renderHomePage(lang = 'zh') {
 // ===== 百宝箱页面渲染函数 =====
 async function renderFavoritePage(lang = 'zh') {
   try {
-    const [webInfo, seoConfig, collects] = await Promise.all([
+    const [webInfo, seoConfig, collects, friends] = await Promise.all([
       fetchWebInfo(),
       fetchSeoConfig(),
-      fetchCollects()
+      fetchCollects(),
+      fetchFriends()
     ]);
 
     const siteName = seoConfig.site_title || webInfo.webName || 'Poetize';
@@ -1045,7 +1062,7 @@ async function renderFavoritePage(lang = 'zh') {
           <section class="collect-section">
             <h2>收藏夹</h2>
             <p>精选网站收藏</p>
-            ${Object.keys(collects).map(category => `
+            ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
               <div class="collect-category">
                 <h3>${category}</h3>
                 <ul>
@@ -1060,12 +1077,48 @@ async function renderFavoritePage(lang = 'zh') {
                   `).join('')}
                 </ul>
               </div>
-            `).join('')}
+            `).join('') : '<p>暂无收藏夹</p>'}
           </section>
           
           <section class="friend-section">
             <h2>友人帐</h2>
             <p>留下你的网站，与更多朋友交流</p>
+            
+            <!-- 本站信息 -->
+            <div class="site-info">
+              <h3>本站信息</h3>
+              <div class="site-card">
+                <img src="${webInfo.avatar || ''}" alt="${webInfo.webName || 'Poetize'}" width="64" height="64" loading="lazy">
+                <div class="site-details">
+                  <h4>${webInfo.webName || 'Poetize'}</h4>
+                  <p>${webInfo.webTitle || description}</p>
+                  <a href="${baseUrl}" target="_blank" rel="noopener">${baseUrl}</a>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 友链列表 -->
+            ${Object.keys(friends).length > 0 ? `
+              <div class="friends-list">
+                <h3>友情链接</h3>
+                ${Object.keys(friends).map(category => `
+                  <div class="friend-category">
+                    <h4>${category}</h4>
+                    <ul>
+                      ${friends[category].map(friend => `
+                        <li>
+                          <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
+                            <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
+                            <span>${friend.title}</span>
+                            <small>${friend.introduction}</small>
+                          </a>
+                        </li>
+                      `).join('')}
+                    </ul>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p>暂无友链，欢迎交换友链</p>'}
           </section>
           
           <section class="music-section">
