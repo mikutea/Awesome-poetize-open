@@ -823,13 +823,17 @@ async function fetchFriends() {
 async function fetchSortById(sortId) {
   try {
     logger.debug('Fetching sort by ID', { sortId });
-    const res = await axios.get(`${JAVA_BACKEND_URL}/sort/getSortById`, { 
-      params: { id: sortId },
+    // 修改为使用现有的API: /webInfo/getSortInfo 或 /webInfo/listSortForPrerender
+    const res = await axios.get(`${JAVA_BACKEND_URL}/webInfo/listSortForPrerender`, { 
       timeout: 5000,
       headers: INTERNAL_SERVICE_HEADERS
     });
-    const sort = (res.data && res.data.data) || null;
-    logger.debug('Sort fetched by ID', { sortId, found: !!sort });
+    
+    // 从返回的分类列表中找到指定ID的分类
+    const sortList = (res.data && res.data.data) || [];
+    const sort = Array.isArray(sortList) ? sortList.find(s => s.id === parseInt(sortId)) : null;
+    
+    logger.debug('Sort fetched by ID', { sortId, found: !!sort, totalSorts: sortList.length });
     return sort;
   } catch (error) {
     logger.error('Failed to fetch sort by ID', { sortId, error: error.message });
@@ -1390,7 +1394,7 @@ async function renderIds(ids = [], options = {}) {
     ]);
 
     const critters = new Critters({
-      path: path.resolve(__dirname, './dist'),
+      path: '/app/dist',
       logLevel: 'warn',
       preload: 'swap',
       reduceInlineStyles: false,
@@ -1517,7 +1521,7 @@ async function renderSingleSortPage(sortId, parentTaskId = null) {
   const langs = ['zh'];
   
   const critters = new Critters({
-    path: path.resolve(__dirname, './dist'),
+    path: '/app/dist',
     logLevel: 'warn',
     preload: 'swap',
     reduceInlineStyles: false,
@@ -1556,7 +1560,7 @@ async function renderPages(type, params = {}) {
     logger.info('Starting page rendering', { taskId, type, params, langs });
 
     const critters = new Critters({
-      path: path.resolve(__dirname, './dist'),
+      path: '/app/dist',
       logLevel: 'warn',
       preload: 'swap',
       reduceInlineStyles: false,
