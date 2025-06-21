@@ -901,26 +901,38 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   $('head meta[property^="article:"]').remove();
   $('head link[rel="canonical"]').remove();
 
-  // 注入新的meta，一次一个，更安全
-  for (const key in meta) {
-    if (!meta.hasOwnProperty(key)) continue;
+  // 调试：检查meta对象
+  console.log('buildHtmlTemplate meta debug:', {
+    metaType: typeof meta,
+    metaIsObject: typeof meta === 'object' && meta !== null,
+    metaKeys: meta ? Object.keys(meta) : 'null',
+    metaStringified: JSON.stringify(meta)
+  });
 
-    const value = (meta[key] || '').toString().replace(/"/g, '&quot;');
-    
-    if (key === 'title') {
-      // title已在上面处理
-      continue;
-    } else if (key.startsWith('hreflang')) {
-      // hreflang 已经是完整的 <link> 标签
-      $('head').append(meta[key]);
-    } else if (key === 'canonical') {
-      $('head').append(`<link rel="canonical" href="${value}">`);
-    } else if (['description', 'keywords', 'author'].includes(key)) {
-      $('head').append(`<meta name="${key}" content="${value}">`);
-    } else {
-      // 处理 og:, twitter:, article: 等属性
-      $('head').append(`<meta property="${key}" content="${value}">`);
+  // 注入新的meta，一次一个，更安全
+  if (typeof meta === 'object' && meta !== null) {
+    for (const key in meta) {
+      if (!meta.hasOwnProperty(key)) continue;
+
+      const value = (meta[key] || '').toString().replace(/"/g, '&quot;');
+      
+      if (key === 'title') {
+        // title已在上面处理
+        continue;
+      } else if (key.startsWith('hreflang')) {
+        // hreflang 已经是完整的 <link> 标签
+        $('head').append(meta[key]);
+      } else if (key === 'canonical') {
+        $('head').append(`<link rel="canonical" href="${value}">`);
+      } else if (['description', 'keywords', 'author'].includes(key)) {
+        $('head').append(`<meta name="${key}" content="${value}">`);
+      } else {
+        // 处理 og:, twitter:, article: 等属性
+        $('head').append(`<meta property="${key}" content="${value}">`);
+      }
     }
+  } else {
+    console.error('Meta is not a valid object:', meta);
   }
 
   // 添加页面类型标识
@@ -935,8 +947,27 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
 
 // ===== 文章页面渲染函数 =====
 function buildHtml({ title, meta, content, lang }) {
+  // 调试：确保参数格式正确
+  console.log('buildHtml parameters:', {
+    title: typeof title,
+    meta: typeof meta,
+    content: typeof content,
+    lang: typeof lang,
+    metaKeys: meta ? Object.keys(meta) : 'null'
+  });
+
   const articleContent = `<main class="article-detail">${content}</main>`;
-  return buildHtmlTemplate({ title, meta, content: articleContent, lang, pageType: 'article' });
+  
+  // 确保meta是一个有效的对象
+  const safeMeta = (typeof meta === 'object' && meta !== null) ? meta : {};
+  
+  return buildHtmlTemplate({ 
+    title: title || 'Poetize', 
+    meta: safeMeta, 
+    content: articleContent, 
+    lang: lang || 'zh', 
+    pageType: 'article' 
+  });
 }
 
 // ===== 首页渲染函数 =====
@@ -1391,7 +1422,7 @@ async function renderIds(ids = [], options = {}) {
   const taskId = generateTaskId();
   monitor.recordRenderStart(taskId, 'article', { ids, options });
 
-  const OUTPUT_ROOT = options.outputRoot || process.env.PRERENDER_OUTPUT || path.resolve(__dirname, './dist/prerender/article');
+  const OUTPUT_ROOT = options.outputRoot || process.env.PRERENDER_OUTPUT || path.resolve(__dirname, './dist/prerender');
   const langs = ['zh', 'en'];
 
   try {
@@ -1485,6 +1516,19 @@ async function renderIds(ids = [], options = {}) {
             'twitter:site': seoConfig.twitter_site || ''
           };
 
+          // 调试：检查meta对象的格式
+          logger.info('Meta object before buildHtml', { 
+            taskId, 
+            articleId: id, 
+            lang, 
+            metaType: typeof meta,
+            metaKeys: Object.keys(meta),
+            metaSample: Object.keys(meta).slice(0, 3).reduce((obj, key) => {
+              obj[key] = meta[key];
+              return obj;
+            }, {})
+          });
+
           let html = buildHtml({ title: meta.title || articleTitle || 'Poetize', meta, content: contentHtml, lang });
           
           // 调试：检查HTML中的CSS链接
@@ -1509,7 +1553,7 @@ async function renderIds(ids = [], options = {}) {
             hasInlineStyles: inlineStyles.length > 0
           });
 
-          const dir = path.join(OUTPUT_ROOT, id.toString());
+          const dir = path.join(OUTPUT_ROOT, 'article', id.toString());
           fs.mkdirSync(dir, { recursive: true });
           const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
           const filePath = path.join(dir, filename);

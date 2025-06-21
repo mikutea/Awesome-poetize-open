@@ -455,16 +455,16 @@ async def generate_sitemap():
         common_pages: list[str] = []
         # 使用固定的通用页面列表，想要什么页面就在这里添加
         logger.info("使用固定的通用页面列表生成Sitemap")
-            common_pages = [
+        common_pages = [
             "/sort",
-                "/favorite",
+            "/favorite",
             "/weiYan",
             "/message",
             "/about",
             "/user",
             "/im",
             "/love",
-            ]
+        ]
 
         # 去重保持顺序
         seen = set()
@@ -642,13 +642,13 @@ async def generate_sitemap():
                         
                         # 添加中文URL
                         if article_url.rstrip('/') not in url_set:
-                        url_set.add(article_url.rstrip('/'))
-                        sitemap += f'  <url>\n'
-                        sitemap += f'    <loc>{article_url}</loc>\n'
-                        sitemap += f'    <lastmod>{update_time}</lastmod>\n'
-                        sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
-                        sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
-                        sitemap += f'  </url>\n'
+                            url_set.add(article_url.rstrip('/'))
+                            sitemap += f'  <url>\n'
+                            sitemap += f'    <loc>{article_url}</loc>\n'
+                            sitemap += f'    <lastmod>{update_time}</lastmod>\n'
+                            sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
+                            sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
+                            sitemap += f'  </url>\n'
 
                         # 添加英文URL
                         article_url_en = f"{article_url}?lang=en"
@@ -702,13 +702,13 @@ async def generate_sitemap():
                             
                             # 添加中文URL
                             if article_url.rstrip('/') not in url_set:
-                            url_set.add(article_url.rstrip('/'))
-                            sitemap += f'  <url>\n'
-                            sitemap += f'    <loc>{article_url}</loc>\n'
-                            sitemap += f'    <lastmod>{update_time}</lastmod>\n'
-                            sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
-                            sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
-                            sitemap += f'  </url>\n'
+                                url_set.add(article_url.rstrip('/'))
+                                sitemap += f'  <url>\n'
+                                sitemap += f'    <loc>{article_url}</loc>\n'
+                                sitemap += f'    <lastmod>{update_time}</lastmod>\n'
+                                sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
+                                sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
+                                sitemap += f'  </url>\n'
 
                             # 添加英文URL
                             article_url_en = f"{article_url}?lang=en"
@@ -1611,188 +1611,188 @@ def register_seo_api(app: FastAPI):
         # 此时 seo_config 已由外部传入
         logger.info(f"[Push] 使用 SEO 配置，站点地址: {seo_config.get('site_address', '未配置')}")
 
-            # 记录请求开始
-            logger.info("======================= SEO提交开始 =======================")
-            logger.info(f"收到SEO提交请求: {json.dumps(data, ensure_ascii=False)}")
+        # 记录请求开始
+        logger.info("======================= SEO提交开始 =======================")
+        logger.info(f"收到SEO提交请求: {json.dumps(data, ensure_ascii=False)}")
+        
+        article_id = data.get('articleId')
+        article_url = data.get('url')
+        article_title = data.get('title', '未指定标题')
+        
+        logger.info(f"处理文章ID: {article_id}, URL: {article_url}, 标题: {article_title}")
+        
+        # 至少需要一个参数
+        if not article_id and not article_url:
+            logger.error("缺少必要参数：既没有提供articleId也没有提供url")
+            return JSONResponse({
+                'code': 400, 
+                'message': '请提供articleId或url参数'
+            })
+        
+        # 获取SEO配置
+        seo_config = await get_seo_config()
+        logger.info(f"已加载SEO配置，站点地址: {seo_config.get('site_address', '未配置')}")
+        
+        # 检查搜索引擎配置状态
+        enabled_engines = []
+        if seo_config.get('baidu_push_enabled', False) and seo_config.get('baidu_token'):
+            enabled_engines.append('百度')
+        if seo_config.get('google_index_enabled', False) and seo_config.get('google_api_key'):
+            enabled_engines.append('谷歌')
+        if seo_config.get('bing_push_enabled', False) and seo_config.get('bing_api_key'):
+            enabled_engines.append('必应')
+        if seo_config.get('yandex_push_enabled', False) and seo_config.get('yandex_api_key'):
+            enabled_engines.append('Yandex')
+        if seo_config.get('yahoo_push_enabled', False) and seo_config.get('yahoo_api_key'):
+            enabled_engines.append('Yahoo')
+        if seo_config.get('sogou_push_enabled', False) and seo_config.get('sogou_token'):
+            enabled_engines.append('搜狗')
+        if seo_config.get('so_push_enabled', False) and seo_config.get('so_token'):
+            enabled_engines.append('360搜索')
+        if seo_config.get('shenma_push_enabled', False) and seo_config.get('shenma_token'):
+            enabled_engines.append('神马搜索')
             
-            article_id = data.get('articleId')
-            article_url = data.get('url')
-            article_title = data.get('title', '未指定标题')
-            
-            logger.info(f"处理文章ID: {article_id}, URL: {article_url}, 标题: {article_title}")
-            
-            # 至少需要一个参数
-            if not article_id and not article_url:
-                logger.error("缺少必要参数：既没有提供articleId也没有提供url")
-                return JSONResponse({
-                    'code': 400, 
-                    'message': '请提供articleId或url参数'
-                })
-            
-            # 获取SEO配置
-            seo_config = await get_seo_config()
-            logger.info(f"已加载SEO配置，站点地址: {seo_config.get('site_address', '未配置')}")
-            
-            # 检查搜索引擎配置状态
-            enabled_engines = []
-            if seo_config.get('baidu_push_enabled', False) and seo_config.get('baidu_token'):
-                enabled_engines.append('百度')
-            if seo_config.get('google_index_enabled', False) and seo_config.get('google_api_key'):
-                enabled_engines.append('谷歌')
-            if seo_config.get('bing_push_enabled', False) and seo_config.get('bing_api_key'):
-                enabled_engines.append('必应')
-            if seo_config.get('yandex_push_enabled', False) and seo_config.get('yandex_api_key'):
-                enabled_engines.append('Yandex')
-            if seo_config.get('yahoo_push_enabled', False) and seo_config.get('yahoo_api_key'):
-                enabled_engines.append('Yahoo')
-            if seo_config.get('sogou_push_enabled', False) and seo_config.get('sogou_token'):
-                enabled_engines.append('搜狗')
-            if seo_config.get('so_push_enabled', False) and seo_config.get('so_token'):
-                enabled_engines.append('360搜索')
-            if seo_config.get('shenma_push_enabled', False) and seo_config.get('shenma_token'):
-                enabled_engines.append('神马搜索')
+        if not enabled_engines:
+            logger.warning("没有启用任何搜索引擎推送功能，请检查SEO配置")
+        else:
+            logger.info(f"已启用的搜索引擎: {', '.join(enabled_engines)}")
+        
+        # 如果没有提供URL但提供了文章ID，构建URL
+        if not article_url and article_id:
+            site_url = seo_config.get('site_address', FRONTEND_URL)
+            article_format = seo_config.get('article_url_format', 'article/{id}')
+            article_url = f"{site_url}/{article_format.replace('{id}', str(article_id))}"
+            logger.info(f"根据文章ID构建URL: {article_url}")
+        
+        # 获取文章内容以便纯文本处理
+        article_content = None
+        if article_id:
+            try:
+                logger.info(f"尝试获取文章内容，文章ID: {article_id}")
+                # 获取文章信息
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
                 
-            if not enabled_engines:
-                logger.warning("没有启用任何搜索引擎推送功能，请检查SEO配置")
-            else:
-                logger.info(f"已启用的搜索引擎: {', '.join(enabled_engines)}")
-            
-            # 如果没有提供URL但提供了文章ID，构建URL
-            if not article_url and article_id:
-                site_url = seo_config.get('site_address', FRONTEND_URL)
-                article_format = seo_config.get('article_url_format', 'article/{id}')
-                article_url = f"{site_url}/{article_format.replace('{id}', str(article_id))}"
-                logger.info(f"根据文章ID构建URL: {article_url}")
-            
-            # 获取文章内容以便纯文本处理
-            article_content = None
-            if article_id:
-                try:
-                    logger.info(f"尝试获取文章内容，文章ID: {article_id}")
-                    # 获取文章信息
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    }
+                api_url = f"{JAVA_BACKEND_URL}/article/getArticleById?id={article_id}"
+                logger.info(f"请求文章API: {api_url}")
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        api_url, 
+                        headers=headers,
+                        timeout=5
+                    )
+                
+                logger.info(f"文章API响应状态码: {response.status_code}")
+                
+                if response.status_code == 200:
+                    response_json = response.json()
+                    logger.info(f"文章API响应code: {response_json.get('code')}")
                     
-                    api_url = f"{JAVA_BACKEND_URL}/article/getArticleById?id={article_id}"
-                    logger.info(f"请求文章API: {api_url}")
-                    
-                    async with httpx.AsyncClient() as client:
-                        response = await client.get(
-                            api_url, 
-                            headers=headers,
-                            timeout=5
-                        )
-                    
-                    logger.info(f"文章API响应状态码: {response.status_code}")
-                    
-                    if response.status_code == 200:
-                        response_json = response.json()
-                        logger.info(f"文章API响应code: {response_json.get('code')}")
+                    article_data = response_json.get('data', {})
+                    if article_data:
+                        article_content = article_data.get('articleContent', '')
+                        logger.info(f"成功获取文章内容，长度: {len(article_content) if article_content else 0}字符")
                         
-                        article_data = response_json.get('data', {})
-                        if article_data:
-                            article_content = article_data.get('articleContent', '')
-                            logger.info(f"成功获取文章内容，长度: {len(article_content) if article_content else 0}字符")
-                            
-                            # 如果未提供标题，使用文章标题
-                            if article_title == '未指定标题':
-                                article_title = article_data.get('articleTitle', '未指定标题')
-                                logger.info(f"使用从API获取的文章标题: {article_title}")
-                            
-                            # 处理文章内容，移除Markdown标记
-                            if article_content:
-                                clean_content = get_article_description(article_content, max_length=5000)  # 使用较大的长度限制
-                                logger.info(f"已处理文章内容，移除Markdown标记，处理后长度: {len(clean_content)}字符")
-                                article_content = clean_content
-                        else:
-                            logger.warning(f"文章API返回了空数据，响应: {json.dumps(response_json, ensure_ascii=False)}")
+                        # 如果未提供标题，使用文章标题
+                        if article_title == '未指定标题':
+                            article_title = article_data.get('articleTitle', '未指定标题')
+                            logger.info(f"使用从API获取的文章标题: {article_title}")
+                        
+                        # 处理文章内容，移除Markdown标记
+                        if article_content:
+                            clean_content = get_article_description(article_content, max_length=5000)  # 使用较大的长度限制
+                            logger.info(f"已处理文章内容，移除Markdown标记，处理后长度: {len(clean_content)}字符")
+                            article_content = clean_content
                     else:
-                        logger.error(f"获取文章失败，状态码: {response.status_code}, 响应: {response.text[:200]}...")
-                except Exception as e:
-                    logger.error(f"获取文章内容时发生异常: {str(e)}")
-                    logger.exception("详细错误栈:")
-                    logger.warning(f"获取文章内容出错，将继续推送URL: {article_url}")
+                        logger.warning(f"文章API返回了空数据，响应: {json.dumps(response_json, ensure_ascii=False)}")
+                else:
+                    logger.error(f"获取文章失败，状态码: {response.status_code}, 响应: {response.text[:200]}...")
+            except Exception as e:
+                logger.error(f"获取文章内容时发生异常: {str(e)}")
+                logger.exception("详细错误栈:")
+                logger.warning(f"获取文章内容出错，将继续推送URL: {article_url}")
+        
+        # 验证URL格式
+        if not article_url.startswith(('http://', 'https://')):
+            logger.error(f"提交的URL格式不正确: {article_url}")
+            return JSONResponse({
+                'code': 400,
+                'message': 'URL格式不正确，必须以http://或https://开头'
+            })
             
-            # 验证URL格式
-            if not article_url.startswith(('http://', 'https://')):
-                logger.error(f"提交的URL格式不正确: {article_url}")
-                return JSONResponse({
-                    'code': 400,
-                    'message': 'URL格式不正确，必须以http://或https://开头'
-                })
-                
-            # 记录推送开始
-            logger.info(f"开始向搜索引擎推送文章，URL: {article_url}")
-            if article_content:
-                logger.info(f"文章内容示例: {article_content[:100]}...")
-            
-            push_results = {}
-            
+        # 记录推送开始
+        logger.info(f"开始向搜索引擎推送文章，URL: {article_url}")
+        if article_content:
+            logger.info(f"文章内容示例: {article_content[:100]}...")
+        
+        push_results = {}
+        
         # 使用统一推送函数
         is_success, push_results = await perform_search_engine_push(article_url, seo_config)
 
-            # 判断整体是否成功 - 只要有一个成功就算成功
-                logger.info(f"整体推送结果: {'成功' if is_success else '失败'}")
-        
+        # 判断整体是否成功 - 只要有一个成功就算成功
+        logger.info(f"整体推送结果: {'成功' if is_success else '失败'}")
+
         # 总是尝试将推送结果通知给Java后端，由Java判断是否发送邮件
-                try:
-                    # 准备发送给Java后端的数据
-                    notification_data = {
-                        'articleId': article_id,
-                        'title': article_title,
-                        'url': article_url, 
-                        'results': push_results,
-                        'success': is_success,
+        try:
+            # 准备发送给Java后端的数据
+            notification_data = {
+                'articleId': article_id,
+                'title': article_title,
+                'url': article_url, 
+                'results': push_results,
+                'success': is_success,
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-                    
-                    # 调用Java后端API
-                    java_api_url = f"{JAVA_BACKEND_URL}/article/notifySeoResult"
-                    headers = {
-                        'Content-Type': 'application/json',
+            }
+            
+            # 调用Java后端API
+            java_api_url = f"{JAVA_BACKEND_URL}/article/notifySeoResult"
+            headers = {
+                'Content-Type': 'application/json',
                 'User-Agent': 'poetize-python/1.0.0',
                 'X-Internal-Service': 'poetize-python'
-                    }
-                    
-                    logger.info(f"准备发送SEO结果通知到Java后端: {java_api_url}")
-                    
-                    # 异步发送通知，不阻塞当前请求
-                    def send_notification():
-                        try:
-                            with httpx.Client() as client:
-                                notification_response = client.post(
-                                    java_api_url, 
-                                    headers=headers,
-                                    json=notification_data,
-                                    timeout=5
-                                )
-                            logger.info(f"通知发送结果: 状态码={notification_response.status_code}, 响应={notification_response.text[:100]}...")
-                        except Exception as e:
-                            logger.error(f"发送通知请求时出错: {str(e)}")
-                    
-                    threading.Thread(target=send_notification).start()
-                    logger.info("SEO推送结果通知已发送至Java后端")
-                except Exception as e:
-                    logger.error(f"准备SEO推送结果通知时出错: {str(e)}")
-                    logger.exception("通知错误详情:")
-            # 不影响主流程
-            
-            # 记录返回结果
-            response_data = {
-                'code': 200 if is_success else 500,
-                'message': '文章提交成功' if is_success else '文章提交失败',
-                'data': {
-                    'url': article_url,
-                    'results': push_results
-                }
             }
-            logger.info(f"SEO提交响应: {json.dumps(response_data, ensure_ascii=False)}")
-            logger.info("======================= SEO提交完成 =======================")
             
-            return JSONResponse(response_data)
+            logger.info(f"准备发送SEO结果通知到Java后端: {java_api_url}")
+            
+            # 异步发送通知，不阻塞当前请求
+            def send_notification():
+                try:
+                    with httpx.Client() as client:
+                        notification_response = client.post(
+                            java_api_url, 
+                            headers=headers,
+                            json=notification_data,
+                            timeout=5
+                        )
+                    logger.info(f"通知发送结果: 状态码={notification_response.status_code}, 响应={notification_response.text[:100]}...")
+                except Exception as e:
+                    logger.error(f"发送通知请求时出错: {str(e)}")
+            
+            threading.Thread(target=send_notification).start()
+            logger.info("SEO推送结果通知已发送至Java后端")
+        except Exception as e:
+            logger.error(f"准备SEO推送结果通知时出错: {str(e)}")
+            logger.exception("通知错误详情:")
+        # 不影响主流程
+        
+        # 记录返回结果
+        response_data = {
+            'code': 200 if is_success else 500,
+            'message': '文章提交成功' if is_success else '文章提交失败',
+            'data': {
+                'url': article_url,
+                'results': push_results
+            }
+        }
+        logger.info(f"SEO提交响应: {json.dumps(response_data, ensure_ascii=False)}")
+        logger.info("======================= SEO提交完成 =======================")
+        
+        return JSONResponse(response_data)
     
     # AI SEO分析API
     @app.get('/python/seo/aiAnalyzeSite')
