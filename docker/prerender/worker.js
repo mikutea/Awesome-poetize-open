@@ -22,7 +22,8 @@ async function loadCriticalCss() {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       const cssFile = manifest['app.css'];
       if (cssFile) {
-        const cssPath = path.resolve('/app/dist' + cssFile);
+        // 使用 path.join 来安全地构建路径，并移除 cssFile 开头的 '/'
+        const cssPath = path.join('/app/dist', cssFile.startsWith('/') ? cssFile.substring(1) : cssFile);
         if (fs.existsSync(cssPath)) {
           criticalCss = fs.readFileSync(cssPath, 'utf8');
           logger.info(`关键CSS已加载并缓存: ${cssFile} (${(criticalCss.length / 1024).toFixed(1)}KB)`);
