@@ -1437,6 +1437,8 @@ async function renderIds(ids = [], options = {}) {
     preload: 'swap',
     inlineFonts: true,
     pruneSource: true,
+    // 新增：忽略第三方库，让 beasties 专注于应用本身的关键CSS
+    ignore: [/libs\//, /inline-styles\.css/]
   });
 
   try {
@@ -1604,6 +1606,8 @@ async function renderSingleSortPage(sortId, parentTaskId = null) {
     preload: 'swap',
     inlineFonts: true,
     pruneSource: true,
+    // 新增：忽略第三方库，让 beasties 专注于应用本身的关键CSS
+    ignore: [/libs\//, /inline-styles\.css/]
   });
   
   for (const lang of langs) {
@@ -1642,6 +1646,8 @@ async function renderPages(type, params = {}) {
     preload: 'swap',
     inlineFonts: true,
     pruneSource: true,
+    // 新增：忽略第三方库，让 beasties 专注于应用本身的关键CSS
+    ignore: [/libs\//, /inline-styles\.css/]
   });
 
   try {
@@ -1898,7 +1904,7 @@ app.post('/render/pages', async (req, res) => {
         let failCount = 0;
         const results = [];
         
-                 for (const sortId of sortIds) {
+        for (const sortId of sortIds) {
            try {
              // 直接执行分类页面渲染逻辑，不创建新任务
              await renderSingleSortPage(sortId, batchTaskId);
