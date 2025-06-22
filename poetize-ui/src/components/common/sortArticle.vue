@@ -101,7 +101,7 @@
         </div>
         <!-- 内容 -->
         <div class="recent-post-desc">
-          {{ $common.removeMarkdown(article.articleContent) }}
+          {{ article.summary || $common.removeMarkdown(article.articleContent) }}
         </div>
         <!-- 分类 标签 -->
         <div class="sort-label">

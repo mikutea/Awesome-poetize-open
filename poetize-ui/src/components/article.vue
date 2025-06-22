@@ -945,6 +945,13 @@
         });
       },
       highlight() {
+        // 检查 hljs 是否可用，如果不可用则延迟重试
+        if (typeof window.hljs === 'undefined') {
+          console.warn('hljs not ready, retrying in 200ms...');
+          setTimeout(() => this.highlight(), 200);
+          return;
+        }
+
         let attributes = {
           autocomplete: "off",
           autocorrect: "off",
@@ -966,9 +973,9 @@
             }
           });
 
-          let language = hljs.getLanguage(lang.toLowerCase());
+          let language = window.hljs.getLanguage(lang.toLowerCase());
           if (language === undefined) {
-            let autoLanguage = hljs.highlightAuto(preCode.text());
+            let autoLanguage = window.hljs.highlightAuto(preCode.text());
             preCode.removeClass("language-" + lang);
             lang = autoLanguage.language;
             if (lang === undefined) {
@@ -982,8 +989,8 @@
           $(item).addClass("highlight-wrap");
           $(item).attr(attributes);
           preCode.attr("data-rel", lang.toUpperCase()).addClass(lang.toLowerCase());
-          hljs.highlightBlock(preCode[0]);
-          hljs.lineNumbersBlock(preCode[0]);
+          window.hljs.highlightBlock(preCode[0]);
+          window.hljs.lineNumbersBlock(preCode[0]);
         });
 
         $("pre code").each(function (i, block) {

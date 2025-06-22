@@ -35,4 +35,12 @@ public interface ArticleService extends IService<Article> {
     PoetryResult<ArticleVO> getArticleByIdForUser(Integer id);
 
     PoetryResult<Map<Integer, List<ArticleVO>>> listSortArticle();
+
+    /**
+     * 生成文章摘要
+     * @param content 文章内容
+     * @param maxLength 最大长度
+     * @return 摘要结果
+     */
+    PoetryResult<String> generateSummary(String content, Integer maxLength);
 }

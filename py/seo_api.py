@@ -253,11 +253,20 @@ async def generate_article_meta_tags(article_id, lang=None):
 
         logger.info(f"成功获取文章信息，标题: {article_data.get('articleTitle', '无标题')}")
 
+        # 优先使用智能摘要，如果没有则从内容生成描述
+        article_summary = article_data.get('summary', '')
+        if article_summary:
+            logger.info(f"使用文章智能摘要作为描述，文章ID: {article_id}, 摘要长度: {len(article_summary)}")
+            description = article_summary
+        else:
+            logger.info(f"文章没有智能摘要，从内容生成描述，文章ID: {article_id}")
+            description = get_article_description(article_data.get('articleContent', ''))
+
         # 基本元标签
         meta_tags = {
             # OpenGraph标签
             "og:title": article_data.get('articleTitle', ''),
-            "og:description": get_article_description(article_data.get('articleContent', '')),
+            "og:description": description,
             "og:type": seo_config.get('og_type', 'article'),
             "og:url": f"{seo_config.get('site_address', FRONTEND_URL)}/{seo_config.get('article_url_format', 'article/{id}')}".replace('{id}', str(article_id)),
             "og:image": article_data.get('articleCover', seo_config.get('og_image', '')),
@@ -266,7 +275,7 @@ async def generate_article_meta_tags(article_id, lang=None):
             # Twitter标签
             "twitter:card": seo_config.get('twitter_card', 'summary_large_image'),
             "twitter:title": article_data.get('articleTitle', ''),
-            "twitter:description": seo_config.get('site_description', ''),
+            "twitter:description": description,
             "twitter:image": article_data.get('articleCover', seo_config.get('og_image', '')),
             "twitter:site": seo_config.get('twitter_site', ''),
             "twitter:creator": seo_config.get('twitter_creator', ''),
@@ -281,7 +290,6 @@ async def generate_article_meta_tags(article_id, lang=None):
         
         # 基础元标签 (用于HTML head)
         title = article_data.get('articleTitle', '')
-        description = get_article_description(article_data.get('articleContent', ''))
         keywords = await get_article_keywords(article_data)
         
         meta_tags.update({

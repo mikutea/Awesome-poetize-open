@@ -41,6 +41,7 @@ CREATE TABLE `poetize`.`article` (
   `article_cover` varchar(256) DEFAULT NULL COMMENT '封面',
   `article_title` varchar(500) NOT NULL COMMENT '博文标题',
   `article_content` text NOT NULL COMMENT '博文内容',
+  `summary` varchar(500) DEFAULT NULL COMMENT '文章摘要',
   `video_url` varchar(1024) DEFAULT NULL COMMENT '视频链接',
   `view_count` int NOT NULL DEFAULT 0 COMMENT '浏览量',
   `like_count` int NOT NULL DEFAULT 0 COMMENT '点赞数',

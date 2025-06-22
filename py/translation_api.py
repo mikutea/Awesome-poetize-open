@@ -13,11 +13,11 @@ from pydantic import BaseModel, Field
 from auth_decorator import admin_required
 import logging
 from cryptography.fernet import Fernet
-
+import time
 # 导入OpenAI和Anthropic官方库
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
-
+from config import JAVA_BACKEND_URL
 logger = logging.getLogger(__name__)
 
 # 翻译配置存储文件
@@ -84,6 +84,9 @@ class TranslationConfig(BaseModel):
     # 大模型配置
     llm: Optional[dict] = Field(None, description="大模型配置")
     
+    # 摘要生成配置
+    summary: Optional[dict] = Field(None, description="摘要生成配置")
+    
     # 默认语言配置
     default_source_lang: Optional[str] = Field("zh", description="默认源语言")
     default_target_lang: Optional[str] = Field("en", description="默认目标语言")
@@ -91,8 +94,8 @@ class TranslationConfig(BaseModel):
 class TranslationRequest(BaseModel):
     """翻译请求模型"""
     text: str = Field(..., description="待翻译文本")
-    source_lang: str = Field("auto", description="源语言")
-    target_lang: str = Field("en", description="目标语言")
+    source_lang: Optional[str] = Field("auto", description="源语言代码")
+    target_lang: Optional[str] = Field("en", description="目标语言代码")
 
 class TestTranslationRequest(BaseModel):
     """测试翻译请求模型"""
@@ -100,10 +103,26 @@ class TestTranslationRequest(BaseModel):
 
 class TranslationResponse(BaseModel):
     """翻译响应模型"""
-    success: bool
-    translated_text: Optional[str] = None
-    error_message: Optional[str] = None
-    engine: Optional[str] = None
+    success: bool = Field(..., description="翻译是否成功")
+    translated_text: Optional[str] = Field(None, description="翻译结果")
+    source_lang: Optional[str] = Field(None, description="检测到的源语言")
+    target_lang: Optional[str] = Field(None, description="目标语言")
+    engine: Optional[str] = Field(None, description="使用的翻译引擎")
+    error_message: Optional[str] = Field(None, description="错误信息")
+
+class SummaryRequest(BaseModel):
+    """摘要生成请求模型"""
+    content: str = Field(..., description="待生成摘要的文章内容")
+    max_length: Optional[int] = Field(150, description="摘要最大长度")
+    style: Optional[str] = Field("concise", description="摘要风格：concise简洁|detailed详细|academic学术")
+
+class SummaryResponse(BaseModel):
+    """摘要生成响应模型"""
+    success: bool = Field(..., description="摘要生成是否成功")
+    summary: Optional[str] = Field(None, description="生成的摘要")
+    method: Optional[str] = Field(None, description="使用的摘要方法：ai|textrank")
+    processing_time: Optional[float] = Field(None, description="处理时间（秒）")
+    error_message: Optional[str] = Field(None, description="错误信息")
 
 class TranslationManager:
     """翻译管理器"""
@@ -604,6 +623,296 @@ class TranslationManager:
                 error_message=f"自定义模型请求失败: {str(e)}"
             )
 
+    async def test_translation(self, request: TestTranslationRequest) -> Dict[str, Any]:
+        """测试翻译服务"""
+        start_time = time.time()
+        
+        config = self.load_config()
+        if not config:
+            return {
+                'success': False,
+                'error_message': '翻译配置未设置'
+            }
+        
+        translation_request = TranslationRequest(
+            text=request.text,
+            source_lang=request.source_lang,
+            target_lang=request.target_lang
+        )
+        
+        result = await self.translate(config, translation_request)
+        
+        processing_time = time.time() - start_time
+        
+        return {
+            'success': result.success,
+            'translated_text': result.translated_text,
+            'source_lang': result.source_lang,
+            'target_lang': result.target_lang,
+            'engine': result.engine,
+            'error_message': result.error_message,
+            'processing_time': round(processing_time, 2)
+        }
+    
+    async def generate_summary(self, config: TranslationConfig, request: SummaryRequest) -> SummaryResponse:
+        """生成文章摘要（智能摘要优先，回退到TextRank）"""
+        import time
+        start_time = time.time()
+        
+        # 检查是否启用了AI摘要
+        summary_config = config.summary or {}
+        ai_enabled = summary_config.get('ai_enabled', False)
+        
+        if ai_enabled and config.type == 'llm' and config.llm:
+            try:
+                # 尝试使用AI生成摘要
+                ai_summary = await self._generate_ai_summary(config, request)
+                if ai_summary.success:
+                    processing_time = time.time() - start_time
+                    ai_summary.processing_time = round(processing_time, 2)
+                    return ai_summary
+                else:
+                    logger.warn(f"AI摘要生成失败，回退到TextRank: {ai_summary.error_message}")
+            except Exception as e:
+                logger.error(f"AI摘要生成异常，回退到TextRank: {e}")
+        
+        # 回退到Java后端的TextRank算法
+        try:
+            textrank_summary = await self._generate_textrank_summary(request)
+            processing_time = time.time() - start_time
+            textrank_summary.processing_time = round(processing_time, 2)
+            return textrank_summary
+        except Exception as e:
+            logger.error(f"TextRank摘要生成失败: {e}")
+            return SummaryResponse(
+                success=False,
+                error_message=f"摘要生成失败: {str(e)}",
+                processing_time=round(time.time() - start_time, 2)
+            )
+    
+    async def _generate_ai_summary(self, config: TranslationConfig, request: SummaryRequest) -> SummaryResponse:
+        """使用AI生成摘要"""
+        llm_config = config.llm or {}
+        summary_config = config.summary or {}
+        
+        # 构建摘要提示词
+        style_prompts = {
+            'concise': '生成一个简洁明了的摘要，突出文章的核心观点',
+            'detailed': '生成一个详细的摘要，包含文章的主要内容和关键信息',
+            'academic': '生成一个学术风格的摘要，使用专业术语和结构化表达'
+        }
+        
+        style_desc = style_prompts.get(request.style, style_prompts['concise'])
+        default_prompt = f"请为以下文章{style_desc}，摘要长度控制在{request.max_length}字符以内。请直接返回摘要内容，不要添加任何前缀或说明："
+        
+        prompt_template = summary_config.get('prompt') or default_prompt
+        full_prompt = f"{prompt_template}\n\n{request.content}"
+        
+        # 使用与翻译相同的LLM接口
+        interface_type = llm_config.get('interface_type', 'auto')
+        model = llm_config.get('model', '')
+        
+        if interface_type == 'openai':
+            return await self._openai_summary(config, full_prompt)
+        elif interface_type == 'anthropic':
+            return await self._anthropic_summary(config, full_prompt)
+        elif interface_type == 'auto' or interface_type is None:
+            if model and any(x in model.lower() for x in ['gpt', 'openai']):
+                return await self._openai_summary(config, full_prompt)
+            elif model and any(x in model.lower() for x in ['claude', 'anthropic']):
+                return await self._anthropic_summary(config, full_prompt)
+            else:
+                return await self._custom_llm_summary(config, full_prompt)
+        else:
+            return await self._custom_llm_summary(config, full_prompt)
+    
+    async def _openai_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+        """OpenAI摘要生成"""
+        try:
+            llm_config = config.llm or {}
+            api_key = llm_config.get('api_key')
+            api_url = llm_config.get('api_url', 'https://api.openai.com/v1')
+            model = llm_config.get('model', 'gpt-3.5-turbo')
+            
+            if not api_key:
+                return SummaryResponse(
+                    success=False,
+                    error_message="OpenAI API密钥未配置"
+                )
+            
+            client = AsyncOpenAI(
+                api_key=api_key,
+                base_url=api_url,
+                timeout=30.0
+            )
+            
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=500  # 摘要不需要太多tokens
+            )
+            
+            if response.choices:
+                summary = response.choices[0].message.content.strip()
+                return SummaryResponse(
+                    success=True,
+                    summary=summary,
+                    method="ai-openai"
+                )
+            else:
+                return SummaryResponse(
+                    success=False,
+                    error_message="OpenAI返回空响应"
+                )
+                
+        except Exception as e:
+            logger.error(f"OpenAI摘要生成失败: {e}")
+            return SummaryResponse(
+                success=False,
+                error_message=f"OpenAI摘要生成失败: {str(e)}"
+            )
+    
+    async def _anthropic_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+        """Anthropic摘要生成"""
+        try:
+            llm_config = config.llm or {}
+            api_key = llm_config.get('api_key')
+            model = llm_config.get('model', 'claude-3-5-sonnet-20241022')
+            
+            if not api_key:
+                return SummaryResponse(
+                    success=False,
+                    error_message="Anthropic API密钥未配置"
+                )
+            
+            client = AsyncAnthropic(
+                api_key=api_key,
+                timeout=30.0
+            )
+            
+            response = await client.messages.create(
+                model=model,
+                max_tokens=500,  # 摘要不需要太多tokens
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            if response.content:
+                summary = response.content[0].text.strip()
+                return SummaryResponse(
+                    success=True,
+                    summary=summary,
+                    method="ai-anthropic"
+                )
+            else:
+                return SummaryResponse(
+                    success=False,
+                    error_message="Anthropic返回空响应"
+                )
+                
+        except Exception as e:
+            logger.error(f"Anthropic摘要生成失败: {e}")
+            return SummaryResponse(
+                success=False,
+                error_message=f"Anthropic摘要生成失败: {str(e)}"
+            )
+    
+    async def _custom_llm_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+        """自定义大模型摘要生成"""
+        llm_config = config.llm or {}
+        api_url = llm_config.get('api_url')
+        api_key = llm_config.get('api_key')
+        model = llm_config.get('model', 'gpt-3.5-turbo')
+        
+        if not api_url:
+            return SummaryResponse(
+                success=False,
+                error_message="自定义模型API地址未配置"
+            )
+        
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+        
+        payload = {
+            'model': model,
+            'messages': [
+                {'role': 'user', 'content': prompt}
+            ],
+            'temperature': 0.3,
+            'max_tokens': 500
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(api_url, json=payload, headers=headers)
+                response.raise_for_status()
+                
+                data = response.json()
+                if 'choices' in data and data['choices']:
+                    summary = data['choices'][0]['message']['content'].strip()
+                    return SummaryResponse(
+                        success=True,
+                        summary=summary,
+                        method="ai-custom"
+                    )
+                else:
+                    return SummaryResponse(
+                        success=False,
+                        error_message="自定义模型返回格式错误"
+                    )
+                    
+        except Exception as e:
+            logger.error(f"自定义LLM摘要生成失败: {e}")
+            return SummaryResponse(
+                success=False,
+                error_message=f"自定义LLM摘要生成失败: {str(e)}"
+            )
+    
+    async def _generate_textrank_summary(self, request: SummaryRequest) -> SummaryResponse:
+        """调用Java后端的TextRank摘要生成"""
+        try:
+            
+            
+            payload = {
+                'content': request.content,
+                'maxLength': request.max_length
+            }
+            
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.post(
+                    f"{JAVA_BACKEND_URL}/article/generateSummary",
+                    json=payload,
+                    headers={'Content-Type': 'application/json'}
+                )
+                response.raise_for_status()
+                
+                data = response.json()
+                if data.get('code') == 200 and data.get('data'):
+                    return SummaryResponse(
+                        success=True,
+                        summary=data['data'],
+                        method="textrank"
+                    )
+                else:
+                    return SummaryResponse(
+                        success=False,
+                        error_message=data.get('message', 'TextRank摘要生成失败')
+                    )
+                    
+        except Exception as e:
+            logger.error(f"TextRank摘要生成失败: {e}")
+            return SummaryResponse(
+                success=False,
+                error_message=f"TextRank摘要生成失败: {str(e)}"
+            )
+
 # 创建翻译管理器实例
 translation_manager = TranslationManager()
 
@@ -651,6 +960,7 @@ def register_translation_api(app):
                         'baidu': {'app_id': '', 'app_secret': ''},
                         'custom': {'api_url': '', 'api_key': '', 'app_secret': ''},
                         'llm': {'model': '', 'api_url': '', 'api_key': '', 'prompt': '', 'interface_type': 'auto'},
+                        'summary': {'ai_enabled': False, 'style': 'concise', 'max_length': 150, 'prompt': ''},
                         'default_source_lang': 'zh',
                         'default_target_lang': 'en'
                     }
@@ -751,6 +1061,84 @@ def register_translation_api(app):
             return {
                 'code': 500,
                 'message': f'翻译失败: {str(e)}'
+            }
+    
+    @app.post("/api/translation/generate-summary")
+    async def generate_summary_api(request: SummaryRequest, admin_user = Depends(admin_required)):
+        """生成文章摘要"""
+        try:
+            config = translation_manager.load_config()
+            if not config:
+                return {
+                    'code': 400,
+                    'message': '翻译配置未设置'
+                }
+            
+            result = await translation_manager.generate_summary(config, request)
+            
+            if result.success:
+                return {
+                    'code': 200,
+                    'message': '摘要生成成功',
+                    'data': {
+                        'summary': result.summary,
+                        'method': result.method,
+                        'processing_time': result.processing_time
+                    }
+                }
+            else:
+                return {
+                    'code': 500,
+                    'message': result.error_message or '摘要生成失败'
+                }
+                
+        except Exception as e:
+            logger.error(f"摘要生成API失败: {e}")
+            return {
+                'code': 500,
+                'message': f'摘要生成失败: {str(e)}'
+            }
+    
+    @app.post("/api/translation/test-summary")
+    async def test_summary_api(request: SummaryRequest, admin_user = Depends(admin_required)):
+        """测试摘要生成功能"""
+        try:
+            config = translation_manager.load_config()
+            if not config:
+                return {
+                    'code': 400,
+                    'message': '翻译配置未设置'
+                }
+            
+            # 限制测试内容长度，避免消耗过多tokens
+            test_content = request.content[:2000] if len(request.content) > 2000 else request.content
+            test_request = SummaryRequest(
+                content=test_content,
+                max_length=request.max_length,
+                style=request.style
+            )
+            
+            result = await translation_manager.generate_summary(config, test_request)
+            
+            return {
+                'code': 200,
+                'message': '测试完成',
+                'data': {
+                    'success': result.success,
+                    'summary': result.summary,
+                    'method': result.method,
+                    'processing_time': result.processing_time,
+                    'error_message': result.error_message,
+                    'original_length': len(request.content),
+                    'summary_length': len(result.summary) if result.summary else 0
+                }
+            }
+                
+        except Exception as e:
+            logger.error(f"摘要测试API失败: {e}")
+            return {
+                'code': 500,
+                'message': f'摘要测试失败: {str(e)}'
             }
     
     logger.info("翻译管理API已注册") 

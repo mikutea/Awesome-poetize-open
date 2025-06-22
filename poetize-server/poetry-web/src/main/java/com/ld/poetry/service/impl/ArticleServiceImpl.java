@@ -29,13 +29,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import com.ld.poetry.service.TranslationService;
+import java.util.Map;
+import java.util.HashMap;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import com.ld.poetry.utils.PrerenderClient;
-import com.ld.poetry.service.TranslationService;
+import com.ld.poetry.utils.SmartSummaryGenerator;
+import com.ld.poetry.utils.TextRankSummaryGenerator;
 
 /**
  * <p>
@@ -73,6 +81,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Autowired
     private TranslationService translationService;
+    
+    @Autowired
+    private RestTemplate restTemplate;
 
     @Value("${user.subscribe.format}")
     private String subscribeFormat;
@@ -101,6 +112,14 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setRecommendStatus(articleVO.getRecommendStatus());
         article.setArticleTitle(articleVO.getArticleTitle());
         article.setArticleContent(articleVO.getArticleContent());
+        
+        // 智能摘要生成（优先AI，回退TextRank）
+        if (StringUtils.hasText(articleVO.getArticleContent())) {
+            String smartSummary = generateArticleSummary(articleVO.getArticleContent());
+            article.setSummary(smartSummary);
+            log.debug("为新文章生成智能摘要: {}", smartSummary);
+        }
+        
         article.setSortId(articleVO.getSortId());
         article.setLabelId(articleVO.getLabelId());
         
@@ -219,6 +238,13 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
 
         Integer userId = PoetryUtil.getUserId();
+        // 如果文章内容有更新，自动重新生成智能摘要（优先AI，回退TextRank）
+        String newSummary = null;
+        if (StringUtils.hasText(articleVO.getArticleContent())) {
+            newSummary = generateArticleSummary(articleVO.getArticleContent());
+            log.debug("为更新的文章重新生成智能摘要: {}", newSummary);
+        }
+
         LambdaUpdateChainWrapper<Article> updateChainWrapper = lambdaUpdate()
                 .eq(Article::getId, articleVO.getId())
                 .eq(Article::getUserId, userId)
@@ -228,7 +254,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 .set(Article::getUpdateBy, PoetryUtil.getUsername())
                 .set(Article::getUpdateTime, LocalDateTime.now())
                 .set(Article::getVideoUrl, StringUtils.hasText(articleVO.getVideoUrl()) ? articleVO.getVideoUrl() : null)
-                .set(Article::getArticleContent, articleVO.getArticleContent());
+                .set(Article::getArticleContent, articleVO.getArticleContent())
+                .set(Article::getSummary, newSummary); // 更新智能摘要
 
         if (StringUtils.hasText(articleVO.getArticleCover())) {
             updateChainWrapper.set(Article::getArticleCover, articleVO.getArticleCover());
@@ -296,11 +323,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 String originalContent = article.getArticleContent();
                 String originalTitle = article.getArticleTitle();
                 
+                // 如果内容太长，仍然截取用于articleContent字段（保持兼容性）
                 if (article.getArticleContent().length() > CommonConst.SUMMARY) {
                     article.setArticleContent(article.getArticleContent().substring(0, CommonConst.SUMMARY).replace("`", "").replace("#", "").replace(">", ""));
                 }
                 
                 ArticleVO articleVO = buildArticleVO(article, false);
+                
+                // 直接使用数据库中存储的摘要
+                if (StringUtils.hasText(article.getSummary())) {
+                    articleVO.setSummary(article.getSummary());
+                }
+                
                 articleVO.setHasVideo(StringUtils.hasText(articleVO.getVideoUrl()));
                 articleVO.setPassword(null);
                 articleVO.setVideoUrl(null);
@@ -371,7 +405,14 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (StringUtils.hasText(article.getVideoUrl())) {
             article.setVideoUrl(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).encryptBase64(article.getVideoUrl()));
         }
+        
         ArticleVO articleVO = buildArticleVO(article, false);
+        
+        // 直接使用数据库中存储的摘要
+        if (StringUtils.hasText(article.getSummary())) {
+            articleVO.setSummary(article.getSummary());
+        }
+        
         return PoetryResult.success(articleVO);
     }
 
@@ -467,11 +508,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     }
 
                     List<ArticleVO> articleVOList = articleList.stream().map(article -> {
+                        // 如果内容太长，仍然截取用于articleContent字段（保持兼容性）
                         if (article.getArticleContent().length() > CommonConst.SUMMARY) {
                             article.setArticleContent(article.getArticleContent().substring(0, CommonConst.SUMMARY).replace("`", "").replace("#", "").replace(">", ""));
                         }
 
                         ArticleVO vo = buildArticleVO(article, false);
+                        
+                        // 直接使用数据库中存储的摘要
+                        if (StringUtils.hasText(article.getSummary())) {
+                            vo.setSummary(article.getSummary());
+                        }
+                        
                         vo.setHasVideo(StringUtils.hasText(article.getVideoUrl()));
                         vo.setPassword(null);
                         vo.setVideoUrl(null);
@@ -533,5 +581,114 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
         }
         return articleVO;
+    }
+
+    /**
+     * 为Python端提供的摘要生成API
+     */
+    @Override
+    public PoetryResult<String> generateSummary(String content, Integer maxLength) {
+        try {
+            if (!StringUtils.hasText(content)) {
+                return PoetryResult.fail("内容不能为空");
+            }
+            
+            int targetLength = (maxLength != null && maxLength > 0) ? maxLength : 150;
+            String summary = SmartSummaryGenerator.generateAdvancedSummary(content, targetLength);
+            
+            if (StringUtils.hasText(summary)) {
+                return PoetryResult.success(summary);
+            } else {
+                return PoetryResult.fail("摘要生成失败");
+            }
+            
+        } catch (Exception e) {
+            log.error("摘要生成失败", e);
+            return PoetryResult.fail("摘要生成异常: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 智能摘要生成（优先AI，回退TextRank）
+     * @param content 文章内容
+     * @return 生成的摘要
+     */
+    private String generateArticleSummary(String content) {
+        if (!StringUtils.hasText(content)) {
+            return "";
+        }
+        
+        try {
+            // 尝试调用Python端的AI摘要服务
+            String aiSummary = callPythonAiSummary(content);
+            if (StringUtils.hasText(aiSummary)) {
+                log.info("使用AI生成文章摘要成功，长度: {}", aiSummary.length());
+                return aiSummary;
+            }
+        } catch (Exception e) {
+            log.warn("AI摘要生成失败，回退到TextRank算法: {}", e.getMessage());
+        }
+        
+        // 回退到TextRank算法
+        try {
+            String textRankSummary = SmartSummaryGenerator.generateAdvancedSummary(content, 150);
+            if (StringUtils.hasText(textRankSummary)) {
+                log.info("使用TextRank生成文章摘要成功，长度: {}", textRankSummary.length());
+                return textRankSummary;
+            }
+        } catch (Exception e) {
+            log.error("TextRank摘要生成也失败: {}", e.getMessage());
+        }
+        
+        // 最后的回退：简单截取
+        log.warn("所有摘要生成方法都失败，使用简单截取");
+        return content.length() > 100 ? content.substring(0, 100) + "..." : content;
+    }
+    
+    /**
+     * 调用Python端的AI摘要生成服务
+     * @param content 文章内容
+     * @return AI生成的摘要，失败时返回null
+     */
+    private String callPythonAiSummary(String content) {
+        try {
+            String pythonServerUrl = System.getenv().getOrDefault("PYTHON_SERVICE_URL", "http://localhost:5000");
+            String pythonApiUrl = pythonServerUrl + "/api/translation/generate-summary";
+            
+            // 构建请求体
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("content", content);
+            requestBody.put("max_length", 150);
+            requestBody.put("style", "concise");
+            
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Service", "poetize-java");
+            
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+            
+            // 发送请求
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.postForObject(pythonApiUrl, request, Map.class);
+            
+            if (response != null && "200".equals(String.valueOf(response.get("code")))) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> data = (Map<String, Object>) response.get("data");
+                if (data != null && data.get("summary") != null) {
+                    String summary = data.get("summary").toString();
+                    String method = data.get("method") != null ? data.get("method").toString() : "unknown";
+                    log.info("AI摘要生成成功，使用方法: {}, 摘要长度: {}", method, summary.length());
+                    return summary;
+                }
+            } else {
+                String message = response != null ? String.valueOf(response.get("message")) : "Unknown error";
+                log.warn("Python AI摘要服务返回错误: {}", message);
+            }
+        } catch (Exception e) {
+            log.warn("调用Python AI摘要服务失败: {}", e.getMessage());
+        }
+        
+        return null;
     }
 }

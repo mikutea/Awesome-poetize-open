@@ -753,7 +753,7 @@ async function fetchSeoConfig() {
 async function fetchSortInfo() {
   try {
     logger.debug('Fetching sort info');
-    const res = await axios.get(`${JAVA_BACKEND_URL}/sort/listSort`, { 
+    const res = await axios.get(`${JAVA_BACKEND_URL}/webInfo/listSortForPrerender`, { 
       timeout: 5000,
       headers: INTERNAL_SERVICE_HEADERS
     });
@@ -1206,7 +1206,7 @@ async function renderHomePage(lang = 'zh') {
               <li>
                 <a href="/article/${article.id}" title="${article.articleTitle}">
                   <h3>${article.articleTitle}</h3>
-                  <p>${article.summary || ''}</p>
+                  ${article.summary ? `<p>${article.summary}</p>` : ''}
                   <time>${article.createTime}</time>
                 </a>
               </li>
@@ -1533,7 +1533,7 @@ async function renderSortPage(sortId, labelId = null, lang = 'zh') {
                     ${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" loading="lazy">` : ''}
                     <div class="article-info">
                       <h3>${article.articleTitle}</h3>
-                      <p>${article.summary || ''}</p>
+                      ${article.summary ? `<p>${article.summary}</p>` : ''}
                       <div class="article-meta">
                         <time>${article.createTime}</time>
                         <span class="view-count">阅读 ${article.viewCount || 0}</span>

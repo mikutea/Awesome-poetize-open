@@ -1,14 +1,34 @@
 <template>
   <div class="seo-management">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="title-section">
-        <h1 class="page-title">
-          <i class="el-icon-search"></i>
-          SEO 配置
-        </h1>
-        <p class="page-description">配置网站SEO优化设置，提升搜索引擎收录和排名效果</p>
-      </div>
+    <div style="margin-bottom: 30px;">
+      <el-tag effect="dark" class="my-tag">
+        <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+          <path
+            d="M448 768c-123.712 0-224-100.288-224-224s100.288-224 224-224 224 100.288 224 224-100.288 224-224 224z m0-384c-88.224 0-160 71.776-160 160s71.776 160 160 160 160-71.776 160-160-71.776-160-160-160z"
+            fill="#4A90E2"></path>
+          <path
+            d="M781.248 832L661.184 711.936c-12.48-12.48-32.768-12.48-45.248 0s-12.48 32.768 0 45.248L736 877.248c6.24 6.24 14.432 9.376 22.624 9.376s16.384-3.136 22.624-9.376c12.48-12.48 12.48-32.768 0-45.248z"
+            fill="#4A90E2"></path>
+          <circle cx="448" cy="480" r="48" fill="#FFFFFF"></circle>
+          <path
+            d="M688 192h64c17.664 0 32-14.336 32-32s-14.336-32-32-32h-64c-17.664 0-32 14.336-32 32s14.336 32 32 32z"
+            fill="#FF6B6B"></path>
+          <path
+            d="M816 192h64c17.664 0 32-14.336 32-32s-14.336-32-32-32h-64c-17.664 0-32 14.336-32 32s14.336 32 32 32z"
+            fill="#4ECDC4"></path>
+          <path
+            d="M752 256h64c17.664 0 32-14.336 32-32s-14.336-32-32-32h-64c-17.664 0-32 14.336-32 32s14.336 32 32 32z"
+            fill="#45B7D1"></path>
+          <path
+            d="M320 384c-35.328 0-64-28.672-64-64V192c0-35.328 28.672-64 64-64s64 28.672 64 64v128c0 35.328-28.672 64-64 64z"
+            fill="#FFA726"></path>
+          <path
+            d="M160 480c-35.328 0-64-28.672-64-64V288c0-35.328 28.672-64 64-64s64 28.672 64 64v128c0 35.328-28.672 64-64 64z"
+            fill="#66BB6A"></path>
+        </svg>
+        SEO 配置
+      </el-tag>
     </div>
 
     <el-card class="box-card" shadow="hover">
@@ -2101,5 +2121,24 @@ export default {
 
   .help-content .el-tabs__item.is-active {
     color: #409EFF;
+  }
+
+  /* 统一页面标题样式 */
+  .my-tag {
+    margin-bottom: 20px !important;
+    width: 100%;
+    text-align: left;
+    background: var(--lightYellow);
+    border: none;
+    height: 40px;
+    line-height: 40px;
+    font-size: 16px;
+    color: var(--black);
+  }
+
+  /* 如果没有CSS变量定义，使用后备颜色 */
+  .my-tag {
+    background: #fefcbf;
+    color: #2d3748;
   }
 </style>

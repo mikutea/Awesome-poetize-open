@@ -1,14 +1,24 @@
 <template>
   <div class="ai-chat-management">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="title-section">
-        <h1 class="page-title">
-          <i class="el-icon-chat-dot-round"></i>
-          AI聊天配置
-        </h1>
-        <p class="page-description">配置网站AI聊天功能的各项参数，包括模型设置、聊天功能和外观定制</p>
-      </div>
+    <div style="margin-bottom: 30px;">
+      <el-tag effect="dark" class="my-tag">
+        <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+          <path
+            d="M853.333 170.667H170.667C76.373 170.667 0 247.04 0 341.333v256c0 94.293 76.373 170.667 170.667 170.667h128v85.333c0 23.573 19.093 42.667 42.667 42.667 11.733 0 22.933-4.8 31.147-13.44L480 768h373.333c94.293 0 170.667-76.373 170.667-170.667v-256c0-94.293-76.373-170.667-170.667-170.667z"
+            fill="#4A90E2"></path>
+          <circle cx="256" cy="384" r="32" fill="#FFFFFF"></circle>
+          <circle cx="512" cy="384" r="32" fill="#FFFFFF"></circle>
+          <circle cx="768" cy="384" r="32" fill="#FFFFFF"></circle>
+          <path
+            d="M640 512c0-17.664 14.336-32 32-32h64c17.664 0 32 14.336 32 32s-14.336 32-32 32h-64c-17.664 0-32-14.336-32-32z"
+            fill="#FF6B6B"></path>
+          <path
+            d="M224 512c0-17.664 14.336-32 32-32h256c17.664 0 32 14.336 32 32s-14.336 32-32 32H256c-17.664 0-32-14.336-32-32z"
+            fill="#4ECDC4"></path>
+        </svg>
+        AI聊天配置
+      </el-tag>
     </div>
 
     <el-tabs v-model="activeTab" type="border-card">
@@ -1133,5 +1143,24 @@ export default {
   padding: 0;
   font-size: 12px;
   color: #409EFF;
+}
+
+/* 统一页面标题样式 */
+.my-tag {
+  margin-bottom: 20px !important;
+  width: 100%;
+  text-align: left;
+  background: var(--lightYellow);
+  border: none;
+  height: 40px;
+  line-height: 40px;
+  font-size: 16px;
+  color: var(--black);
+}
+
+/* 如果没有CSS变量定义，使用后备颜色 */
+.my-tag {
+  background: #fefcbf;
+  color: #2d3748;
 }
 </style> 

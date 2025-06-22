@@ -654,5 +654,22 @@ public class ArticleController {
             return PoetryResult.fail("获取翻译失败：" + e.getMessage());
         }
     }
+
+    /**
+     * 生成文章摘要 - 供Python端调用
+     */
+    @PostMapping("/generateSummary")
+    public PoetryResult<String> generateSummary(@RequestBody Map<String, Object> request) {
+        try {
+            String content = (String) request.get("content");
+            Integer maxLength = request.get("maxLength") != null ? 
+                Integer.parseInt(request.get("maxLength").toString()) : 150;
+            
+            return articleService.generateSummary(content, maxLength);
+        } catch (Exception e) {
+            log.error("摘要生成API调用失败", e);
+            return PoetryResult.fail("摘要生成失败: " + e.getMessage());
+        }
+    }
 }
 

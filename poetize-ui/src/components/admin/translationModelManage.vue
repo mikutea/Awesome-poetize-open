@@ -1,15 +1,22 @@
 <template>
   <div class="translation-management">
     <!-- 页面标题 -->
-    <div class="page-header">
-      <div class="title-section">
-        <h1 class="page-title">
-          <i class="el-icon-s-tools"></i>
-          翻译管理
-        </h1>
-        <p class="page-description">配置和管理翻译服务，支持API翻译和AI大模型翻译</p>
-      </div>
-      </div>
+    <div style="margin-bottom: 30px;">
+      <el-tag effect="dark" class="my-tag">
+        <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+          <path
+            d="M512 64c-247.424 0-448 200.576-448 448 0 78.336 20.352 152.064 56.064 216.064l-56.064 168.192c-4.096 12.288 8.192 24.576 20.48 20.48l168.192-56.064c64 35.712 137.728 56.064 216.064 56.064 247.424 0 448-200.576 448-448S759.424 64 512 64z"
+            fill="#4A90E2"></path>
+          <path
+            d="M368 336c0-17.664 14.336-32 32-32h224c17.664 0 32 14.336 32 32s-14.336 32-32 32H400c-17.664 0-32-14.336-32-32zM368 432c0-17.664 14.336-32 32-32h224c17.664 0 32 14.336 32 32s-14.336 32-32 32H400c-17.664 0-32-14.336-32-32zM368 528c0-17.664 14.336-32 32-32h160c17.664 0 32 14.336 32 32s-14.336 32-32 32H400c-17.664 0-32-14.336-32-32z"
+            fill="#FFFFFF"></path>
+          <circle cx="720" cy="336" r="16" fill="#FF6B6B"></circle>
+          <circle cx="720" cy="432" r="16" fill="#4ECDC4"></circle>
+          <circle cx="720" cy="528" r="16" fill="#45B7D1"></circle>
+        </svg>
+        文章AI助手
+      </el-tag>
+    </div>
       
     <!-- 主要配置区域 -->
     <div class="config-container">
@@ -437,6 +444,99 @@
           </div>
         </div>
         
+        <!-- 智能摘要配置 -->
+        <div class="config-section" v-if="apiConfig.mode === 'llm'">
+          <div class="section-header">
+            <h2 class="section-title">
+              <i class="el-icon-document"></i>
+              智能摘要配置
+            </h2>
+          </div>
+          <div class="section-content">
+            <el-form-item label="启用AI摘要">
+              <el-switch 
+                v-model="apiConfig.summaryAiEnabled" 
+                active-text="启用" 
+                inactive-text="禁用"
+                @change="onSummaryToggle">
+              </el-switch>
+              <div class="form-tip">
+                <i class="el-icon-info"></i>
+                启用后，文章保存时将优先使用AI生成摘要；如果AI不可用，会自动回退到TextRank算法
+              </div>
+            </el-form-item>
+            
+            <template v-if="apiConfig.summaryAiEnabled">
+              <el-form-item label="摘要风格">
+                <el-select v-model="apiConfig.summaryStyle" placeholder="请选择摘要风格" class="full-width">
+                  <el-option label="简洁明了" value="concise">
+                    <span class="option-content">
+                      <i class="el-icon-document-copy"></i>
+                      简洁明了
+                    </span>
+                  </el-option>
+                  <el-option label="详细描述" value="detailed">
+                    <span class="option-content">
+                      <i class="el-icon-reading"></i>
+                      详细描述
+                    </span>
+                  </el-option>
+                  <el-option label="学术风格" value="academic">
+                    <span class="option-content">
+                      <i class="el-icon-notebook-2"></i>
+                      学术风格
+                    </span>
+                  </el-option>
+                </el-select>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  选择不同的风格会影响AI生成摘要的语言风格和详细程度
+                </div>
+              </el-form-item>
+              
+              <el-form-item label="摘要长度">
+                <el-input-number 
+                  v-model="apiConfig.summaryMaxLength" 
+                  :min="50" 
+                  :max="500" 
+                  :step="10"
+                  placeholder="请输入摘要最大长度"
+                  class="full-width">
+                </el-input-number>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  推荐长度：100-200字符，过短可能信息不足，过长影响阅读体验
+                </div>
+              </el-form-item>
+              
+              <el-form-item label="摘要提示词">
+                <el-input 
+                  type="textarea" 
+                  v-model="apiConfig.summaryPrompt" 
+                  :rows="3" 
+                  placeholder="请输入摘要生成的提示词，用于指导AI如何生成摘要"
+                  class="textarea-field">
+                </el-input>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  可使用占位符：{style}摘要风格，{max_length}最大长度，{format}文本格式。留空则使用默认提示词
+                </div>
+              </el-form-item>
+              
+              <el-form-item label="测试摘要">
+                <el-button type="info" @click="testSummary" class="action-btn" :loading="testSummaryLoading">
+                  <i class="el-icon-magic-stick"></i>
+                  测试摘要生成
+                </el-button>
+                <div class="form-tip">
+                  <i class="el-icon-info"></i>
+                  使用示例文本测试当前AI摘要配置是否正常工作
+                </div>
+              </el-form-item>
+            </template>
+          </div>
+        </div>
+        
         <!-- 操作按钮 -->
         <div class="action-bar">
           <el-button type="primary" @click="saveApiConfig" class="action-btn primary-btn">
@@ -513,12 +613,107 @@
         <el-button @click="testTranslationDialogVisible = false">关闭</el-button>
       </div>
     </el-dialog>
+
+    <!-- 摘要测试对话框 -->
+    <el-dialog title="测试AI摘要" :visible.sync="testSummaryDialogVisible" width="70%" class="test-dialog">
+      <div class="dialog-content">
+        <div class="test-form">
+          <div class="summary-info">
+            <div class="summary-display">
+              <el-tag type="info" size="medium">
+                <i class="el-icon-magic-stick"></i>
+                {{ apiConfig.summaryStyle === 'concise' ? '简洁明了' : 
+                   apiConfig.summaryStyle === 'detailed' ? '详细描述' : '学术风格' }}
+              </el-tag>
+              <el-tag type="success" size="medium">
+                <i class="el-icon-document"></i>
+                最大长度: {{ apiConfig.summaryMaxLength }}字符
+              </el-tag>
+            </div>
+            <div class="summary-note">
+              <i class="el-icon-info"></i>
+              使用当前AI摘要配置生成测试摘要
+            </div>
+          </div>
+          
+          <div class="input-section">
+            <label>测试内容</label>
+            <el-input 
+              type="textarea" 
+              v-model="testSummaryForm.content" 
+              :rows="8" 
+              placeholder="请输入要生成摘要的文章内容，支持Markdown格式"
+              class="source-input">
+            </el-input>
+            <div class="input-tips">
+              <el-tag size="mini" type="warning">提示</el-tag>
+              <span>建议输入至少500字符的内容以获得更好的摘要效果</span>
+            </div>
+          </div>
+          
+          <div class="test-section">
+            <el-button 
+              type="primary" 
+              @click="doTestSummary" 
+              :loading="testSummaryLoading" 
+              class="test-btn">
+              <i class="el-icon-magic-stick"></i>
+              {{ testSummaryLoading ? '生成中...' : '生成摘要' }}
+            </el-button>
+          </div>
+          
+          <div class="result-section" v-if="testSummaryForm.summary">
+            <label>生成的摘要</label>
+            <el-input 
+              type="textarea" 
+              v-model="testSummaryForm.summary" 
+              :rows="4" 
+              readonly 
+              class="result-output">
+            </el-input>
+            <div class="result-meta" v-if="testSummaryForm.processingTime">
+              <el-tag size="small" type="info">
+                <i class="el-icon-time"></i>
+                用时: {{ testSummaryForm.processingTime }}秒
+              </el-tag>
+              <el-tag size="small" type="success" v-if="testSummaryForm.method">
+                <i class="el-icon-cpu"></i>
+                方法: {{ 
+                  testSummaryForm.method === 'ai-openai' ? 'OpenAI' :
+                  testSummaryForm.method === 'ai-anthropic' ? 'Claude' :
+                  testSummaryForm.method === 'ai-custom' ? '自定义AI' :
+                  testSummaryForm.method === 'textrank' ? 'TextRank' : 
+                  testSummaryForm.method 
+                }}
+              </el-tag>
+              <el-tag size="small" type="warning">
+                <i class="el-icon-document-copy"></i>
+                长度: {{ testSummaryForm.summary.length }}字符
+              </el-tag>
+            </div>
+          </div>
+          
+          <div class="error-section" v-if="testSummaryForm.error">
+            <label>错误信息</label>
+            <el-alert
+              :title="testSummaryForm.error"
+              type="error"
+              show-icon>
+            </el-alert>
+          </div>
+        </div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="testSummaryDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="resetSummaryTest">重新测试</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 export default {
-  name: 'TranslationModelManage',
+  name: 'ArticleAiAssistant',
   data() {
     return {
       apiConfig: {
@@ -542,7 +737,11 @@ export default {
         hasExistingBaiduSecret: false,
         hasExistingCustomKey: false,
         hasExistingCustomSecret: false,  // 添加自定义API第二密钥状态标记
-        hasExistingLlmKey: false
+        hasExistingLlmKey: false,
+        summaryAiEnabled: false,
+        summaryStyle: 'concise',
+        summaryMaxLength: 100,
+        summaryPrompt: ''
       },
       testTranslationDialogVisible: false,
       testTranslationForm: {
@@ -552,7 +751,26 @@ export default {
         detectedLang: null,
         useStream: false  // Python端暂不支持流式翻译
       },
-      testTranslationLoading: false
+      testTranslationLoading: false,
+      testSummaryLoading: false,
+      testSummaryDialogVisible: false,
+      testSummaryForm: {
+        content: `# Vue.js入门指南
+
+Vue.js是一个用于构建用户界面的渐进式JavaScript框架。与其它大型框架不同的是，Vue被设计为可以自底向上逐层应用。
+
+## 核心特性
+
+Vue.js的核心库只关注视图层，不仅易于上手，还便于与第三方库或既有项目整合。另一方面，当与现代化的工具链以及各种支持类库结合使用时，Vue也完全能够为复杂的单页应用提供驱动。
+
+## 响应式数据绑定
+
+Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可以轻松构建动态的Web应用程序。通过数据绑定，开发者可以轻松地将数据与视图同步，无需手动操作DOM。`,
+        summary: '',
+        processingTime: null,
+        method: null,
+        error: null
+      }
     };
   },
   created() {
@@ -707,6 +925,14 @@ export default {
           if (res.data.default_target_lang) {
             this.apiConfig.defaultTargetLang = res.data.default_target_lang;
           }
+          
+          // 处理摘要配置
+          if (res.data.summary) {
+            this.apiConfig.summaryAiEnabled = res.data.summary.ai_enabled || false;
+            this.apiConfig.summaryStyle = res.data.summary.style || 'concise';
+            this.apiConfig.summaryMaxLength = res.data.summary.max_length || 150;
+            this.apiConfig.summaryPrompt = res.data.summary.prompt || '';
+          }
         } else {
           this.$message.error('获取配置失败：' + (res?.message || '未知错误'));
         }
@@ -765,6 +991,16 @@ export default {
         // 添加默认语言配置
         config.default_source_lang = this.apiConfig.defaultSourceLang || 'zh';
         config.default_target_lang = this.apiConfig.defaultTargetLang || 'en';
+        
+        // 添加摘要配置
+        if (this.apiConfig.mode === 'llm') {
+          config.summary = {
+            ai_enabled: this.apiConfig.summaryAiEnabled || false,
+            style: this.apiConfig.summaryStyle || 'concise',
+            max_length: this.apiConfig.summaryMaxLength || 150,
+            prompt: this.apiConfig.summaryPrompt || ''
+          };
+        }
         
         const res = await this.$http.post(this.$constant.pythonBaseURL + '/api/translation/config', config);
         
@@ -888,6 +1124,77 @@ export default {
         ru: '俄文'
       };
       return languages[langCode] || langCode;
+    },
+    onSummaryToggle() {
+      if (this.apiConfig.summaryAiEnabled) {
+        this.$message.info('已启用AI智能摘要，文章保存时将优先使用AI生成摘要');
+      } else {
+        this.$message.info('已禁用AI智能摘要，将使用TextRank算法生成摘要');
+      }
+    },
+    testSummary() {
+      if (!this.apiConfig.summaryAiEnabled) {
+        this.$message.warning('请先启用AI智能摘要功能');
+        return;
+      }
+      
+      // 重置表单数据
+      this.testSummaryForm.summary = '';
+      this.testSummaryForm.processingTime = null;
+      this.testSummaryForm.method = null;
+      this.testSummaryForm.error = null;
+      
+      // 打开对话框
+      this.testSummaryDialogVisible = true;
+    },
+    async doTestSummary() {
+      if (!this.testSummaryForm.content.trim()) {
+        this.$message.warning('请输入要生成摘要的内容');
+        return;
+      }
+      
+      this.testSummaryLoading = true;
+      this.testSummaryForm.summary = '';
+      this.testSummaryForm.error = null;
+      
+      try {
+        const testRequest = {
+          content: this.testSummaryForm.content,
+          max_length: this.apiConfig.summaryMaxLength,
+          style: this.apiConfig.summaryStyle
+        };
+        
+        const res = await this.$http.post(this.$constant.pythonBaseURL + '/api/translation/test-summary', testRequest);
+        
+        if (res && res.code === 200 && res.data) {
+          const result = res.data;
+          
+          if (result.success && result.summary) {
+            this.testSummaryForm.summary = result.summary;
+            this.testSummaryForm.processingTime = result.processing_time;
+            this.testSummaryForm.method = result.method;
+            this.$message.success(`摘要生成成功！使用方法: ${result.method}`);
+          } else {
+            this.testSummaryForm.error = result.error_message || '摘要生成失败';
+            this.$message.error('摘要生成失败：' + this.testSummaryForm.error);
+          }
+        } else {
+          this.testSummaryForm.error = res?.message || '网络错误';
+          this.$message.error('摘要测试失败：' + this.testSummaryForm.error);
+        }
+      } catch (error) {
+        console.error('摘要测试失败:', error);
+        this.testSummaryForm.error = error.message || '网络连接失败';
+        this.$message.error('摘要测试失败，请检查网络连接和配置');
+      } finally {
+        this.testSummaryLoading = false;
+      }
+    },
+    resetSummaryTest() {
+      this.testSummaryForm.summary = '';
+      this.testSummaryForm.processingTime = null;
+      this.testSummaryForm.method = null;
+      this.testSummaryForm.error = null;
     }
   }
 };
@@ -1626,5 +1933,24 @@ export default {
   .language-item {
     min-width: 100%;
   }
+}
+
+/* 统一页面标题样式 */
+.my-tag {
+  margin-bottom: 20px !important;
+  width: 100%;
+  text-align: left;
+  background: var(--lightYellow);
+  border: none;
+  height: 40px;
+  line-height: 40px;
+  font-size: 16px;
+  color: var(--black);
+}
+
+/* 如果没有CSS变量定义，使用后备颜色 */
+.my-tag {
+  background: #fefcbf;
+  color: #2d3748;
 }
 </style> 

@@ -73,6 +73,11 @@
           title: "文章管理",
           isBoss: false
         }, {
+          icon: "el-icon-s-unfold",
+          index: "/admin/translationModel",
+          title: "文章AI助手",
+          isBoss: true
+        }, {
           icon: "el-icon-notebook-2",
           index: "/sortList",
           title: "分类管理",
@@ -108,11 +113,6 @@
           title: "表白墙",
           isBoss: true
         }, {
-          icon: "el-icon-s-data",
-          index: "/visitStats",
-          title: "访问统计",
-          isBoss: true
-        }, {
           icon: "el-icon-search",
           index: "/seoConfig",
           title: "SEO优化",
@@ -130,11 +130,6 @@
           icon: "el-icon-chat-line-round",
           index: "/aiChatConfig",
           title: "AI聊天配置",
-          isBoss: true
-        }, {
-          icon: "el-icon-s-unfold",
-          index: "/admin/translationModel",
-          title: "翻译管理",
           isBoss: true
         }]
       }
