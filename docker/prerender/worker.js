@@ -6,7 +6,6 @@ const axios = require('axios');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js');
 const cheerio = require('cheerio');
-const Beasties = require('beasties');
 const { decode: decodeHtmlEntities } = require('html-entities');
 
 const app = express();
@@ -943,8 +942,14 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   // 注入渲染好的内容
   $('#app').html(content);
 
-  // 为所有脚本添加defer属性
-  $('script[src]').attr('defer', 'true');
+  // 为脚本添加defer属性，但排除代码高亮相关的脚本
+  $('script[src]').each(function() {
+    const src = $(this).attr('src');
+    // 排除highlight.js和相关依赖，确保它们优先加载
+    if (!src.includes('highlight') && !src.includes('hljs') && !src.includes('clipboard')) {
+      $(this).attr('defer', 'true');
+    }
+  });
 
   return $.html();
 }
@@ -1429,20 +1434,6 @@ async function renderIds(ids = [], options = {}) {
   const OUTPUT_ROOT = options.outputRoot || process.env.PRERENDER_OUTPUT || path.resolve(__dirname, './dist/prerender');
   const langs = ['zh', 'en'];
 
-  // 在任务开始时创建一次 Beasties 实例
-  const beasties = new Beasties({
-    path: '/app/dist', // 设置UI构建输出的根目录
-    publicPath: '/',   // 公共路径
-    logLevel: 'warn', // 只报告警告和错误
-    // 关键配置：只内联 app 和 chunk 的CSS，忽略其他所有
-    inlineStyleSheets: [
-      /app\..*\.css$/,
-      /chunk-vendors\..*\.css$/,
-      /chunk-elementUI\..*\.css$/
-    ],
-    pruneSource: true,
-  });
-
   try {
     logger.info('Starting article rendering', { taskId, articleCount: ids.length, langs });
 
@@ -1536,9 +1527,6 @@ async function renderIds(ids = [], options = {}) {
 
           let html = buildHtml({ title: meta.title || articleTitle || 'Poetize', meta, content: contentHtml, lang });
           
-          // 使用 Beasties 处理 HTML
-          html = await beasties.process(html);
-
           const dir = path.join(OUTPUT_ROOT, 'article', id.toString());
           fs.mkdirSync(dir, { recursive: true });
           const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
@@ -1601,35 +1589,22 @@ async function renderSingleSortPage(sortId, parentTaskId = null) {
   // 分类页面只生成中文版
   const langs = ['zh'];
   
-  const beasties = new Beasties({
-    path: '/app/dist',
-    publicPath: '/',
-    logLevel: 'warn',
-    inlineStyleSheets: [
-      /app\..*\.css$/,
-      /chunk-vendors\..*\.css$/,
-      /chunk-elementUI\..*\.css$/
-    ],
-    pruneSource: true,
-  });
-  
   for (const lang of langs) {
     const html = await renderSortPage(sortId, null, lang);
-    const processedHtml = await beasties.process(html);
     
     const outputPath = path.join(OUTPUT_ROOT, 'sort', sortId.toString());
     fs.mkdirSync(outputPath, { recursive: true });
     
     const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
     const filePath = path.join(outputPath, filename);
-    fs.writeFileSync(filePath, processedHtml, 'utf8');
+    fs.writeFileSync(filePath, html, 'utf8');
     
     logger.debug('Sort page rendered', { 
       parentTaskId, 
       sortId, 
       lang, 
       filePath: `${outputPath}/${filename}`,
-      size: `${(processedHtml.length / 1024).toFixed(1)}KB`
+      size: `${(html.length / 1024).toFixed(1)}KB`
     });
   }
 }
@@ -1642,18 +1617,6 @@ async function renderPages(type, params = {}) {
   // 只有文章页面需要多语言，其他页面只生成中文版
   const langs = ['zh'];
   
-  const beasties = new Beasties({
-    path: '/app/dist',
-    publicPath: '/',
-    logLevel: 'warn',
-    inlineStyleSheets: [
-      /app\..*\.css$/,
-      /chunk-vendors\..*\.css$/,
-      /chunk-elementUI\..*\.css$/
-    ],
-    pruneSource: true,
-  });
-
   try {
     logger.info('Starting page rendering', { taskId, type, params, langs });
 
@@ -1696,9 +1659,6 @@ async function renderPages(type, params = {}) {
           default:
             throw new Error(`Unknown page type: ${type}`);
         }
-
-        // 优化CSS
-        html = await beasties.process(html);
 
         fs.mkdirSync(outputPath, { recursive: true });
         const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
