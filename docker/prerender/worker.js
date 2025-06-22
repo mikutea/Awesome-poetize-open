@@ -11,6 +11,35 @@ const { decode: decodeHtmlEntities } = require('html-entities');
 const app = express();
 app.use(bodyParser.json());
 
+// 全局变量，用于缓存关键CSS
+let criticalCss = '';
+
+// 新增：加载并缓存关键CSS的函数
+async function loadCriticalCss() {
+  try {
+    const manifestPath = path.resolve('/app/dist/manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      const cssFile = manifest['app.css'];
+      if (cssFile) {
+        const cssPath = path.resolve('/app/dist' + cssFile);
+        if (fs.existsSync(cssPath)) {
+          criticalCss = fs.readFileSync(cssPath, 'utf8');
+          logger.info(`关键CSS已加载并缓存: ${cssFile} (${(criticalCss.length / 1024).toFixed(1)}KB)`);
+        } else {
+          logger.error(`在 manifest 中找到的 CSS 文件不存在: ${cssPath}`);
+        }
+      } else {
+        logger.error('在 manifest.json 中未找到 app.css');
+      }
+    } else {
+      logger.error(`manifest.json 文件未找到: ${manifestPath}`);
+    }
+  } catch (error) {
+    logger.error('加载关键 CSS 失败', { error: error.message, stack: error.stack });
+  }
+}
+
 // ===== 日志系统和监控 =====
 class Logger {
   constructor() {
@@ -904,6 +933,13 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   $('head meta[property^="twitter:"]').remove();
   $('head meta[property^="article:"]').remove();
   $('head link[rel="canonical"]').remove();
+
+  // 注入关键CSS
+  if (criticalCss) {
+    $('head').prepend(`<style>${criticalCss}</style>`);
+    // 移除原始的 app.css 链接，因为它已经被内联
+    $('head link[href*="app."]').remove();
+  }
 
   // 调试：检查meta对象
   console.log('buildHtmlTemplate meta debug:', {
@@ -2373,7 +2409,10 @@ function clearDirectory(dirPath) {
 }
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  // 服务启动时，首先加载关键CSS
+  await loadCriticalCss();
+  
   logger.info('Prerender worker started', {
     port: PORT,
     nodeVersion: process.version,
@@ -2386,4 +2425,4 @@ app.listen(PORT, () => {
     }
   });
   console.log(`🚀 Prerender worker listening on port ${PORT}`);
-}); 
+});

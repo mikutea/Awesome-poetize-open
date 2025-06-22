@@ -4,7 +4,6 @@ const TerserPlugin = require('terser-webpack-plugin')
 const { WebpackManifestPlugin } = require('webpack-manifest-plugin')
 const { WebpackBundleAnalyzer } = require('webpack-bundle-analyzer')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
-const Critters = require('critters-webpack-plugin')
 
 // 设置网站默认标题（实际运行时会从数据库获取）
 const siteTitle = 'POETIZE'; 
@@ -42,20 +41,6 @@ module.exports = {
         }
         return args
       })
-
-    // 仅在生产环境中启用 Critters
-    if (process.env.NODE_ENV === 'production') {
-      config
-        .plugin('critters')
-        .use(Critters, [{
-          // Critters 配置选项
-          // 更多选项请参考：https://github.com/GoogleChromeLabs/critters
-          preload: 'swap', // 'swap' 是一种常见的预加载策略
-          inlineFonts: true, // 内联字体以减少请求
-          pruneSource: true, // 从原始样式表中删除已内联的规则
-        }])
-        .after('html') // 确保在 html-webpack-plugin 之后运行
-    }
 
     config.optimization.splitChunks({
       cacheGroups: {
