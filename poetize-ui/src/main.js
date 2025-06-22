@@ -198,23 +198,97 @@ app.$nextTick(() => {
     appElement.classList.add('vue-mounted');
   }
   
-  // 如果是预渲染页面，额外处理图片加载
-  if (window.PRERENDER_DATA) {
-    // 确保所有图片都正确处理加载状态
+  // 处理图片加载状态（包括预渲染和正常页面）
+  const handleAllImages = () => {
     const images = document.querySelectorAll('img');
     images.forEach(img => {
-      if (img.complete) {
+      // 立即处理已完成加载的图片
+      if (img.complete && img.naturalWidth > 0) {
         img.classList.add('loaded');
-      } else {
+      } else if (img.src.startsWith('data:') || img.src.startsWith('blob:')) {
+        // data URL 和 blob URL 立即标记为已加载
+        img.classList.add('loaded');
+      } else if (img.src) {
+        // 为未完成加载的图片添加事件监听
         img.addEventListener('load', function() {
           this.classList.add('loaded');
-        });
+        }, { once: true });
         img.addEventListener('error', function() {
           this.classList.add('loaded');
+          console.warn('Vue应用中图片加载失败:', this.src);
+        }, { once: true });
+        
+        // 设置超时确保图片不会永远隐藏
+        setTimeout(() => {
+          if (!img.classList.contains('loaded')) {
+            img.classList.add('loaded');
+            console.warn('Vue应用中图片加载超时，强制显示:', img.src);
+          }
+        }, 3000); // 3秒超时（比预渲染的短一些）
+      } else {
+        // 没有src的图片直接标记为已加载
+        img.classList.add('loaded');
+      }
+    });
+  };
+  
+  // 立即处理当前图片
+  handleAllImages();
+  
+  // 监听动态添加的图片
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList') {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // 元素节点
+            if (node.tagName === 'IMG') {
+              // 新添加的img元素
+              const img = node;
+              if (img.complete && img.naturalWidth > 0) {
+                img.classList.add('loaded');
+              } else if (img.src && !img.src.startsWith('data:') && !img.src.startsWith('blob:')) {
+                img.addEventListener('load', function() {
+                  this.classList.add('loaded');
+                }, { once: true });
+                img.addEventListener('error', function() {
+                  this.classList.add('loaded');
+                }, { once: true });
+              } else {
+                img.classList.add('loaded');
+              }
+            } else {
+              // 检查新添加元素内部的img
+              const nestedImages = node.querySelectorAll ? node.querySelectorAll('img') : [];
+              nestedImages.forEach(img => {
+                if (!img.classList.contains('loaded')) {
+                  if (img.complete && img.naturalWidth > 0) {
+                    img.classList.add('loaded');
+                  } else if (img.src && !img.src.startsWith('data:') && !img.src.startsWith('blob:')) {
+                    img.addEventListener('load', function() {
+                      this.classList.add('loaded');
+                    }, { once: true });
+                    img.addEventListener('error', function() {
+                      this.classList.add('loaded');
+                    }, { once: true });
+                  } else {
+                    img.classList.add('loaded');
+                  }
+                }
+              });
+            }
+          }
         });
       }
     });
-    
+  });
+  
+  // 开始观察DOM变化
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+  
+  if (window.PRERENDER_DATA) {
     console.log('预渲染页面客户端接管完成，FOUC防护已激活');
   }
 });
