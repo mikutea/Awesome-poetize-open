@@ -1532,7 +1532,7 @@ async function renderIds(ids = [], options = {}) {
             cssLinks: cssLinks.slice(0, 3) // 只显示前3个以避免日志过长
           });
           
-          html = await critters.process(html);
+          // html = await critters.process(html);
           
           // 调试：检查处理后的HTML中是否有内联样式
           const inlineStyles = html.match(/<style[^>]*>[\s\S]*?<\/style>/g) || [];
@@ -1606,34 +1606,22 @@ async function renderSingleSortPage(sortId, parentTaskId = null) {
   // 分类页面只生成中文版
   const langs = ['zh'];
   
-  const critters = new Critters({
-    path: '/app/dist',
-    publicPath: '/',
-    logLevel: 'info',  // 增加日志级别以便调试
-    preload: 'swap',
-    inlineFonts: false,
-    pruneSource: true,  // 移除已内联的样式规则
-    mergeStylesheets: true,  // 合并样式表
-    // 移除 additionalStylesheets，让 critters 自动发现CSS文件
-  });
-
   for (const lang of langs) {
     const html = await renderSortPage(sortId, null, lang);
-    const processedHtml = await critters.process(html);
     
     const outputPath = path.join(OUTPUT_ROOT, 'sort', sortId.toString());
     fs.mkdirSync(outputPath, { recursive: true });
     
     const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
     const filePath = path.join(outputPath, filename);
-    fs.writeFileSync(filePath, processedHtml, 'utf8');
+    fs.writeFileSync(filePath, html, 'utf8');
     
     logger.debug('Sort page rendered', { 
       parentTaskId, 
       sortId, 
       lang, 
       filePath: `${outputPath}/${filename}`,
-      size: `${(processedHtml.length / 1024).toFixed(1)}KB`
+      size: `${(html.length / 1024).toFixed(1)}KB`
     });
   }
 }
@@ -1648,17 +1636,6 @@ async function renderPages(type, params = {}) {
   
   try {
     logger.info('Starting page rendering', { taskId, type, params, langs });
-
-    const critters = new Critters({
-      path: '/app/dist',
-      publicPath: '/',
-      logLevel: 'info',  // 增加日志级别以便调试
-      preload: 'swap',
-      inlineFonts: false,
-      pruneSource: true,  // 移除已内联的样式规则
-      mergeStylesheets: true,  // 合并样式表
-      // 移除 additionalStylesheets，让 critters 自动发现CSS文件
-    });
 
     let successCount = 0;
     let failCount = 0;
@@ -1701,7 +1678,7 @@ async function renderPages(type, params = {}) {
         }
 
         // 优化CSS
-        html = await critters.process(html);
+        // html = await critters.process(html);
 
         fs.mkdirSync(outputPath, { recursive: true });
         const filename = lang === 'zh' ? 'index.html' : `index-${lang}.html`;
