@@ -1015,35 +1015,7 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         100% { transform: translateX(100%); }
       }
       
-      /* 字体渲染优化 */
-      body {
-        font-display: swap;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        text-rendering: optimizeLegibility;
-      }
-      
-             /* 图片加载优化 */
-       img {
-         opacity: 1;
-         transition: opacity 0.3s ease;
-       }
-       
-       /* 只有在页面未完全加载时才隐藏图片 */
-       html:not(.loaded) img:not(.loaded):not([src*="data:"]) {
-         opacity: 0.3;
-       }
-       
-       img.loaded,
-       img[src*="data:"],
-       img[complete] {
-         opacity: 1;
-       }
-      
-      /* 链接和按钮的基础样式保护 */
-      a, button {
-        transition: all 0.2s ease;
-      }
+
       
       /* 预渲染内容的响应式保护 */
       @media (max-width: 768px) {
@@ -1051,43 +1023,6 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
           min-height: 150px;
           padding: 1rem;
         }
-      }
-      
-      /* 确保代码高亮区域的基础样式 */
-      pre, code {
-        background-color: #f6f8fa;
-        border-radius: 3px;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      }
-      
-      pre {
-        padding: 16px;
-        overflow: auto;
-        line-height: 1.45;
-      }
-      
-      code {
-        padding: 0.2em 0.4em;
-        margin: 0;
-        font-size: 85%;
-      }
-      
-      /* 表格的基础样式保护 */
-      table {
-        border-collapse: collapse;
-        width: 100%;
-        margin: 1em 0;
-      }
-      
-      th, td {
-        border: 1px solid #ddd;
-        padding: 8px;
-        text-align: left;
-      }
-      
-      th {
-        background-color: #f2f2f2;
-        font-weight: bold;
       }
     </style>
   `;
@@ -1112,37 +1047,40 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         // 标记页面为预渲染状态
         document.documentElement.classList.add('prerender');
         
-          // 图片加载状态处理
+          // 图片加载状态处理 - 只处理预渲染容器内的图片
          function handleImageLoad() {
-           const images = document.querySelectorAll('img');
-           images.forEach(function(img) {
-             // 立即处理已完成加载的图片
-             if (img.complete && img.naturalWidth > 0) {
-               img.classList.add('loaded');
-             } else if (img.src.startsWith('data:') || img.src.startsWith('blob:')) {
-               // data URL 和 blob URL 立即标记为已加载
-               img.classList.add('loaded');
-             } else if (img.src) {
-               // 为未完成加载的图片添加事件监听
-               img.addEventListener('load', function() {
-                 this.classList.add('loaded');
-               }, { once: true });
-               img.addEventListener('error', function() {
-                 this.classList.add('loaded'); // 即使加载失败也要显示，避免一直隐藏
-                 console.warn('图片加载失败，但仍显示:', this.src);
-               }, { once: true });
-               
-               // 设置一个超时，确保图片不会永远隐藏
-               setTimeout(function() {
-                 if (!img.classList.contains('loaded')) {
-                   img.classList.add('loaded');
-                   console.warn('图片加载超时，强制显示:', img.src);
-                 }
-               }, 5000); // 5秒超时
-             } else {
-               // 没有src的图片直接标记为已加载
-               img.classList.add('loaded');
-             }
+           const preRenderContainers = document.querySelectorAll('.article-detail, .home-prerender, .favorite-prerender, .sort-prerender, .sort-list-prerender');
+           preRenderContainers.forEach(function(container) {
+             const images = container.querySelectorAll('img');
+             images.forEach(function(img) {
+               // 立即处理已完成加载的图片
+               if (img.complete && img.naturalWidth > 0) {
+                 img.classList.add('loaded');
+               } else if (img.src.startsWith('data:') || img.src.startsWith('blob:')) {
+                 // data URL 和 blob URL 立即标记为已加载
+                 img.classList.add('loaded');
+               } else if (img.src) {
+                 // 为未完成加载的图片添加事件监听
+                 img.addEventListener('load', function() {
+                   this.classList.add('loaded');
+                 }, { once: true });
+                 img.addEventListener('error', function() {
+                   this.classList.add('loaded'); // 即使加载失败也要显示，避免一直隐藏
+                   console.warn('图片加载失败，但仍显示:', this.src);
+                 }, { once: true });
+                 
+                 // 设置一个超时，确保图片不会永远隐藏
+                 setTimeout(function() {
+                   if (!img.classList.contains('loaded')) {
+                     img.classList.add('loaded');
+                     console.warn('图片加载超时，强制显示:', img.src);
+                   }
+                 }, 5000); // 5秒超时
+               } else {
+                 // 没有src的图片直接标记为已加载
+                 img.classList.add('loaded');
+               }
+             });
            });
          }
         
