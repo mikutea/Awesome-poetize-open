@@ -1893,6 +1893,13 @@ export default {
         formData.append('image', this.uploadedImage);
         formData.append('icon_types', 'favicon,apple_touch,pwa_192,pwa_512,logo');
 
+        // 打印调试信息
+        console.log('准备上传的文件:', this.uploadedImage);
+        console.log('文件名:', this.uploadedImage.name);
+        console.log('文件大小:', this.uploadedImage.size);
+        console.log('文件类型:', this.uploadedImage.type);
+        console.log('管理员token:', localStorage.getItem("adminToken"));
+
         // 更新进度
         this.generationProgress = 20;
         this.generationStatus = '正在上传图片...';
@@ -1914,12 +1921,33 @@ export default {
           
           this.$message.success(`图标生成完成！成功生成 ${response.data.summary.successful} 个图标`);
         } else {
+          console.error('后端返回的完整响应:', response);
           throw new Error(response.message || '生成图标失败');
         }
 
       } catch (error) {
         console.error('批量生成图标失败:', error);
-        this.$message.error('图标生成失败: ' + (error.message || '网络连接问题'));
+        console.error('错误对象详情:', {
+          message: error.message,
+          response: error.response,
+          request: error.request,
+          config: error.config
+        });
+        
+        // 检查是否是HTTP响应错误
+        if (error.response) {
+          console.error('HTTP响应错误:', {
+            status: error.response.status,
+            data: error.response.data,
+            headers: error.response.headers
+          });
+          this.$message.error('图标生成失败: HTTP ' + error.response.status + ' - ' + (error.response.data?.message || error.message));
+        } else if (error.request) {
+          console.error('网络请求错误:', error.request);
+          this.$message.error('图标生成失败: 网络连接问题');
+        } else {
+          this.$message.error('图标生成失败: ' + (error.message || '未知错误'));
+        }
       } finally {
         this.generatingIcons = false;
         // 延迟清除进度状态

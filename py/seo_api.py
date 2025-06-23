@@ -1355,22 +1355,59 @@ def register_seo_api(app: FastAPI):
             remote_ip = request.client.host if request.client else 'Unknown'
             logger.info(f"收到批量图标处理请求，来源IP: {remote_ip}")
             
+            # 记录请求头信息用于调试
+            headers = dict(request.headers)
+            logger.info(f"请求头信息: {headers}")
+            
             # 获取请求数据
-            form_data = await request.form()
-            logger.info(f"表单数据字段: {list(form_data.keys())}")
+            try:
+                form_data = await request.form()
+                logger.info(f"成功解析表单数据，字段数量: {len(form_data)}")
+                logger.info(f"表单数据字段: {list(form_data.keys())}")
+                
+                # 详细记录每个字段
+                for key, value in form_data.items():
+                    if hasattr(value, 'filename'):
+                        logger.info(f"文件字段 '{key}': 文件名={getattr(value, 'filename', 'None')}, 大小={getattr(value, 'size', 'Unknown')}")
+                    else:
+                        logger.info(f"普通字段 '{key}': {value}")
+                        
+            except Exception as e:
+                logger.error(f"解析表单数据失败: {str(e)}")
+                return JSONResponse({
+                    "code": 400,
+                    "message": f"解析表单数据失败: {str(e)}",
+                    "data": None
+                }, status_code=400)
             
             # 检查是否有文件上传
             image_file = form_data.get('image')
             if not image_file:
                 logger.warning("批量图标处理请求缺少图片文件")
+                logger.warning(f"可用的表单字段: {list(form_data.keys())}")
                 return JSONResponse({
                     "code": 400,
                     "message": "请在表单中上传图片文件(字段名：image)",
                     "data": None
                 }, status_code=400)
             
+            # 检查文件对象类型
+            logger.info(f"图片文件对象类型: {type(image_file)}")
+            logger.info(f"图片文件名: {getattr(image_file, 'filename', 'None')}")
+            logger.info(f"图片内容类型: {getattr(image_file, 'content_type', 'None')}")
+            
             # 读取图片数据
-            image_data = await image_file.read()
+            try:
+                image_data = await image_file.read()
+                logger.info(f"成功读取图片数据，大小: {len(image_data)}字节")
+            except Exception as e:
+                logger.error(f"读取图片数据失败: {str(e)}")
+                return JSONResponse({
+                    "code": 400,
+                    "message": f"读取图片数据失败: {str(e)}",
+                    "data": None
+                }, status_code=400)
+                
             if not image_data:
                 logger.warning(f"上传的图片文件为空，文件名: {getattr(image_file, 'filename', '未知')}")
                 return JSONResponse({

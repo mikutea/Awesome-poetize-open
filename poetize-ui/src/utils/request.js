@@ -174,17 +174,18 @@ export default {
   },
 
   upload(url, param, isAdmin = false, option) {
-    let config;
-    if (isAdmin) {
-      config = {
-        headers: {"Authorization": localStorage.getItem("adminToken"), "Content-Type": "multipart/form-data"},
-        timeout: 60000
-      };
+    const token = isAdmin ? localStorage.getItem("adminToken") : localStorage.getItem("userToken");
+    let config = {
+      headers: {"Content-Type": "multipart/form-data"},
+      timeout: 60000
+    };
+    
+    // 正确处理Authorization头，添加Bearer前缀
+    if (token) {
+      config.headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      console.log(`上传请求使用${isAdmin ? '管理员' : '用户'}token: ${token.substring(0, 10)}...`);
     } else {
-      config = {
-        headers: {"Authorization": localStorage.getItem("userToken"), "Content-Type": "multipart/form-data"},
-        timeout: 60000
-      };
+      console.error(`上传请求未找到${isAdmin ? '管理员' : '用户'}token`);
     }
     if (typeof option !== "undefined") {
       config.onUploadProgress = progressEvent => {
