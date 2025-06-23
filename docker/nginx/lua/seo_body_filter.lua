@@ -135,6 +135,26 @@ if ngx.ctx.title and ngx.ctx.title ~= "" and not ngx.ctx.title_injected then
     end
 end
 
+-- 注入图标数据
+if ngx.ctx.icon_data and type(ngx.ctx.icon_data) == "string" and ngx.ctx.icon_data ~= "" and not ngx.ctx.icon_injected then
+    -- 查找图标占位符并替换
+    local icon_placeholder_exist = string.find(chunk, "<!-- ICON_META_PLACEHOLDER -->", 1, true)
+    if icon_placeholder_exist then
+        -- 替换图标占位符
+        chunk = string.gsub(chunk, "<!-- ICON_META_PLACEHOLDER -->", ngx.ctx.icon_data)
+        -- ngx.log(ngx.INFO, "图标占位符替换成功")
+        ngx.ctx.icon_injected = true
+    else
+        -- 在head标签后插入
+        local head_tag = string.find(chunk, "<head>", 1, true)
+        if head_tag then
+            chunk = string.gsub(chunk, "<head>", "<head>" .. ngx.ctx.icon_data, 1)
+            -- ngx.log(ngx.INFO, "在head标签后插入图标数据")
+            ngx.ctx.icon_injected = true
+        end
+    end
+end
+
 -- 去重meta标签
 local seen_meta = {}
 chunk = ngx.re.gsub(chunk, [[<meta[^>]*(name|property)="([^"]+)"[^>]*content="([^"]*)"[^>]*>]], function(m)
@@ -144,6 +164,25 @@ chunk = ngx.re.gsub(chunk, [[<meta[^>]*(name|property)="([^"]+)"[^>]*content="([
         return "" 
     end
     seen_meta[key] = true
+    return m[0]
+end, "jo")
+
+-- 去重link标签（图标相关）
+local seen_links = {}
+chunk = ngx.re.gsub(chunk, [[<link[^>]*rel="([^"]+)"[^>]*href="([^"]*)"[^>]*>]], function(m)
+    local rel_type = m[1]
+    local href = m[2]
+    
+    -- 对于图标相关的link标签进行去重
+    if rel_type == "icon" or rel_type == "shortcut icon" or rel_type == "apple-touch-icon" or rel_type == "manifest" then
+        local key = rel_type .. ":" .. href
+        if seen_links[key] then 
+            -- ngx.log(ngx.INFO, "移除重复的link标签: " .. key)
+            return "" 
+        end
+        seen_links[key] = true
+    end
+    
     return m[0]
 end, "jo")
 

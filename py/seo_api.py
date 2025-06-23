@@ -19,6 +19,7 @@ import asyncio
 import time
 import jwt
 import re
+import base64
 from functools import wraps
 from fastapi import FastAPI, Request, Depends, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -33,6 +34,7 @@ from datetime import datetime
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 from fnmatch import fnmatch
 import xml.etree.ElementTree as ET
+from image_processor import get_image_processor, process_icon, batch_process, get_info
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -1095,6 +1097,424 @@ def register_seo_api(app: FastAPI):
                 "message": f"获取SEO配置出错: {str(e)}",
                 "data": None
             })
+
+    @app.get('/python/seo/getSeoConfig')
+    async def get_seo_config_for_nginx(request: Request):
+        """供Nginx Lua脚本使用的SEO配置获取接口，不需要权限验证"""
+        try:
+            # 记录请求来源信息
+            origin = request.headers.get('Origin', 'Unknown')
+            user_agent = request.headers.get('User-Agent', 'Unknown')
+            remote_ip = request.client.host if request.client else 'Unknown'
+            logger.info(f"收到Nginx获取SEO配置请求: IP={remote_ip}, Origin={origin}, UA={user_agent}")
+            
+            # 直接返回配置数据，不做权限检查（内部服务调用）
+            seo_config = await get_seo_config()
+            
+            # 为了安全和性能，只返回图标和基本SEO相关字段
+            config_for_nginx = {
+                'enable': seo_config.get('enable', False),
+                'site_icon': seo_config.get('site_icon', ''),
+                'site_logo': seo_config.get('site_logo', ''),
+                'apple_touch_icon': seo_config.get('apple_touch_icon', ''),
+                'site_icon_192': seo_config.get('site_icon_192', ''),
+                'site_icon_512': seo_config.get('site_icon_512', ''),
+                'og_image': seo_config.get('og_image', ''),
+                'site_title': seo_config.get('site_title', ''),
+                'site_description': seo_config.get('site_description', ''),
+                'site_keywords': seo_config.get('site_keywords', ''),
+                'site_address': seo_config.get('site_address', ''),
+            }
+            
+            logger.info(f"返回Nginx用SEO配置数据，图标配置状态: site_icon={bool(config_for_nginx['site_icon'])}, apple_touch_icon={bool(config_for_nginx['apple_touch_icon'])}")
+            return JSONResponse(config_for_nginx)
+        except Exception as e:
+            logger.error(f"获取Nginx用SEO配置失败: {str(e)}")
+            logger.exception("获取Nginx用SEO配置详细错误信息:")
+            return JSONResponse({
+                "status": "error",
+                "message": f"获取SEO配置失败: {str(e)}"
+            }, status_code=500)
+
+    @app.get('/manifest.json')
+    async def get_manifest_json(request: Request):
+        """动态生成PWA manifest.json"""
+        try:
+            # 获取SEO配置
+            seo_config = await get_seo_config()
+            
+            # 检查SEO是否启用
+            if not seo_config.get('enable', False):
+                return JSONResponse({
+                    "error": "PWA功能未启用"
+                }, status_code=404)
+            
+            # 动态检测站点地址
+            site_url = seo_config.get('site_address')
+            if not site_url:
+                site_url = detect_frontend_url_from_request(request)
+            
+            # 构建manifest.json内容
+            manifest = {
+                "name": seo_config.get('site_name', seo_config.get('site_title', 'POETIZE')),
+                "short_name": seo_config.get('site_short_name', seo_config.get('site_name', 'POETIZE')),
+                "description": seo_config.get('site_description', '一个优雅的博客平台'),
+                "start_url": "/",
+                "display": seo_config.get('pwa_display', 'standalone'),
+                "background_color": seo_config.get('pwa_background_color', '#ffffff'),
+                "theme_color": seo_config.get('pwa_theme_color', '#1976d2'),
+                "orientation": seo_config.get('pwa_orientation', 'portrait-primary'),
+                "scope": "/",
+                "lang": seo_config.get('site_language', 'zh-CN')
+            }
+            
+            # 添加图标数组
+            icons = []
+            
+            # 添加192x192图标
+            if seo_config.get('site_icon_192'):
+                icons.append({
+                    "src": seo_config['site_icon_192'],
+                    "sizes": "192x192",
+                    "type": "image/png",
+                    "purpose": "any maskable"
+                })
+            
+            # 添加512x512图标
+            if seo_config.get('site_icon_512'):
+                icons.append({
+                    "src": seo_config['site_icon_512'],
+                    "sizes": "512x512",
+                    "type": "image/png",
+                    "purpose": "any maskable"
+                })
+            
+            # 如果有网站Logo，也加入图标列表
+            if seo_config.get('site_logo'):
+                icons.append({
+                    "src": seo_config['site_logo'],
+                    "sizes": "any",
+                    "type": "image/png",
+                    "purpose": "any"
+                })
+            
+            # 如果没有任何图标，使用默认图标
+            if not icons:
+                icons.append({
+                    "src": "/poetize.jpg",
+                    "sizes": "any",
+                    "type": "image/jpeg",
+                    "purpose": "any"
+                })
+            
+            manifest["icons"] = icons
+            
+            # 添加截图（可选）
+            screenshots = []
+            if seo_config.get('pwa_screenshot_desktop'):
+                screenshots.append({
+                    "src": seo_config['pwa_screenshot_desktop'],
+                    "sizes": "1280x720",
+                    "type": "image/png",
+                    "form_factor": "wide"
+                })
+            
+            if seo_config.get('pwa_screenshot_mobile'):
+                screenshots.append({
+                    "src": seo_config['pwa_screenshot_mobile'],
+                    "sizes": "375x667",
+                    "type": "image/png",
+                    "form_factor": "narrow"
+                })
+            
+            if screenshots:
+                manifest["screenshots"] = screenshots
+            
+            # 添加分类和关键词
+            if seo_config.get('site_keywords'):
+                keywords = [k.strip() for k in seo_config['site_keywords'].split(',') if k.strip()]
+                if keywords:
+                    manifest["categories"] = keywords[:5]  # 最多5个分类
+            
+            # 添加开发者信息
+            if seo_config.get('default_author'):
+                manifest["author"] = {
+                    "name": seo_config['default_author'],
+                    "url": site_url
+                }
+            
+            # 添加相关应用
+            related_applications = []
+            if seo_config.get('android_app_id'):
+                related_applications.append({
+                    "platform": "play",
+                    "url": f"https://play.google.com/store/apps/details?id={seo_config['android_app_id']}",
+                    "id": seo_config['android_app_id']
+                })
+            
+            if seo_config.get('ios_app_id'):
+                related_applications.append({
+                    "platform": "itunes",
+                    "url": f"https://apps.apple.com/app/id{seo_config['ios_app_id']}"
+                })
+            
+            if related_applications:
+                manifest["related_applications"] = related_applications
+                manifest["prefer_related_applications"] = seo_config.get('prefer_native_apps', False)
+            
+            logger.info(f"成功生成PWA manifest.json，包含{len(icons)}个图标")
+            
+            return JSONResponse(
+                manifest,
+                headers={
+                    "Content-Type": "application/manifest+json",
+                    "Cache-Control": "public, max-age=3600"  # 缓存1小时
+                }
+            )
+        except Exception as e:
+            logger.error(f"生成manifest.json失败: {str(e)}")
+            logger.exception("生成manifest.json详细错误信息:")
+            return JSONResponse({
+                "error": "生成PWA manifest失败"
+            }, status_code=500)
+
+    @app.post('/python/seo/processImage')
+    async def process_image_api(request: Request, _: bool = Depends(admin_required)):
+        """智能图片处理API"""
+        try:
+            # 获取请求数据
+            form_data = await request.form()
+            
+            # 检查是否有文件上传
+            image_file = form_data.get('image')
+            if not image_file:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "请上传图片文件",
+                    "data": None
+                }, status_code=400)
+            
+            # 读取图片数据
+            image_data = await image_file.read()
+            if not image_data:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "图片文件为空",
+                    "data": None
+                }, status_code=400)
+            
+            # 获取处理参数
+            target_type = form_data.get('target_type', 'logo')
+            preferred_format = form_data.get('preferred_format')
+            
+            logger.info(f"收到图片处理请求: 类型={target_type}, 格式={preferred_format}, 大小={len(image_data)}字节")
+            
+            # 处理图片
+            processed_data, actual_format = process_icon(image_data, target_type, preferred_format)
+            
+            # 获取处理后的图片信息
+            info = get_info(processed_data)
+            
+            # 计算压缩率
+            compression_ratio = (1 - len(processed_data) / len(image_data)) * 100 if len(image_data) > 0 else 0
+            
+            result = {
+                "original_size": len(image_data),
+                "processed_size": len(processed_data),
+                "compression_ratio": round(compression_ratio, 2),
+                "format": actual_format,
+                "info": info,
+                "base64_data": base64.b64encode(processed_data).decode('utf-8')
+            }
+            
+            logger.info(f"图片处理成功: 原始{len(image_data)}字节 -> {len(processed_data)}字节, 压缩率{compression_ratio:.1f}%")
+            
+            return JSONResponse({
+                "code": 200,
+                "message": "图片处理成功",
+                "data": result
+            })
+            
+        except Exception as e:
+            logger.error(f"图片处理失败: {str(e)}")
+            logger.exception("图片处理详细错误信息:")
+            return JSONResponse({
+                "code": 500,
+                "message": f"图片处理失败: {str(e)}",
+                "data": None
+            }, status_code=500)
+
+    @app.post('/python/seo/batchProcessIcons')
+    async def batch_process_icons_api(request: Request, _: bool = Depends(admin_required)):
+        """批量图标处理API"""
+        try:
+            # 获取请求数据
+            form_data = await request.form()
+            
+            # 检查是否有文件上传
+            image_file = form_data.get('image')
+            if not image_file:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "请上传图片文件",
+                    "data": None
+                }, status_code=400)
+            
+            # 读取图片数据
+            image_data = await image_file.read()
+            if not image_data:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "图片文件为空",
+                    "data": None
+                }, status_code=400)
+            
+            # 获取处理类型列表
+            icon_types_str = form_data.get('icon_types', 'favicon,apple_touch,pwa_192,pwa_512')
+            icon_types = [t.strip() for t in icon_types_str.split(',') if t.strip()]
+            
+            logger.info(f"收到批量图标处理请求: 类型={icon_types}, 大小={len(image_data)}字节")
+            
+            # 批量处理图标
+            results = batch_process(image_data, icon_types)
+            
+            # 转换结果为可传输格式
+            processed_results = {}
+            total_original_size = len(image_data)
+            total_processed_size = 0
+            
+            for icon_type, result in results.items():
+                if result.get('success'):
+                    # 转换为base64
+                    processed_results[icon_type] = {
+                        'success': True,
+                        'format': result['format'],
+                        'size': result['size'],
+                        'base64_data': base64.b64encode(result['data']).decode('utf-8')
+                    }
+                    total_processed_size += result['size']
+                else:
+                    processed_results[icon_type] = {
+                        'success': False,
+                        'error': result.get('error', '未知错误')
+                    }
+            
+            # 计算总体压缩率
+            overall_compression = (1 - total_processed_size / (total_original_size * len(icon_types))) * 100 if total_original_size > 0 else 0
+            
+            response_data = {
+                "results": processed_results,
+                "summary": {
+                    "total_types": len(icon_types),
+                    "successful": sum(1 for r in results.values() if r.get('success')),
+                    "original_size": total_original_size,
+                    "total_processed_size": total_processed_size,
+                    "overall_compression": round(overall_compression, 2)
+                }
+            }
+            
+            logger.info(f"批量处理完成: 成功{response_data['summary']['successful']}/{len(icon_types)}")
+            
+            return JSONResponse({
+                "code": 200,
+                "message": "批量图标处理完成",
+                "data": response_data
+            })
+            
+        except Exception as e:
+            logger.error(f"批量图标处理失败: {str(e)}")
+            logger.exception("批量图标处理详细错误信息:")
+            return JSONResponse({
+                "code": 500,
+                "message": f"批量图标处理失败: {str(e)}",
+                "data": None
+            }, status_code=500)
+
+    @app.post('/python/seo/getImageInfo')
+    async def get_image_info_api(request: Request, _: bool = Depends(admin_required)):
+        """获取图片信息API"""
+        try:
+            # 获取请求数据
+            form_data = await request.form()
+            
+            # 检查是否有文件上传
+            image_file = form_data.get('image')
+            if not image_file:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "请上传图片文件",
+                    "data": None
+                }, status_code=400)
+            
+            # 读取图片数据
+            image_data = await image_file.read()
+            if not image_data:
+                return JSONResponse({
+                    "code": 400,
+                    "message": "图片文件为空",
+                    "data": None
+                }, status_code=400)
+            
+            logger.info(f"收到图片信息获取请求: 大小={len(image_data)}字节")
+            
+            # 获取图片信息
+            info = get_info(image_data)
+            
+            if 'error' in info:
+                return JSONResponse({
+                    "code": 400,
+                    "message": f"图片分析失败: {info['error']}",
+                    "data": None
+                }, status_code=400)
+            
+            # 添加额外的分析信息
+            info['file_size_mb'] = round(len(image_data) / (1024 * 1024), 2)
+            info['aspect_ratio'] = round(info['width'] / info['height'], 2) if info['height'] > 0 else 0
+            
+            # 推荐的处理方案
+            recommendations = []
+            
+            # 基于尺寸推荐
+            if info['width'] >= 512 and info['height'] >= 512:
+                recommendations.append("适合生成PWA图标 (512x512)")
+            
+            if info['width'] >= 192 and info['height'] >= 192:
+                recommendations.append("适合生成PWA图标 (192x192)")
+            
+            if info['width'] >= 180 and info['height'] >= 180:
+                recommendations.append("适合生成Apple Touch图标")
+            
+            if info['width'] >= 32 and info['height'] >= 32:
+                recommendations.append("适合生成网站图标")
+            
+            if info['width'] >= 1200 and info['height'] >= 630:
+                recommendations.append("适合作为社交媒体分享图片")
+            
+            # 基于格式推荐
+            if info['format'] in ['JPEG', 'JPG'] and info['has_transparency']:
+                recommendations.append("建议转换为PNG格式以保持透明度")
+            
+            if info['file_size'] > 2 * 1024 * 1024:  # 2MB
+                recommendations.append("建议压缩以减小文件大小")
+            
+            info['recommendations'] = recommendations
+            
+            logger.info(f"图片信息分析完成: {info['format']}, {info['width']}x{info['height']}")
+            
+            return JSONResponse({
+                "code": 200,
+                "message": "图片信息获取成功",
+                "data": info
+            })
+            
+        except Exception as e:
+            logger.error(f"获取图片信息失败: {str(e)}")
+            logger.exception("获取图片信息详细错误信息:")
+            return JSONResponse({
+                "code": 500,
+                "message": f"获取图片信息失败: {str(e)}",
+                "data": None
+            }, status_code=500)
 
     @app.post('/python/seo/updateSeoConfig')
     async def update_seo_config_api(request: Request, _: bool = Depends(admin_required)):

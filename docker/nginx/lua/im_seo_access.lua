@@ -5,9 +5,11 @@ local http = require "resty.http"
 ngx.ctx.seo_data = ""
 ngx.ctx.title = ""
 ngx.ctx.has_title = false
+ngx.ctx.icon_data = ""
 -- 添加注入标志，防止重复插入
 ngx.ctx.seo_injected = false
 ngx.ctx.title_injected = false
+ngx.ctx.icon_injected = false
 
 -- 使用HTTP客户端的API调用函数，支持HTTP/2
 local function fetch_api(api_path, query_params)
@@ -173,6 +175,43 @@ local function fetch_api(api_path, query_params)
     return result
 end
 
+-- 生成图标meta标签的函数
+local function generate_icon_meta_tags(seo_config)
+    if not seo_config or type(seo_config) ~= "table" then
+        return ""
+    end
+    
+    local meta_tags = {}
+    
+    -- 网站标签页图标
+    if seo_config.site_icon and seo_config.site_icon ~= "" then
+        table.insert(meta_tags, '<link rel="icon" type="image/png" sizes="32x32" href="' .. seo_config.site_icon .. '">')
+        table.insert(meta_tags, '<link rel="icon" type="image/png" sizes="16x16" href="' .. seo_config.site_icon .. '">')
+        table.insert(meta_tags, '<link rel="shortcut icon" href="' .. seo_config.site_icon .. '">')
+    end
+    
+    -- Apple Touch图标
+    if seo_config.apple_touch_icon and seo_config.apple_touch_icon ~= "" then
+        table.insert(meta_tags, '<link rel="apple-touch-icon" sizes="180x180" href="' .. seo_config.apple_touch_icon .. '">')
+    end
+    
+    -- PWA图标
+    if seo_config.site_icon_192 and seo_config.site_icon_192 ~= "" then
+        table.insert(meta_tags, '<link rel="icon" type="image/png" sizes="192x192" href="' .. seo_config.site_icon_192 .. '">')
+    end
+    
+    if seo_config.site_icon_512 and seo_config.site_icon_512 ~= "" then
+        table.insert(meta_tags, '<link rel="icon" type="image/png" sizes="512x512" href="' .. seo_config.site_icon_512 .. '">')
+    end
+    
+    -- Manifest文件
+    if seo_config.site_icon_192 or seo_config.site_icon_512 then
+        table.insert(meta_tags, '<link rel="manifest" href="/manifest.json">')
+    end
+    
+    return table.concat(meta_tags, '\n')
+end
+
 -- 为IM页面获取特定的SEO数据
 -- ngx.log(ngx.INFO, "尝试获取IM页面特定SEO数据")
 local data = fetch_api("/seo/getIMSiteMeta", {})
@@ -228,4 +267,23 @@ end
 if not ngx.ctx.title or ngx.ctx.title == "" then
     ngx.ctx.title = "POETIZE IM聊天室"
     -- ngx.log(ngx.INFO, "使用默认IM标题: POETIZE IM聊天室")
+end
+
+-- 获取SEO配置用于生成图标
+-- ngx.log(ngx.INFO, "IM-获取SEO配置用于图标生成")
+local seo_config_data = fetch_api("/python/seo/getSeoConfig", {})
+if seo_config_data then
+    -- 尝试解析SEO配置JSON
+    local ok, seo_config = pcall(cjson.decode, seo_config_data)
+    if ok and seo_config and type(seo_config) == "table" then
+        -- 生成图标meta标签
+        ngx.ctx.icon_data = generate_icon_meta_tags(seo_config)
+        -- ngx.log(ngx.INFO, "IM-成功生成图标meta标签")
+    else
+        ngx.log(ngx.WARN, "IM-SEO配置数据解析失败")
+        ngx.ctx.icon_data = ""
+    end
+else
+    ngx.log(ngx.WARN, "IM-获取SEO配置失败，使用默认图标")
+    ngx.ctx.icon_data = ""
 end

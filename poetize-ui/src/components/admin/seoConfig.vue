@@ -101,17 +101,331 @@
         <el-tabs type="border-card">
           <el-tab-pane label="通用设置">
             <el-form-item label="默认分享图片">
-              <el-input v-model="seoConfig.og_image" placeholder="输入图片URL"></el-input>
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.og_image" placeholder="输入图片URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoOgImage'" 
+                  @addPicture="addOgImage"
+                  :maxSize="2" 
+                  :maxNumber="1" 
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
               <span class="tip">当文章无封面图时使用的默认图片，建议尺寸1200×630像素</span>
             </el-form-item>
             
             <el-form-item label="网站Logo">
-              <el-input v-model="seoConfig.site_logo" placeholder="输入Logo URL"></el-input>
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.site_logo" placeholder="输入Logo URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoSiteLogo'" 
+                  @addPicture="addSiteLogo"
+                  :maxSize="2" 
+                  :maxNumber="1" 
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
               <span class="tip">在某些社交平台上显示为网站标识，建议为正方形，至少300×300像素</span>
             </el-form-item>
           </el-tab-pane>
           
-          <el-tab-pane label="Facebook/Meta">
+          <el-tab-pane label="网站图标">
+            <div class="tab-description">
+              配置网站在浏览器标签页、收藏夹、桌面快捷方式等场景下显示的图标
+            </div>
+            
+            <el-form-item label="网站标签页图标">
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.site_icon" placeholder="输入图标URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoSiteIcon'" 
+                  @addPicture="addSiteIcon"
+                  :maxSize="1" 
+                  :maxNumber="1" 
+                  :accept="'image/ico,image/png,image/jpg,image/jpeg,image/svg+xml'"
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
+              <span class="tip">建议格式：ICO、PNG，尺寸：16x16, 32x32像素，用于浏览器标签页和收藏夹</span>
+            </el-form-item>
+
+            <el-form-item label="Apple Touch图标">
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.apple_touch_icon" placeholder="输入图标URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoAppleTouchIcon'" 
+                  @addPicture="addAppleTouchIcon"
+                  :maxSize="1" 
+                  :maxNumber="1" 
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
+              <span class="tip">建议尺寸：180×180像素，用于iOS设备添加到主屏幕时显示</span>
+            </el-form-item>
+
+            <el-form-item label="PWA图标 (192x192)">
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.site_icon_192" placeholder="输入图标URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoSiteIcon192'" 
+                  @addPicture="addSiteIcon192"
+                  :maxSize="1" 
+                  :maxNumber="1" 
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
+              <span class="tip">建议尺寸：192×192像素，用于PWA应用图标</span>
+            </el-form-item>
+
+            <el-form-item label="PWA图标 (512x512)">
+              <div class="icon-upload-container">
+                <el-input v-model="seoConfig.site_icon_512" placeholder="输入图标URL或点击上传"></el-input>
+                <uploadPicture 
+                  :isAdmin="true" 
+                  :prefix="'seoSiteIcon512'" 
+                  @addPicture="addSiteIcon512"
+                  :maxSize="2" 
+                  :maxNumber="1" 
+                  class="upload-btn">
+                </uploadPicture>
+              </div>
+              <span class="tip">建议尺寸：512×512像素，用于PWA应用启动屏幕和高分辨率显示</span>
+            </el-form-item>
+
+              <el-form-item label="智能图标生成">
+               <div class="smart-icon-generator">
+                 <div class="generator-description">
+                   <h4>🤖 一键生成全套图标</h4>
+                   <p>上传一张高清图片，自动生成所有尺寸的网站图标，支持格式转换和智能压缩</p>
+                 </div>
+                 
+                 <div class="generator-upload">
+                   <el-upload
+                     ref="iconUpload"
+                     :auto-upload="false"
+                     :show-file-list="false"
+                     :accept="'image/*'"
+                     :on-change="handleIconUpload"
+                     drag
+                     class="smart-upload">
+                     <div class="upload-content">
+                       <i class="el-icon-upload"></i>
+                       <div class="upload-text">
+                         <p>点击或拖拽图片到此处</p>
+                         <p class="upload-hint">建议上传512x512以上的PNG或JPG图片</p>
+                       </div>
+                     </div>
+                   </el-upload>
+                   
+                   <div class="generator-actions" v-if="uploadedImage">
+                     <el-button 
+                       type="primary" 
+                       @click="batchGenerateIcons"
+                       :loading="generatingIcons"
+                       class="generate-btn">
+                       {{ generatingIcons ? '生成中...' : '🚀 生成全套图标' }}
+                     </el-button>
+                     
+                     <el-button @click="clearUploadedImage" class="clear-btn">
+                       清除
+                     </el-button>
+                   </div>
+                 </div>
+                 
+                 <div class="generation-progress" v-if="generatingIcons">
+                   <el-progress :percentage="generationProgress" :show-text="false"></el-progress>
+                   <p class="progress-text">{{ generationStatus }}</p>
+                 </div>
+                 
+                 <div class="generation-results" v-if="generationResults">
+                   <h4>✨ 生成结果</h4>
+                   <div class="results-summary">
+                     <span class="result-item">成功: {{ generationResults.summary.successful }}</span>
+                     <span class="result-item">总数: {{ generationResults.summary.total_types }}</span>
+                     <span class="result-item">压缩率: {{ generationResults.summary.overall_compression }}%</span>
+                   </div>
+                   
+                   <div class="results-actions">
+                     <el-button 
+                       type="success" 
+                       @click="applyGeneratedIcons"
+                       :disabled="generationResults.summary.successful === 0">
+                       ✅ 应用到配置
+                     </el-button>
+                     
+                     <el-button @click="clearGenerationResults">
+                       清除结果
+                     </el-button>
+                   </div>
+                 </div>
+               </div>
+             </el-form-item>
+
+             <el-form-item label="图标预览">
+               <div class="icon-preview">
+                 <div class="preview-item" v-if="seoConfig.site_icon">
+                   <img :src="seoConfig.site_icon" class="icon-preview-16" alt="标签页图标">
+                   <span>标签页图标</span>
+                 </div>
+                 <div class="preview-item" v-if="seoConfig.site_logo">
+                   <img :src="seoConfig.site_logo" class="icon-preview-64" alt="网站Logo">
+                   <span>网站Logo</span>
+                 </div>
+                 <div class="preview-item" v-if="seoConfig.apple_touch_icon">
+                   <img :src="seoConfig.apple_touch_icon" class="icon-preview-48" alt="Apple Touch图标">
+                   <span>Apple Touch</span>
+                 </div>
+                 <div class="preview-item" v-if="seoConfig.site_icon_192">
+                   <img :src="seoConfig.site_icon_192" class="icon-preview-48" alt="PWA图标 192">
+                   <span>PWA 192</span>
+                 </div>
+                 <div class="preview-item" v-if="seoConfig.site_icon_512">
+                   <img :src="seoConfig.site_icon_512" class="icon-preview-64" alt="PWA图标 512">
+                   <span>PWA 512</span>
+                 </div>
+                 <div class="preview-empty" v-if="!hasAnyIcon">
+                   <span>暂无图标，请上传图标文件或使用智能生成功能</span>
+                 </div>
+               </div>
+             </el-form-item>
+                     </el-tab-pane>
+            
+            <el-tab-pane label="PWA应用">
+              <div class="tab-description">
+                配置Progressive Web App (PWA)功能，让网站可以像原生应用一样安装到用户设备
+              </div>
+              
+              <el-form-item label="应用短名称">
+                <el-input v-model="seoConfig.site_short_name" placeholder="应用的短名称，用于设备主屏幕显示">
+                  <template slot="prepend">PWA</template>
+                </el-input>
+                <span class="tip">建议12个字符以内，用于设备主屏幕图标下方显示</span>
+              </el-form-item>
+
+              <el-form-item label="显示模式">
+                <el-select v-model="seoConfig.pwa_display" placeholder="选择PWA显示模式">
+                  <el-option label="独立应用 (推荐)" value="standalone"></el-option>
+                  <el-option label="全屏显示" value="fullscreen"></el-option>
+                  <el-option label="最小UI" value="minimal-ui"></el-option>
+                  <el-option label="浏览器标签" value="browser"></el-option>
+                </el-select>
+                <span class="tip">standalone模式提供最佳的原生应用体验</span>
+              </el-form-item>
+
+              <el-form-item label="主题颜色">
+                <el-input v-model="seoConfig.pwa_theme_color" placeholder="#1976d2">
+                  <template slot="prepend">
+                    <div class="color-preview" :style="{ backgroundColor: seoConfig.pwa_theme_color }"></div>
+                  </template>
+                </el-input>
+                <span class="tip">影响状态栏和浏览器UI的颜色，建议使用品牌主色</span>
+              </el-form-item>
+
+              <el-form-item label="背景颜色">
+                <el-input v-model="seoConfig.pwa_background_color" placeholder="#ffffff">
+                  <template slot="prepend">
+                    <div class="color-preview" :style="{ backgroundColor: seoConfig.pwa_background_color }"></div>
+                  </template>
+                </el-input>
+                <span class="tip">应用启动时的背景颜色，建议与网站背景色保持一致</span>
+              </el-form-item>
+
+              <el-form-item label="屏幕方向">
+                <el-select v-model="seoConfig.pwa_orientation" placeholder="选择屏幕方向">
+                  <el-option label="竖屏 (推荐)" value="portrait-primary"></el-option>
+                  <el-option label="横屏" value="landscape-primary"></el-option>
+                  <el-option label="自动旋转" value="any"></el-option>
+                  <el-option label="自然方向" value="natural"></el-option>
+                </el-select>
+                <span class="tip">大多数博客和内容类应用推荐使用竖屏模式</span>
+              </el-form-item>
+
+              <el-form-item label="桌面端截图">
+                <div class="icon-upload-container">
+                  <el-input v-model="seoConfig.pwa_screenshot_desktop" placeholder="输入桌面端截图URL或点击上传">
+                  </el-input>
+                  <uploadPicture 
+                    :isAdmin="true" 
+                    :prefix="'pwaDeskScreenshot'" 
+                    @addPicture="addPwaDesktopScreenshot"
+                    :maxSize="3" 
+                    :maxNumber="1" 
+                    class="upload-btn">
+                  </uploadPicture>
+                </div>
+                <span class="tip">建议尺寸：1280×720像素，用于应用商店展示（可选）</span>
+              </el-form-item>
+
+              <el-form-item label="移动端截图">
+                <div class="icon-upload-container">
+                  <el-input v-model="seoConfig.pwa_screenshot_mobile" placeholder="输入移动端截图URL或点击上传">
+                  </el-input>
+                  <uploadPicture 
+                    :isAdmin="true" 
+                    :prefix="'pwaMobileScreenshot'" 
+                    @addPicture="addPwaMobileScreenshot"
+                    :maxSize="3" 
+                    :maxNumber="1" 
+                    class="upload-btn">
+                  </uploadPicture>
+                </div>
+                <span class="tip">建议尺寸：375×667像素，用于移动端应用商店展示（可选）</span>
+              </el-form-item>
+
+              <el-form-item label="原生应用关联">
+                <div class="native-app-config">
+                  <div class="app-config-item">
+                    <label>Android应用ID：</label>
+                    <el-input v-model="seoConfig.android_app_id" placeholder="com.example.app" size="small">
+                    </el-input>
+                  </div>
+                  <div class="app-config-item">
+                    <label>iOS应用ID：</label>
+                    <el-input v-model="seoConfig.ios_app_id" placeholder="1234567890" size="small">
+                    </el-input>
+                  </div>
+                  <div class="app-config-item">
+                    <el-checkbox v-model="seoConfig.prefer_native_apps">
+                      优先推荐原生应用
+                    </el-checkbox>
+                  </div>
+                </div>
+                <span class="tip">如果有对应的原生应用，可以配置应用ID来引导用户下载</span>
+              </el-form-item>
+
+              <el-form-item label="PWA功能预览">
+                <div class="pwa-preview">
+                  <div class="preview-phone">
+                    <div class="phone-screen">
+                      <div class="status-bar" :style="{ backgroundColor: seoConfig.pwa_theme_color }">
+                        <span>9:41</span>
+                        <span>📶 📶 🔋</span>
+                      </div>
+                      <div class="app-content" :style="{ backgroundColor: seoConfig.pwa_background_color }">
+                        <div class="app-icon" v-if="seoConfig.site_icon_192">
+                          <img :src="seoConfig.site_icon_192" alt="应用图标">
+                        </div>
+                        <div class="app-name">{{ seoConfig.site_short_name || seoConfig.site_name || 'POETIZE' }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-info">
+                    <h4>PWA效果预览</h4>
+                    <p>• 显示模式：{{ getPwaDisplayText(seoConfig.pwa_display) }}</p>
+                    <p>• 主题颜色：{{ seoConfig.pwa_theme_color }}</p>
+                    <p>• 背景颜色：{{ seoConfig.pwa_background_color }}</p>
+                    <p>• 图标配置：{{ hasValidPwaIcons ? '✅ 已配置' : '❌ 需要配置' }}</p>
+                  </div>
+                </div>
+              </el-form-item>
+            </el-tab-pane>
+            
+            <el-tab-pane label="Facebook/Meta">
             <el-form-item label="Facebook App ID">
               <el-input v-model="seoConfig.fb_app_id" placeholder="输入App ID"></el-input>
               <span class="tip">关联Facebook应用，启用分享统计和深度链接功能</span>
@@ -919,7 +1233,12 @@ Sitemap: /sitemap.xml"
 
 <script>
 
+const uploadPicture = () => import("../common/uploadPicture");
+
 export default {
+  components: {
+    uploadPicture
+  },
   data() {
     return {
       initialLoad: true,
@@ -934,6 +1253,22 @@ export default {
         site_keywords: "Poetize,博客,个人网站,生活笔记,记录生活",
         default_author: "poetize",
         og_image: "",
+        site_logo: "",
+        site_icon: "",
+        site_icon_192: "",
+        site_icon_512: "",
+        apple_touch_icon: "",
+        // PWA相关配置
+        site_short_name: "",
+        pwa_display: "standalone",
+        pwa_background_color: "#ffffff",
+        pwa_theme_color: "#1976d2",
+        pwa_orientation: "portrait-primary",
+        pwa_screenshot_desktop: "",
+        pwa_screenshot_mobile: "",
+        android_app_id: "",
+        ios_app_id: "",
+        prefer_native_apps: false,
         twitter_card: "summary_large_image",
         twitter_site: "",
         baidu_site_verification: "",
@@ -985,6 +1320,12 @@ export default {
       showAiMenu: false,
       seoAnalysis: null,
       aiSeoAnalysis: null,
+      // 智能图标生成相关
+      uploadedImage: null,
+      generatingIcons: false,
+      generationProgress: 0,
+      generationStatus: '',
+      generationResults: null,
       aiApiConfig: {
         provider: 'openai',
         api_key: '',
@@ -1467,6 +1808,199 @@ export default {
           this.showHelpDialog = true;
           break;
       }
+    },
+
+    // 图片上传处理方法
+    addOgImage(picture) {
+      this.seoConfig.og_image = picture.url;
+      this.$message.success('默认分享图片上传成功');
+    },
+
+    addSiteLogo(picture) {
+      this.seoConfig.site_logo = picture.url;
+      this.$message.success('网站Logo上传成功');
+    },
+
+    addSiteIcon(picture) {
+      this.seoConfig.site_icon = picture.url;
+      this.$message.success('网站标签页图标上传成功');
+    },
+
+    addAppleTouchIcon(picture) {
+      this.seoConfig.apple_touch_icon = picture.url;
+      this.$message.success('Apple Touch图标上传成功');
+    },
+
+    addSiteIcon192(picture) {
+      this.seoConfig.site_icon_192 = picture.url;
+      this.$message.success('PWA图标(192x192)上传成功');
+    },
+
+    addSiteIcon512(picture) {
+      this.seoConfig.site_icon_512 = picture.url;
+      this.$message.success('PWA图标(512x512)上传成功');
+    },
+
+    // PWA相关上传处理方法
+    addPwaDesktopScreenshot(picture) {
+      this.seoConfig.pwa_screenshot_desktop = picture.url;
+      this.$message.success('PWA桌面端截图上传成功');
+    },
+
+    addPwaMobileScreenshot(picture) {
+      this.seoConfig.pwa_screenshot_mobile = picture.url;
+      this.$message.success('PWA移动端截图上传成功');
+    },
+
+    // 获取PWA显示模式文本
+    getPwaDisplayText(mode) {
+      const modeMap = {
+        'standalone': '独立应用',
+        'fullscreen': '全屏显示',
+        'minimal-ui': '最小UI',
+        'browser': '浏览器标签'
+      };
+      return modeMap[mode] || '独立应用';
+    },
+
+    // 智能图标生成相关方法
+    handleIconUpload(file) {
+      console.log('处理图标上传:', file);
+      this.uploadedImage = file.raw;
+      this.$message.success('图片上传成功，可以开始生成图标');
+    },
+
+    clearUploadedImage() {
+      this.uploadedImage = null;
+      this.generationResults = null;
+      this.$refs.iconUpload.clearFiles();
+      this.$message.info('已清除上传的图片');
+    },
+
+    async batchGenerateIcons() {
+      if (!this.uploadedImage) {
+        this.$message.error('请先上传图片');
+        return;
+      }
+
+      this.generatingIcons = true;
+      this.generationProgress = 0;
+      this.generationStatus = '准备处理图片...';
+
+      try {
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('image', this.uploadedImage);
+        formData.append('icon_types', 'favicon,apple_touch,pwa_192,pwa_512,logo');
+
+        // 更新进度
+        this.generationProgress = 20;
+        this.generationStatus = '正在上传图片...';
+
+        // 发送请求 - 使用原生fetch以确保FormData正确处理
+        const response = await fetch(this.$constant.pythonBaseURL + '/python/seo/batchProcessIcons', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include'
+        }).then(res => res.json());
+
+        this.generationProgress = 80;
+        this.generationStatus = '处理完成，准备显示结果...';
+
+        if (response && response.code === 200) {
+          this.generationResults = response.data;
+          this.generationProgress = 100;
+          this.generationStatus = '全部完成！';
+          
+          this.$message.success(`图标生成完成！成功生成 ${response.data.summary.successful} 个图标`);
+        } else {
+          throw new Error(response.message || '生成图标失败');
+        }
+
+      } catch (error) {
+        console.error('批量生成图标失败:', error);
+        this.$message.error('图标生成失败: ' + (error.message || '网络连接问题'));
+      } finally {
+        this.generatingIcons = false;
+        // 延迟清除进度状态
+        setTimeout(() => {
+          this.generationProgress = 0;
+          this.generationStatus = '';
+        }, 2000);
+      }
+    },
+
+    applyGeneratedIcons() {
+      if (!this.generationResults || !this.generationResults.results) {
+        this.$message.error('没有可应用的图标结果');
+        return;
+      }
+
+      let appliedCount = 0;
+      const results = this.generationResults.results;
+
+      // 映射图标类型到配置字段
+      const iconMapping = {
+        'favicon': 'site_icon',
+        'apple_touch': 'apple_touch_icon',
+        'pwa_192': 'site_icon_192',
+        'pwa_512': 'site_icon_512',
+        'logo': 'site_logo'
+      };
+
+             for (const [iconType, result] of Object.entries(results)) {
+         if (result.success && result.base64_data) {
+           const configField = iconMapping[iconType];
+           if (configField) {
+             // 确定MIME类型
+             let mimeType = 'image/png'; // 默认
+             if (result.format) {
+               const format = result.format.toLowerCase();
+               if (format === 'jpeg' || format === 'jpg') {
+                 mimeType = 'image/jpeg';
+               } else if (format === 'webp') {
+                 mimeType = 'image/webp';
+               } else if (format === 'ico') {
+                 mimeType = 'image/x-icon';
+               }
+             }
+             
+             // 将base64数据转换为data URL
+             const dataUrl = `data:${mimeType};base64,${result.base64_data}`;
+             this.seoConfig[configField] = dataUrl;
+             appliedCount++;
+           }
+         }
+       }
+
+      if (appliedCount > 0) {
+        this.$message.success(`已应用 ${appliedCount} 个图标到配置中，记得保存配置`);
+        // 清除生成结果
+        this.clearGenerationResults();
+      } else {
+        this.$message.warning('没有可应用的图标');
+      }
+    },
+
+    clearGenerationResults() {
+      this.generationResults = null;
+      this.$message.info('已清除生成结果');
+    }
+  },
+
+  computed: {
+    // 检查是否有任何图标
+    hasAnyIcon() {
+      return !!(this.seoConfig.site_icon || 
+                this.seoConfig.site_logo || 
+                this.seoConfig.apple_touch_icon || 
+                this.seoConfig.site_icon_192 || 
+                this.seoConfig.site_icon_512);
+    },
+
+    // 检查是否有有效的PWA图标
+    hasValidPwaIcons() {
+      return !!(this.seoConfig.site_icon_192 || this.seoConfig.site_icon_512);
     }
   }
 };
@@ -2393,6 +2927,383 @@ export default {
     transition: all 0.3s ease;
   }
 
+  /* 图标上传容器样式 */
+  .icon-upload-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  
+  .icon-upload-container .el-input {
+    flex: 1;
+    min-width: 300px;
+  }
+  
+  .icon-upload-container .upload-btn {
+    flex-shrink: 0;
+  }
+  
+  /* 图标预览样式 */
+  .icon-preview {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px;
+    background: rgba(248, 249, 250, 0.8);
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    flex-wrap: wrap;
+  }
+  
+  .preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+  }
+  
+  .preview-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  
+  .preview-item span {
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+    text-align: center;
+  }
+  
+  .icon-preview-16 {
+    width: 16px;
+    height: 16px;
+    border-radius: 2px;
+    object-fit: cover;
+  }
+  
+  .icon-preview-48 {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+  
+  .icon-preview-64 {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    object-fit: cover;
+  }
+  
+  .preview-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    color: #999;
+    font-style: italic;
+    width: 100%;
+  }
+  
+  /* 网站图标标签页描述样式 */
+  .tab-description {
+    background-color: rgba(0, 113, 227, 0.06);
+    padding: 12px 18px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #1d1d1f;
+    line-height: 1.5;
+    letter-spacing: 0.2px;
+  }
+
+  /* PWA配置样式 */
+  .color-preview {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    display: inline-block;
+  }
+
+  .native-app-config {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(248, 249, 250, 0.8);
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .app-config-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .app-config-item label {
+    min-width: 120px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  .app-config-item .el-input {
+    flex: 1;
+  }
+
+  /* PWA预览样式 */
+  .pwa-preview {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    padding: 20px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .preview-phone {
+    flex-shrink: 0;
+  }
+
+  .phone-screen {
+    width: 180px;
+    height: 320px;
+    background: #000;
+    border-radius: 20px;
+    padding: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .status-bar {
+    height: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 12px;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .app-content {
+    height: 288px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 0 12px 12px;
+    position: relative;
+  }
+
+  .app-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .app-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .app-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .preview-info {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .preview-info h4 {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d1d1f;
+  }
+
+  .preview-info p {
+    margin: 8px 0;
+    font-size: 14px;
+    color: #666;
+    line-height: 1.5;
+  }
+
+  /* 智能图标生成器样式 */
+  .smart-icon-generator {
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 16px;
+    color: white;
+    margin-bottom: 20px;
+  }
+
+  .generator-description h4 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .generator-description p {
+    margin: 0 0 20px 0;
+    font-size: 14px;
+    opacity: 0.9;
+    line-height: 1.5;
+  }
+
+  .smart-upload {
+    margin-bottom: 16px;
+  }
+
+  .smart-upload .el-upload-dragger {
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    width: 100%;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+  }
+
+  .smart-upload .el-upload-dragger:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+  }
+
+  .upload-content {
+    text-align: center;
+  }
+
+  .upload-content .el-icon-upload {
+    font-size: 32px;
+    color: white;
+    margin-bottom: 8px;
+  }
+
+  .upload-text p {
+    margin: 4px 0;
+    color: white;
+  }
+
+  .upload-text .upload-hint {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+
+  .generator-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .generate-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    font-weight: 600;
+    padding: 10px 20px;
+  }
+
+  .clear-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+  }
+
+  .clear-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+  }
+
+  .generation-progress {
+    margin: 16px 0;
+  }
+
+  .generation-progress .el-progress-bar__outer {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .generation-progress .el-progress-bar__inner {
+    background: linear-gradient(90deg, #fff 0%, #f0f0f0 100%);
+  }
+
+  .progress-text {
+    text-align: center;
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    opacity: 0.9;
+  }
+
+  .generation-results {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+  }
+
+  .generation-results h4 {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .results-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .result-item {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .results-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .results-actions .el-button {
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    border: none;
+    font-weight: 500;
+  }
+
+  .results-actions .el-button:hover {
+    background: white;
+    transform: translateY(-1px);
+  }
+
   /* 响应式设计 */
   @media (max-width: 768px) {
     .seo-actions-container {
@@ -2423,6 +3334,99 @@ export default {
     .simple-address-btn {
       flex: 1;
       min-width: auto;
+    }
+    
+    /* 图标上传移动端适配 */
+    .icon-upload-container {
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .icon-upload-container .el-input {
+      min-width: auto;
+    }
+    
+    .icon-preview {
+      justify-content: center;
+      gap: 12px;
+    }
+    
+    .preview-item {
+      min-width: 80px;
+    }
+    
+    /* PWA配置移动端适配 */
+    .native-app-config {
+      padding: 12px;
+    }
+    
+    .app-config-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    
+    .app-config-item label {
+      min-width: auto;
+      font-size: 14px;
+    }
+    
+    .pwa-preview {
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px;
+    }
+    
+    .phone-screen {
+      width: 150px;
+      height: 267px;
+    }
+    
+    .preview-info {
+      min-width: auto;
+    }
+    
+    /* 智能图标生成器移动端适配 */
+    .smart-icon-generator {
+      padding: 16px;
+    }
+    
+    .generator-description h4 {
+      font-size: 16px;
+    }
+    
+    .generator-description p {
+      font-size: 13px;
+    }
+    
+    .smart-upload .el-upload-dragger {
+      height: 100px;
+    }
+    
+    .upload-content .el-icon-upload {
+      font-size: 24px;
+    }
+    
+    .upload-text p {
+      font-size: 13px;
+    }
+    
+    .upload-text .upload-hint {
+      font-size: 11px;
+    }
+    
+    .generator-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .results-summary {
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .results-actions {
+      flex-direction: column;
     }
   }
 </style>

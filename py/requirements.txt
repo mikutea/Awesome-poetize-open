@@ -20,3 +20,4 @@ crawl4ai
 openai
 anthropic
 fastmcp
+Pillow>=10.0.0

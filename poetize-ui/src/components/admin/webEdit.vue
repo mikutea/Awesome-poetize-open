@@ -511,7 +511,7 @@
       </el-tag>
       
       <!-- 邮箱配置部分 -->
-      <el-card class="box-card" shadow="never" style="margin-top: 5px; border: none;">        
+      <el-card class="box-card" shadow="never" style="margin-top: 5px; border: none;">
         <!-- 响应式表格 -->
         <div class="responsive-table-container">
           <el-table
