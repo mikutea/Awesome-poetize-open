@@ -44,13 +44,18 @@
         </el-table-column>
         <el-table-column label="路径" align="center">
           <template slot-scope="scope">
-            <template v-if="!$common.isEmpty(scope.row.mimeType) && scope.row.mimeType.includes('image')">
-              <el-image lazy :preview-src-list="[scope.row.path]" class="table-td-thumb" :src="scope.row.path"
-                        fit="cover"></el-image>
-            </template>
-            <template v-else>
-              {{scope.row.path}}
-            </template>
+            <div style="display: flex; align-items: center; justify-content: center;">
+              <el-tooltip :content="scope.row.path" placement="top">
+                <span style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  {{scope.row.path}}
+                </span>
+              </el-tooltip>
+              <template v-if="!$common.isEmpty(scope.row.mimeType) && scope.row.mimeType.includes('image')">
+                <el-button type="text" icon="el-icon-view" size="mini" style="margin-left: 5px;"
+                           @click="previewImage(scope.row.path)">
+                </el-button>
+              </template>
+            </div>
           </template>
         </el-table-column>
 
@@ -106,6 +111,23 @@
                        :maxSize="100" :maxNumber="10"></uploadPicture>
       </div>
     </el-dialog>
+
+    <!-- 图片预览对话框 -->
+    <el-dialog title="图片预览"
+               :visible.sync="previewVisible"
+               width="50%"
+               :append-to-body="true"
+               :close-on-click-modal="true"
+               destroy-on-close
+               center>
+      <div style="text-align: center;">
+        <el-image v-if="previewImageList.length > 0" 
+                  :src="previewImageList[0]" 
+                  fit="contain"
+                  style="max-width: 100%; max-height: 60vh;">
+        </el-image>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -131,7 +153,9 @@
           {label: "服务器", value: "local"},
           {label: "七牛云", value: "qiniu"}
         ],
-        storeType: localStorage.getItem("defaultStoreType")
+        storeType: localStorage.getItem("defaultStoreType"),
+        previewImageList: [],
+        previewVisible: false
       }
     },
 
@@ -231,6 +255,10 @@
       handlePageChange(val) {
         this.pagination.current = val;
         this.getResources();
+      },
+      previewImage(imagePath) {
+        this.previewImageList = [imagePath];
+        this.previewVisible = true;
       }
     }
   }

@@ -122,11 +122,6 @@
             this.goToSeoConfig();
           }
         }, {
-          icon: "el-icon-view",
-          index: "/prerenderManager",
-          title: "预渲染管理",
-          isBoss: true
-        }, {
           icon: "el-icon-chat-line-round",
           index: "/aiChatConfig",
           title: "AI聊天配置",

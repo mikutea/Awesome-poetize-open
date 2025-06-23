@@ -368,6 +368,8 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (14, '备案号', 'beian', '', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (15, '前端静态资源路径前缀', 'webStaticResourcePrefix', '/static/', '2');
 
+INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`, `status`,  `remark`) VALUES ('POETIZE', 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg', '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～', 'siteInfo', 1, 'https://s1.ax1x.com/2022/11/10/z9VlHs.png');
+
 -- ========== 导入静态资源到resource表 ==========
 -- 将public/assets目录下的静态文件录入到数据库，使其在后台资源管理中可见
 
@@ -375,7 +377,7 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
 (1, 'assets', '/static/assets/admireImage.jpg', 8192, 'admireImage.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/backgroundPicture.jpg', 915456, 'backgroundPicture.jpg', 'image/jpeg', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/cloud.png', 82944, 'cloud.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/cloud.png', 67227, 'cloud.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/love.jpg', 222208, 'love.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/loveMessage.jpg', 112640, 'loveMessage.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/lovePhoto.jpg', 99328, 'lovePhoto.jpg', 'image/jpeg', 1, 'local', NOW()),
@@ -384,7 +386,7 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 (1, 'assets', '/static/assets/toolbar.jpg', 292864, 'toolbar.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/bannerWave1.png', 5120, 'bannerWave1.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/bannerWave2.png', 4915, 'bannerWave2.png', 'image/png', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/commentURL.png', 73728, 'commentURL.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/commentURL.png', 68234, 'commentURL.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterBiLi.png', 13312, 'friendLetterBiLi.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterBottom.png', 158720, 'friendLetterBottom.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterTop.png', 63488, 'friendLetterTop.png', 'image/png', 1, 'local', NOW()),
@@ -397,16 +399,14 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 
 -- 视频文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/backgroundVideo.mp4', 3355443, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
+(1, 'assets', '/static/assets/backgroundVideo.mp4', 1955207, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
 
 -- 字体文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/font.woff2', 18432, 'font.woff2', 'font/woff2', 1, 'local', NOW());
-
--- 其他文件
-INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/test.txt', 22, 'test.txt', 'text/plain', 1, 'local', NOW());
-
+(1, 'assets', '/static/assets/font_chunks/font.base.woff2', 8956, 'font.base.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.bold.woff2', 830860, 'font.level1.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.extrabold.woff2', 756328, 'font.level2.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.extralight.woff2', 198920, 'font.other.woff2', 'font/woff2', 1, 'local', NOW());
 
 -- 优化 `article` 表
 -- 为用户ID添加索引，加速查询某个用户的所有文章
@@ -434,7 +434,7 @@ ALTER TABLE `poetize`.`label` ADD INDEX `idx_sort_id` (`sort_id`);
 -- 优化 `im_chat_user_friend` 表
 -- 添加唯一复合索引，防止重复的好友关系，并加速双向查询
 ALTER TABLE `poetize`.`im_chat_user_friend` ADD UNIQUE INDEX `uk_user_friend` (`user_id`, `friend_id`);
--- 为好友ID单独添加索引，加速反向查询（例如查询“谁加了我为好友”）
+-- 为好友ID单独添加索引，加速反向查询（例如查询"谁加了我为好友"）
 ALTER TABLE `poetize`.`im_chat_user_friend` ADD INDEX `idx_friend_id` (`friend_id`);
 
 -- 优化 `im_chat_group_user` 表

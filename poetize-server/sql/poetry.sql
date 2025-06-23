@@ -377,7 +377,7 @@ INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`,
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
 (1, 'assets', '/static/assets/admireImage.jpg', 8192, 'admireImage.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/backgroundPicture.jpg', 915456, 'backgroundPicture.jpg', 'image/jpeg', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/cloud.png', 82944, 'cloud.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/cloud.png', 67227, 'cloud.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/love.jpg', 222208, 'love.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/loveMessage.jpg', 112640, 'loveMessage.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/lovePhoto.jpg', 99328, 'lovePhoto.jpg', 'image/jpeg', 1, 'local', NOW()),
@@ -386,7 +386,7 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 (1, 'assets', '/static/assets/toolbar.jpg', 292864, 'toolbar.jpg', 'image/jpeg', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/bannerWave1.png', 5120, 'bannerWave1.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/bannerWave2.png', 4915, 'bannerWave2.png', 'image/png', 1, 'local', NOW()),
-(1, 'assets', '/static/assets/commentURL.png', 73728, 'commentURL.png', 'image/png', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/commentURL.png', 68234, 'commentURL.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterBiLi.png', 13312, 'friendLetterBiLi.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterBottom.png', 158720, 'friendLetterBottom.png', 'image/png', 1, 'local', NOW()),
 (1, 'assets', '/static/assets/friendLetterTop.png', 63488, 'friendLetterTop.png', 'image/png', 1, 'local', NOW()),
@@ -399,15 +399,14 @@ INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_n
 
 -- 视频文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/backgroundVideo.mp4', 3355443, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
+(1, 'assets', '/static/assets/backgroundVideo.mp4', 1955207, 'backgroundVideo.mp4', 'video/mp4', 1, 'local', NOW());
 
 -- 字体文件
 INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/font.woff2', 18432, 'font.woff2', 'font/woff2', 1, 'local', NOW());
-
--- 其他文件
-INSERT INTO `poetize`.`resource` (`user_id`, `type`, `path`, `size`, `original_name`, `mime_type`, `status`, `store_type`, `create_time`) VALUES 
-(1, 'assets', '/static/assets/test.txt', 22, 'test.txt', 'text/plain', 1, 'local', NOW());
+(1, 'assets', '/static/assets/font_chunks/font.base.woff2', 8956, 'font.base.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.bold.woff2', 830860, 'font.level1.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.extrabold.woff2', 756328, 'font.level2.woff2', 'font/woff2', 1, 'local', NOW()),
+(1, 'assets', '/static/assets/font_chunks/font.extralight.woff2', 198920, 'font.other.woff2', 'font/woff2', 1, 'local', NOW());
 
 -- 优化 `article` 表
 -- 为用户ID添加索引，加速查询某个用户的所有文章

@@ -130,10 +130,6 @@ const routes = [
       name: 'seoConfig',
       component: () => import('../components/admin/seoConfig')
     }, {
-      path: '/prerenderManager',
-      name: 'prerenderManager',
-      component: () => import('../components/admin/prerenderManager')
-    }, {
       path: '/aiChatConfig',
       name: 'aiChatConfig',
       component: () => import('../components/admin/aiChatConfig')
