@@ -951,7 +951,6 @@ export default {
 /* 页面容器 */
 .ai-chat-management {
   padding: 24px;
-  background-color: #fafafa;
   min-height: calc(100vh - 60px);
 }
 
