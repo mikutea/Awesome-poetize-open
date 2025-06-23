@@ -24,41 +24,52 @@
         <div :class="{'disabled-section': !seoConfig.enable}">
         
         <el-form-item label="网站地址">
-          <div style="display: flex; gap: 10px;">
+          <div class="site-address-container">
             <el-input 
               v-model="seoConfig.site_address" 
               placeholder="自动检测的网站地址"
-              :readonly="!editingSiteAddress">
+              :readonly="!editingSiteAddress"
+              class="site-address-input">
             </el-input>
-            <el-button 
-              v-if="!editingSiteAddress"
-              type="primary" 
-              icon="el-icon-refresh" 
-              @click="detectSiteAddress"
-              :loading="detectingAddress">
-              自动检测
-            </el-button>
-                         <el-button 
-               v-if="!editingSiteAddress"
-               type="info" 
-               icon="el-icon-edit" 
-               @click="startEditSiteAddress">
-               手动编辑
-             </el-button>
-            <el-button 
-              v-if="editingSiteAddress"
-              type="success" 
-              icon="el-icon-check" 
-              @click="editingSiteAddress = false">
-              确认
-            </el-button>
-            <el-button 
-              v-if="editingSiteAddress"
-              type="default" 
-              icon="el-icon-close" 
-              @click="cancelEditSiteAddress">
-              取消
-            </el-button>
+            
+            <!-- 极简主义地址操作按钮 -->
+            <div class="address-actions" v-if="!editingSiteAddress">
+              <div class="address-action-item" @click="detectSiteAddress" :class="{ loading: detectingAddress }">
+                <div class="address-action-icon">
+                  <i class="el-icon-refresh" v-if="!detectingAddress"></i>
+                  <i class="el-icon-loading" v-if="detectingAddress"></i>
+                </div>
+                <span class="address-action-text">自动检测</span>
+              </div>
+              
+              <div class="address-action-divider"></div>
+              
+              <div class="address-action-item" @click="startEditSiteAddress">
+                <div class="address-action-icon">
+                  <i class="el-icon-edit"></i>
+                </div>
+                <span class="address-action-text">手动编辑</span>
+              </div>
+            </div>
+            
+            <!-- 编辑状态下的按钮 -->
+            <div class="address-actions" v-if="editingSiteAddress">
+              <div class="address-action-item confirm" @click="editingSiteAddress = false">
+                <div class="address-action-icon">
+                  <i class="el-icon-check"></i>
+                </div>
+                <span class="address-action-text">确认</span>
+              </div>
+              
+              <div class="address-action-divider"></div>
+              
+              <div class="address-action-item cancel" @click="cancelEditSiteAddress">
+                <div class="address-action-icon">
+                  <i class="el-icon-close"></i>
+                </div>
+                <span class="address-action-text">取消</span>
+              </div>
+            </div>
           </div>
           <span class="tip">
             <i class="el-icon-info"></i> 
@@ -470,24 +481,71 @@ Sitemap: /sitemap.xml"
           <span class="tip">可以添加额外的META标签、JS代码等，将插入到页面的&lt;head&gt;中。文本框可拖动调整高度。</span>
         </el-form-item>
         
-        <div style="text-align: center;">
-          <el-button type="primary" @click="saveSeoConfig" :loading="loading">保存配置</el-button>
-          <el-button type="success" @click="updateSeoData" :loading="updateLoading">更新SEO数据</el-button>
-          <el-button type="info" @click="analyzeSite" :loading="analyzeLoading">SEO分析</el-button>
-          <el-dropdown @command="handleAiCommand" split-button type="warning" @click="aiAnalyze" :loading="aiAnalyzeLoading">
-            AI SEO分析
-            <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item command="analyze">
-                <i class="el-icon-data-analysis"></i> 立即分析
-              </el-dropdown-item>
-              <el-dropdown-item command="config">
-                <i class="el-icon-setting"></i> 配置AI API
-              </el-dropdown-item>
-              <el-dropdown-item command="help" divided>
-                <i class="el-icon-question"></i> 使用帮助
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </el-dropdown>
+        <!-- 极简主义按钮区域 -->
+        <div class="seo-actions-container">
+          <div class="action-item" @click="saveSeoConfig">
+            <div class="action-icon">
+              <i class="el-icon-folder-checked" v-if="!loading"></i>
+              <i class="el-icon-loading" v-if="loading"></i>
+            </div>
+            <div class="action-text">
+              <div class="action-title">保存配置</div>
+              <div class="action-desc">保存当前SEO设置</div>
+            </div>
+          </div>
+          
+          <div class="action-divider"></div>
+          
+          <div class="action-item" @click="updateSeoData">
+            <div class="action-icon">
+              <i class="el-icon-refresh" v-if="!updateLoading"></i>
+              <i class="el-icon-loading" v-if="updateLoading"></i>
+            </div>
+            <div class="action-text">
+              <div class="action-title">更新数据</div>
+              <div class="action-desc">同步最新SEO数据</div>
+            </div>
+          </div>
+          
+          <div class="action-divider"></div>
+          
+          <div class="action-item" @click="analyzeSite">
+            <div class="action-icon">
+              <i class="el-icon-data-analysis" v-if="!analyzeLoading"></i>
+              <i class="el-icon-loading" v-if="analyzeLoading"></i>
+            </div>
+            <div class="action-text">
+              <div class="action-title">SEO分析</div>
+              <div class="action-desc">生成诊断报告</div>
+            </div>
+          </div>
+          
+          <div class="action-divider"></div>
+          
+          <div class="action-item ai-action" @click="toggleAiMenu" ref="aiActionRef">
+            <div class="action-icon">
+              <i class="el-icon-cpu" v-if="!aiAnalyzeLoading"></i>
+              <i class="el-icon-loading" v-if="aiAnalyzeLoading"></i>
+            </div>
+            <div class="action-text">
+              <div class="action-title">AI分析</div>
+              <div class="action-desc">智能SEO建议</div>
+            </div>
+            <div class="ai-menu" v-show="showAiMenu">
+              <div class="ai-menu-item" @click.stop="aiAnalyze">
+                <i class="el-icon-data-analysis"></i>
+                <span>立即分析</span>
+              </div>
+              <div class="ai-menu-item" @click.stop="showApiConfigDialog = true">
+                <i class="el-icon-setting"></i>
+                <span>配置AI API</span>
+              </div>
+              <div class="ai-menu-item" @click.stop="showHelpDialog = true">
+                <i class="el-icon-question"></i>
+                <span>使用帮助</span>
+              </div>
+            </div>
+          </div>
         </div>
         </div>
       </el-form>
@@ -964,6 +1022,7 @@ export default {
       showAiAnalysisDialog: false,
       showApiConfigDialog: false,
       showHelpDialog: false,
+      showAiMenu: false,
       seoAnalysis: null,
       aiSeoAnalysis: null,
       aiApiConfig: {
@@ -997,6 +1056,14 @@ export default {
         await this.detectSiteAddress();
       }
     });
+    
+    // 添加文档点击事件监听器
+    document.addEventListener('click', this.handleDocumentClick);
+  },
+  
+  beforeDestroy() {
+    // 移除文档点击事件监听器
+    document.removeEventListener('click', this.handleDocumentClick);
   },
   
   watch: {
@@ -1407,6 +1474,24 @@ export default {
       } else if (command === 'help') {
         this.showHelpDialog = true;
       }
+    },
+    
+    // 关闭AI菜单
+    closeAiMenu() {
+      this.showAiMenu = false;
+    },
+    
+    // 切换AI菜单显示状态
+    toggleAiMenu(event) {
+      event.stopPropagation();
+      this.showAiMenu = !this.showAiMenu;
+    },
+    
+    // 处理文档点击事件
+    handleDocumentClick(event) {
+      if (this.showAiMenu && this.$refs.aiActionRef && !this.$refs.aiActionRef.contains(event.target)) {
+        this.showAiMenu = false;
+      }
     }
   }
 };
@@ -1431,8 +1516,6 @@ export default {
 
   /* 页面容器 */
   .seo-management {
-    padding: 24px;
-    background-color: #fafafa;
     min-height: calc(100vh - 60px);
   }
 
@@ -1473,20 +1556,13 @@ export default {
 
   /* 苹果风格设计 */
   .box-card {
-    border-radius: 20px;
     border: none;
-    box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.08);
     background-color: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     margin-bottom: 25px;
     overflow: hidden;
     transition: all 0.4s ease;
-  }
-  
-  .box-card:hover {
-    box-shadow: 0 5px 25px 0 rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
   }
   
   .box-card .el-card__header {
@@ -2257,38 +2333,7 @@ export default {
     color: #409EFF;
   }
   
-  /* 网站地址自动检测区域样式 */
-  .site-address-controls {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-top: 8px;
-  }
-  
-  .site-address-controls .el-button {
-    min-width: 80px;
-    height: 32px;
-    border-radius: 8px;
-    font-size: 12px;
-    padding: 8px 16px;
-  }
-  
-  .site-address-controls .el-button--primary {
-    background: linear-gradient(135deg, #0071e3, #005bb5);
-    border: none;
-    box-shadow: 0 2px 8px rgba(0, 113, 227, 0.3);
-  }
-  
-  .site-address-controls .el-button--info {
-    background: linear-gradient(135deg, #6c757d, #5a6169);
-    border: none;
-    color: white;
-  }
-  
-  .site-address-controls .el-button--success {
-    background: linear-gradient(135deg, #28a745, #1e7e34);
-    border: none;
-  }
+
   
   ::v-deep .el-input.is-disabled .el-input__inner,
   ::v-deep .el-input__inner[readonly] {
@@ -2307,5 +2352,331 @@ export default {
   .tip strong {
     color: #0071e3;
     font-weight: 600;
+  }
+  
+  /* 极简主义按钮区域样式 */
+  .seo-actions-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 40px 0 20px 0;
+    padding: 20px;
+    background: rgba(248, 249, 250, 0.6);
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  .action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px;
+    min-width: 120px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-radius: 12px;
+    position: relative;
+  }
+  
+  .action-item:hover {
+    background: rgba(255, 255, 255, 0.8);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  .action-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .action-icon i {
+    font-size: 20px;
+    color: #666;
+    transition: all 0.3s ease;
+  }
+  
+  .action-item:hover .action-icon {
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  }
+  
+  .action-item:hover .action-icon i {
+    color: #333;
+    transform: scale(1.1);
+  }
+  
+  .action-text {
+    text-align: center;
+  }
+  
+  .action-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
+    line-height: 1.2;
+  }
+  
+  .action-desc {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.3;
+  }
+  
+  .action-divider {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, #ddd, transparent);
+    margin: 0 8px;
+  }
+  
+  /* AI分析特殊样式 */
+  .ai-action {
+    position: relative;
+  }
+  
+  .ai-action .action-icon {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  
+  .ai-action .action-icon i {
+    color: white;
+  }
+  
+  .ai-action:hover .action-icon {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+    transform: scale(1.05);
+  }
+  
+  /* AI菜单样式 */
+  .ai-menu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    padding: 8px 0;
+    margin-top: 8px;
+    min-width: 150px;
+    animation: fadeInUp 0.3s ease;
+  }
+  
+  .ai-menu::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 6px solid white;
+  }
+  
+  .ai-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    color: #333;
+    font-size: 13px;
+  }
+  
+  .ai-menu-item:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  
+  .ai-menu-item i {
+    font-size: 14px;
+    margin-right: 8px;
+    color: #666;
+    width: 16px;
+    text-align: center;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+  
+  /* 地址操作按钮样式 */
+  .site-address-container {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .site-address-input {
+    flex: 1;
+    min-width: 300px;
+  }
+  
+  .address-actions {
+    display: flex;
+    align-items: center;
+    background: rgba(248, 249, 250, 0.8);
+    border-radius: 12px;
+    padding: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    margin-top: 2px;
+  }
+  
+  .address-action-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 8px;
+    user-select: none;
+  }
+  
+  .address-action-item:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  
+  .address-action-item.loading {
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  
+  .address-action-item.confirm:hover {
+    background: rgba(52, 199, 89, 0.1);
+  }
+  
+  .address-action-item.cancel:hover {
+    background: rgba(255, 59, 48, 0.1);
+  }
+  
+  .address-action-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .address-action-icon i {
+    font-size: 12px;
+    color: #666;
+    transition: all 0.2s ease;
+  }
+  
+  .address-action-item:hover .address-action-icon {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  
+  .address-action-item:hover .address-action-icon i {
+    color: #333;
+  }
+  
+  .address-action-item.confirm .address-action-icon {
+    background: linear-gradient(135deg, #34c759, #30d158);
+  }
+  
+  .address-action-item.confirm .address-action-icon i {
+    color: white;
+  }
+  
+  .address-action-item.cancel .address-action-icon {
+    background: linear-gradient(135deg, #ff3b30, #ff453a);
+  }
+  
+  .address-action-item.cancel .address-action-icon i {
+    color: white;
+  }
+  
+  .address-action-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: #333;
+    white-space: nowrap;
+  }
+  
+  .address-action-divider {
+    width: 1px;
+    height: 20px;
+    background: linear-gradient(to bottom, transparent, #ddd, transparent);
+    margin: 0 4px;
+  }
+
+  /* 响应式设计 */
+  @media (max-width: 768px) {
+    .seo-actions-container {
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    .action-divider {
+      width: 60%;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #ddd, transparent);
+      margin: 8px 0;
+    }
+    
+    .action-item {
+      flex-direction: row;
+      min-width: 200px;
+      padding: 16px;
+      text-align: left;
+    }
+    
+    .action-icon {
+      margin-bottom: 0;
+      margin-right: 16px;
+    }
+    
+    .action-text {
+      text-align: left;
+    }
+    
+    /* 地址操作按钮移动端适配 */
+    .site-address-container {
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .site-address-input {
+      min-width: auto;
+    }
+    
+    .address-actions {
+      align-self: stretch;
+      justify-content: center;
+    }
+    
+    .address-action-item {
+      flex: 1;
+      justify-content: center;
+    }
   }
 </style>
