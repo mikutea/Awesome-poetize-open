@@ -1967,10 +1967,4 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   font-size: 16px;
   color: var(--black);
 }
-
-/* 如果没有CSS变量定义，使用后备颜色 */
-.my-tag {
-  background: #fefcbf;
-  color: #2d3748;
-}
 </style> 
