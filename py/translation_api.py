@@ -659,9 +659,9 @@ class TranslationManager:
         import time
         start_time = time.time()
         
-        # 检查是否启用了AI摘要
+        # 检查是否启用了AI摘要（默认启用）
         summary_config = config.summary or {}
-        ai_enabled = summary_config.get('ai_enabled', False)
+        ai_enabled = summary_config.get('ai_enabled', True)  # 默认为True，启用AI摘要
         
         if ai_enabled and config.type == 'llm' and config.llm:
             try:
@@ -960,7 +960,7 @@ def register_translation_api(app):
                         'baidu': {'app_id': '', 'app_secret': ''},
                         'custom': {'api_url': '', 'api_key': '', 'app_secret': ''},
                         'llm': {'model': '', 'api_url': '', 'api_key': '', 'prompt': '', 'interface_type': 'auto'},
-                        'summary': {'ai_enabled': False, 'style': 'concise', 'max_length': 150, 'prompt': ''},
+                        'summary': {'ai_enabled': True, 'style': 'concise', 'max_length': 150, 'prompt': '请为以下文章生成一个简洁明了的摘要，突出文章的核心观点和主要内容，摘要长度控制在{max_length}字符以内。请直接返回摘要内容，不要添加任何前缀或说明：'},
                         'default_source_lang': 'zh',
                         'default_target_lang': 'en'
                     }

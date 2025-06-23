@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.utils.SmartSummaryGenerator;
 import com.ld.poetry.utils.TextRankSummaryGenerator;
+import com.ld.poetry.service.SummaryService;
 
 /**
  * <p>
@@ -83,6 +84,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private TranslationService translationService;
     
     @Autowired
+    private SummaryService summaryService;
+
+    @Autowired
     private RestTemplate restTemplate;
 
     @Value("${user.subscribe.format}")
@@ -113,12 +117,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setArticleTitle(articleVO.getArticleTitle());
         article.setArticleContent(articleVO.getArticleContent());
         
-        // 智能摘要生成（优先AI，回退TextRank）
-        if (StringUtils.hasText(articleVO.getArticleContent())) {
-            String smartSummary = generateArticleSummary(articleVO.getArticleContent());
-            article.setSummary(smartSummary);
-            log.debug("为新文章生成智能摘要: {}", smartSummary);
-        }
+        // 注意：摘要将在保存后异步生成，不在此处阻塞
+        article.setSummary(null); // 初始为空
         
         article.setSortId(articleVO.getSortId());
         article.setLabelId(articleVO.getLabelId());
@@ -152,6 +152,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         articleVO.setId(article.getId());
         
         PoetryCache.remove(CommonConst.SORT_INFO);
+        
+        // 异步生成摘要（高优先级）
+        summaryService.generateAndSaveSummaryAsync(article.getId());
 
         // 异步发送订阅邮件，避免阻塞保存操作
         if (articleVO.getViewStatus()) {
@@ -238,13 +241,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
 
         Integer userId = PoetryUtil.getUserId();
-        // 如果文章内容有更新，自动重新生成智能摘要（优先AI，回退TextRank）
-        String newSummary = null;
-        if (StringUtils.hasText(articleVO.getArticleContent())) {
-            newSummary = generateArticleSummary(articleVO.getArticleContent());
-            log.debug("为更新的文章重新生成智能摘要: {}", newSummary);
-        }
-
+        
         LambdaUpdateChainWrapper<Article> updateChainWrapper = lambdaUpdate()
                 .eq(Article::getId, articleVO.getId())
                 .eq(Article::getUserId, userId)
@@ -254,8 +251,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 .set(Article::getUpdateBy, PoetryUtil.getUsername())
                 .set(Article::getUpdateTime, LocalDateTime.now())
                 .set(Article::getVideoUrl, StringUtils.hasText(articleVO.getVideoUrl()) ? articleVO.getVideoUrl() : null)
-                .set(Article::getArticleContent, articleVO.getArticleContent())
-                .set(Article::getSummary, newSummary); // 更新智能摘要
+                .set(Article::getArticleContent, articleVO.getArticleContent());
 
         if (StringUtils.hasText(articleVO.getArticleCover())) {
             updateChainWrapper.set(Article::getArticleCover, articleVO.getArticleCover());
@@ -275,6 +271,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         updateChainWrapper.update();
         PoetryCache.remove(CommonConst.SORT_INFO);
+        
+        // 异步更新摘要（如果内容有变化）
+        if (StringUtils.hasText(articleVO.getArticleContent())) {
+            summaryService.updateSummaryAsync(articleVO.getId(), articleVO.getArticleContent());
+        }
 
         // 更新后重新翻译，TranslationService 内部完毕后预渲染
         new Thread(() -> translationService.refreshArticleTranslation(articleVO.getId())).start();

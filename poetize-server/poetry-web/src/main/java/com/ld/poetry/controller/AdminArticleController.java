@@ -6,6 +6,7 @@ import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.entity.*;
 import com.ld.poetry.service.ArticleService;
+import com.ld.poetry.service.SummaryService;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
@@ -35,6 +36,9 @@ public class AdminArticleController {
 
     @Autowired
     private ArticleService articleService;
+    
+    @Autowired
+    private SummaryService summaryService;
     
     @Autowired
     private RestTemplate restTemplate;
@@ -134,5 +138,49 @@ public class AdminArticleController {
     @LoginCheck(1)
     public PoetryResult<ArticleVO> getArticleByIdForUser(@RequestParam("id") Integer id) {
         return articleService.getArticleByIdForUser(id);
+    }
+    
+    /**
+     * 手动生成文章摘要
+     */
+    @PostMapping("/article/generateSummary")
+    @LoginCheck(1)
+    public PoetryResult generateSummary(@RequestParam Integer articleId) {
+        try {
+            summaryService.generateAndSaveSummaryAsync(articleId);
+            return PoetryResult.success("摘要生成任务已启动");
+        } catch (Exception e) {
+            log.error("启动摘要生成任务失败", e);
+            return PoetryResult.fail("启动摘要生成任务失败：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 批量生成摘要（为所有没有摘要的文章生成摘要）
+     */
+    @PostMapping("/article/generateAllSummaries") 
+    @LoginCheck(0)  // Boss权限
+    public PoetryResult generateAllSummaries() {
+        try {
+            // 查找所有没有摘要的文章
+            java.util.List<Article> articlesWithoutSummary = articleService.lambdaQuery()
+                .select(Article::getId)
+                .and(wrapper -> wrapper.isNull(Article::getSummary).or().eq(Article::getSummary, ""))
+                .list();
+                
+            if (articlesWithoutSummary.isEmpty()) {
+                return PoetryResult.success("所有文章都已有摘要");
+            }
+            
+            // 异步生成所有摘要
+            for (Article article : articlesWithoutSummary) {
+                summaryService.generateAndSaveSummaryAsync(article.getId());
+            }
+            
+            return PoetryResult.success("已启动" + articlesWithoutSummary.size() + "篇文章的摘要生成任务");
+        } catch (Exception e) {
+            log.error("批量生成摘要失败", e);
+            return PoetryResult.fail("批量生成摘要失败：" + e.getMessage());
+        }
     }
 }

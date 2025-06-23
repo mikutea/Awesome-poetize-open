@@ -115,7 +115,7 @@
           </span>
         </div>
         <!-- 内容 -->
-        <div class="recent-post-desc" v-html="article.summary || article.articleContent"></div>
+        <div class="recent-post-desc" v-html="article.summary || $common.removeMarkdown(article.articleContent)"></div>
         <!-- 分类 标签 -->
         <div class="sort-label">
           <span style="margin-right: 12px"

@@ -579,18 +579,8 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://poetize-pyt
 const md = new MarkdownIt({
   html: true,
   linkify: true,
-  breaks: true,
-  highlight(str, lang) {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return '<pre class="hljs"><code>' +
-               hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
-               '</code></pre>';
-      } catch (_) {}
-    }
-    return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>';
-  }
-});
+  breaks: true
+}).use(require('markdown-it-multimd-table'));
 
 // 完整版：先尝试 manifest.json，失败则解析 index.html，结果缓存 10 分钟
 const assetCache = { assets: null, lastFetch: 0 };
