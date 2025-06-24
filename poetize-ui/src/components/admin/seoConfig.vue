@@ -93,6 +93,78 @@
           <el-input v-model="seoConfig.default_author" maxlength="30"></el-input>
         </el-form-item>
         
+        <el-form-item label="智能图标生成">
+          <div class="icon-generator-simple">
+            <!-- 上传区域 -->
+            <div class="upload-card">
+              <el-upload
+                ref="iconUpload"
+                action="#"
+                :auto-upload="false"
+                :show-file-list="false"
+                :accept="'image/*'"
+                :on-change="handleIconUpload"
+                drag
+                class="simple-upload">
+                
+                <div class="upload-content" v-if="!uploadedImage">
+                  <i class="el-icon-upload2"></i>
+                  <p>拖拽图片到此处或点击上传</p>
+                  <span>建议512x512以上PNG/JPG，一键生成全套图标和封面图</span>
+                </div>
+                
+                <div class="file-preview" v-else>
+                  <img :src="getImagePreview(uploadedImage)" alt="预览">
+                  <div class="file-name">{{ uploadedImage.name }}</div>
+                </div>
+              </el-upload>
+              
+              <!-- 操作按钮 -->
+              <div class="actions" v-if="uploadedImage">
+                <el-button 
+                  type="primary" 
+                  @click="batchGenerateIcons"
+                  :loading="generatingIcons"
+                  size="small">
+                  {{ generatingIcons ? '生成中...' : '生成全套图标' }}
+                </el-button>
+                <el-button @click="clearUploadedImage" size="small">重选</el-button>
+              </div>
+            </div>
+
+            <!-- 进度条 -->
+            <div class="progress-card" v-if="generatingIcons">
+              <el-progress :percentage="generationProgress" :show-text="false"></el-progress>
+              <p>{{ generationStatus }}</p>
+            </div>
+
+            <!-- 结果 -->
+            <div class="result-card" v-if="generationResults">
+              <div class="result-info">
+                <i class="el-icon-success"></i>
+                <span v-if="autoApplySuccess">成功生成 {{ generationResults.summary.successful }} 个图标并自动填入</span>
+                <span v-else>成功生成 {{ generationResults.summary.successful }} 个图标</span>
+              </div>
+              <div class="result-actions">
+                <el-button 
+                  v-if="!autoApplySuccess"
+                  type="success" 
+                  @click="applyGeneratedIcons" 
+                  size="small"
+                  :disabled="generationResults.summary.successful === 0">
+                  自动填入所有图标
+                </el-button>
+                <el-button @click="clearGenerationResults" size="small">{{ autoApplySuccess ? '完成' : '清除' }}</el-button>
+              </div>
+            </div>
+          </div>
+          <span class="tip">上传一张高清图片，自动生成并填入所有尺寸的网站图标、Logo和默认封面图</span>
+        </el-form-item>
+
+        <el-divider content-position="center">
+          <span style="color: #909399; font-size: 13px;">如需单独调整，可使用下方配置</span>
+        </el-divider>
+
         <el-form-item label="默认封面图">
           <div class="icon-upload-container">
             <div style="display: flex">
@@ -177,6 +249,8 @@
             <div class="tab-description">
               配置网站在浏览器标签页、收藏夹、桌面快捷方式等场景下显示的图标
             </div>
+
+
             
             <el-form-item label="网站标签页图标">
               <div class="icon-upload-container">
@@ -271,70 +345,7 @@
               <span class="tip">建议尺寸：512×512像素，用于PWA应用启动屏幕和高分辨率显示</span>
             </el-form-item>
 
-              <el-form-item label="智能图标生成">
-                <div class="icon-generator-simple">
-                  <!-- 上传区域 -->
-                  <div class="upload-card">
-                    <el-upload
-                      ref="iconUpload"
-                      action="#"
-                      :auto-upload="false"
-                      :show-file-list="false"
-                      :accept="'image/*'"
-                      :on-change="handleIconUpload"
-                      drag
-                      class="simple-upload">
-                      
-                      <div class="upload-content" v-if="!uploadedImage">
-                        <i class="el-icon-upload2"></i>
-                        <p>拖拽图片到此处或点击上传</p>
-                        <span>建议512x512以上PNG/JPG</span>
-                      </div>
-                      
-                      <div class="file-preview" v-else>
-                        <img :src="getImagePreview(uploadedImage)" alt="预览">
-                        <div class="file-name">{{ uploadedImage.name }}</div>
-                      </div>
-                    </el-upload>
-                    
-                    <!-- 操作按钮 -->
-                    <div class="actions" v-if="uploadedImage">
-                      <el-button 
-                        type="primary" 
-                        @click="batchGenerateIcons"
-                        :loading="generatingIcons"
-                        size="small">
-                        {{ generatingIcons ? '生成中...' : '生成图标' }}
-                      </el-button>
-                      <el-button @click="clearUploadedImage" size="small">重选</el-button>
-                    </div>
-                  </div>
 
-                  <!-- 进度条 -->
-                  <div class="progress-card" v-if="generatingIcons">
-                    <el-progress :percentage="generationProgress" :show-text="false"></el-progress>
-                    <p>{{ generationStatus }}</p>
-                  </div>
-
-                  <!-- 结果 -->
-                  <div class="result-card" v-if="generationResults">
-                    <div class="result-info">
-                      <i class="el-icon-success"></i>
-                      <span>成功生成 {{ generationResults.summary.successful }} 个图标</span>
-                    </div>
-                    <div class="result-actions">
-                      <el-button 
-                        type="success" 
-                        @click="applyGeneratedIcons" 
-                        size="small"
-                        :disabled="generationResults.summary.successful === 0">
-                        应用配置
-                      </el-button>
-                      <el-button @click="clearGenerationResults" size="small">清除</el-button>
-                    </div>
-                  </div>
-                </div>
-              </el-form-item>
 
              <el-form-item label="图标预览">
                <div class="icon-preview">
@@ -1412,6 +1423,7 @@ export default {
       generationProgress: 0,
       generationStatus: '',
       generationResults: null,
+      autoApplySuccess: false,
       aiApiConfig: {
         provider: 'openai',
         api_key: '',
@@ -2023,9 +2035,19 @@ export default {
         if (response && response.code === 200) {
           this.generationResults = response.data;
           this.generationProgress = 100;
-          this.generationStatus = '全部完成！';
+          this.generationStatus = '生成完成，正在自动填入...';
           
-          this.$message.success(`图标生成完成！成功生成 ${response.data.summary.successful} 个图标`);
+          try {
+            // 自动应用生成的图标
+            await this.applyGeneratedIcons();
+            this.autoApplySuccess = true;
+          } catch (uploadError) {
+            console.error('自动填入图标失败:', uploadError);
+            this.$message.error('图标生成成功，但自动填入失败，请手动点击"自动填入所有图标"');
+            this.autoApplySuccess = false;
+            this.generationProgress = 100;
+            this.generationStatus = '生成完成！';
+          }
         } else {
           console.error('后端返回的完整响应:', response);
           throw new Error(response.message || '生成图标失败');
@@ -2054,6 +2076,9 @@ export default {
         } else {
           this.$message.error('图标生成失败: ' + (error.message || '未知错误'));
         }
+        
+        // 清理状态
+        this.clearGenerationResults();
       } finally {
         this.generatingIcons = false;
         // 延迟清除进度状态
@@ -2078,8 +2103,12 @@ export default {
         'apple_touch': 'apple_touch_icon',
         'pwa_192': 'site_icon_192',
         'pwa_512': 'site_icon_512',
-        'logo': 'site_logo'
+        'logo': 'site_logo',
+        'default_cover': 'og_image'
       };
+
+      console.log('开始自动填入图标，生成结果:', this.generationResults);
+      console.log('图标映射关系:', iconMapping);
 
       // 显示上传进度
       this.$message.info('正在上传生成的图标...');
@@ -2089,13 +2118,19 @@ export default {
         const uploadPromises = [];
 
         for (const [iconType, result] of Object.entries(results)) {
+          console.log(`处理图标类型: ${iconType}`, result);
           if (result.success && result.base64_data) {
             const configField = iconMapping[iconType];
             if (configField) {
+              console.log(`将要上传 ${iconType} 到字段 ${configField}`);
               // 创建上传任务
               const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField);
               uploadPromises.push(uploadPromise);
+            } else {
+              console.warn(`未找到图标类型 ${iconType} 的映射字段`);
             }
+          } else {
+            console.warn(`图标 ${iconType} 生成失败或数据缺失:`, result);
           }
         }
 
@@ -2103,29 +2138,67 @@ export default {
         const uploadResults = await Promise.allSettled(uploadPromises);
         
         // 统计成功上传的数量
-        uploadResults.forEach(result => {
+        const successDetails = [];
+        const failureDetails = [];
+        
+        uploadResults.forEach((result, index) => {
+          const iconType = Object.keys(results)[index];
           if (result.status === 'fulfilled') {
             uploadedCount++;
+            successDetails.push(iconType);
+            console.log(`图标 ${iconType} 上传成功:`, result.value);
           } else {
-            console.error('图标上传失败:', result.reason);
+            failureDetails.push(iconType);
+            console.error(`图标 ${iconType} 上传失败:`, result.reason);
           }
+        });
+        
+        console.log('上传统计:', {
+          成功: successDetails,
+          失败: failureDetails,
+          总数: uploadResults.length
         });
 
         if (uploadedCount > 0) {
-          this.$message.success(`已成功上传并应用 ${uploadedCount} 个图标，记得保存配置`);
-          this.clearGenerationResults();
+          const iconTypeMap = {
+            'favicon': '网站标签页图标',
+            'apple_touch': 'Apple Touch图标',
+            'pwa_192': 'PWA图标(192x192)',
+            'pwa_512': 'PWA图标(512x512)',
+            'logo': '网站Logo',
+            'default_cover': '默认封面图'
+          };
+          const successNames = successDetails.map(type => iconTypeMap[type] || type).join('、');
+          
+          this.$message.success(`已自动生成并填入 ${uploadedCount} 个图标：${successNames}，记得保存配置`);
+          this.autoApplySuccess = true;
+          
+          // 如果有失败的图标，也要提示
+          if (failureDetails.length > 0) {
+            const failureNames = failureDetails.map(type => iconTypeMap[type] || type).join('、');
+            setTimeout(() => {
+              this.$message.warning(`以下图标填入失败：${failureNames}，请检查或手动上传`);
+            }, 1000);
+          }
+          
+          // 延迟清除结果，让用户看到成功状态
+          setTimeout(() => {
+            this.clearGenerationResults();
+          }, 4000);
         } else {
-          this.$message.error('图标上传失败，请重试');
+          this.$message.error('所有图标上传都失败了，请检查网络或重试');
         }
 
       } catch (error) {
         console.error('批量上传图标失败:', error);
         this.$message.error('图标上传过程中出现错误: ' + error.message);
+        this.clearGenerationResults();
       }
     },
 
     clearGenerationResults() {
       this.generationResults = null;
+      this.autoApplySuccess = false;
       this.$message.info('已清除生成结果');
     },
 
