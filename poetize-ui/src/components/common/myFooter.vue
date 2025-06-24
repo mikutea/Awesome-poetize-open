@@ -50,9 +50,9 @@
           minHeight: (() => {
             const isMobile = this.viewportWidth <= 768;
             if (this.isMinimalFooter) {
-              return isMobile ? '80px' : '100px';
+              return isMobile ? '70px' : '90px';
             }
-            return isMobile ? '130px' : '180px';
+            return isMobile ? '120px' : '160px';
           })()
         };
 
@@ -166,7 +166,7 @@
     animation: gradientBG 10s ease infinite;
     position: relative;
     overflow: hidden;
-    min-height: 180px;
+    min-height: 160px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -219,15 +219,15 @@
 
   .footer-title {
     padding-top: 10px;
-    font-size: 18px;
+    font-size: 16px;
     position: relative;
     z-index: 10;
     font-weight: 600;
   }
 
   .icp, .icp a {
-    color: var(--maxGreyFont);
-    font-size: 16px;
+    color: var(--white);
+    font-size: 14px;
     position: relative;
     z-index: 10;
     font-weight: 400;
@@ -295,8 +295,7 @@
   }
 
   .copyright, .contact, .extra-info {
-    color: var(--maxGreyFont);
-    font-size: 16px;
+    font-size: 14px;
     position: relative;
     z-index: 10;
     font-weight: 400;
@@ -315,12 +314,12 @@
   @media (max-width: 768px) {
     .myFooter {
       border-radius: 0;
-      min-height: 130px;
+      min-height: 120px;
     }
     
     /* 极简模式下进一步减小高度 */
     .myFooter.minimal {
-      min-height: 80px;
+      min-height: 70px;
     }
     
     .footer-title {
@@ -336,7 +335,7 @@
   }
 
   .myFooter.minimal {
-    min-height: 100px;
+    min-height: 90px;
   }
 
 </style>
