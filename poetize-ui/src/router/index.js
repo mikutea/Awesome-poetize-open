@@ -165,6 +165,11 @@ const routes = [
     path: '/verify',
     name: 'verify',
     component: () => import('../components/admin/verify')
+  },
+  {
+    path: '*',
+    name: 'notFound', 
+    component: () => import('../components/NotFound')
   }
 ]
 

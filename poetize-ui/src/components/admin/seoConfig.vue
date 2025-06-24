@@ -2117,11 +2117,11 @@ export default {
         let uploadedCount = 0;
         const uploadPromises = [];
 
-        for (const [iconType, result] of Object.entries(results)) {
+             for (const [iconType, result] of Object.entries(results)) {
           console.log(`处理图标类型: ${iconType}`, result);
-          if (result.success && result.base64_data) {
-            const configField = iconMapping[iconType];
-            if (configField) {
+         if (result.success && result.base64_data) {
+           const configField = iconMapping[iconType];
+           if (configField) {
               console.log(`将要上传 ${iconType} 到字段 ${configField}`);
               // 创建上传任务
               const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField);
@@ -2150,7 +2150,7 @@ export default {
           } else {
             failureDetails.push(iconType);
             console.error(`图标 ${iconType} 上传失败:`, result.reason);
-          }
+               }
         });
         
         console.log('上传统计:', {
@@ -2183,9 +2183,9 @@ export default {
           
           // 延迟清除结果，让用户看到成功状态
           setTimeout(() => {
-            this.clearGenerationResults();
+        this.clearGenerationResults();
           }, 4000);
-        } else {
+      } else {
           this.$message.error('所有图标上传都失败了，请检查网络或重试');
         }
 
@@ -3681,7 +3681,7 @@ export default {
     .result-actions {
       flex-direction: column;
     }
-
+    
     /* 移动端图片预览适配 */
     .table-td-thumb {
       width: 36px !important;

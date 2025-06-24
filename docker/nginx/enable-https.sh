@@ -184,10 +184,10 @@ if [ $IS_LOCAL -eq 1 ]; then
         # 如果nginx已经运行，使用reload，否则跳过（初始启动时会由主命令启动nginx）
         if pidof nginx >/dev/null; then
             echo "应用HTTPS配置（重新加载）..."
-            nginx -s reload || {
-                handle_error "Nginx重新加载配置失败"
-                exit 0
-            }
+                nginx -s reload || {
+                    handle_error "Nginx重新加载配置失败"
+                    exit 0
+                }
         else
             echo "Nginx尚未运行，跳过重新加载，将在启动时应用配置"
         fi
@@ -291,10 +291,10 @@ if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
         # 如果nginx已经运行，使用reload，否则跳过（初始启动时会由主命令启动nginx）
         if pidof nginx >/dev/null; then
             echo "应用HTTPS配置（重新加载）..."
-            nginx -s reload || {
-                handle_error "Nginx重新加载配置失败"
-                exit 0
-            }
+                nginx -s reload || {
+                    handle_error "Nginx重新加载配置失败"
+                    exit 0
+                }
         else
             echo "Nginx尚未运行，跳过重新加载，将在启动时应用配置"
         fi
