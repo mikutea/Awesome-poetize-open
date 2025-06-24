@@ -94,8 +94,26 @@
         </el-form-item>
         
         <el-form-item label="默认封面图">
-          <el-input v-model="seoConfig.og_image" placeholder="输入图片URL"></el-input>
-          <span class="tip">用于在社交媒体分享时显示的默认图片</span>
+          <div class="icon-upload-container">
+            <div style="display: flex">
+              <el-input v-model="seoConfig.og_image" placeholder="输入图片URL或点击上传"></el-input>
+              <el-image lazy class="table-td-thumb"
+                        style="margin-left: 10px"
+                        v-if="seoConfig.og_image"
+                        :preview-src-list="[seoConfig.og_image]"
+                        :src="seoConfig.og_image"
+                        fit="cover"></el-image>
+            </div>
+            <uploadPicture 
+              :isAdmin="true" 
+              :prefix="'seoOgImage'" 
+              @addPicture="addOgImage"
+              :maxSize="2" 
+              :maxNumber="1" 
+              class="upload-btn">
+            </uploadPicture>
+          </div>
+          <span class="tip">当文章无封面图时使用的默认图片，建议尺寸1200×630像素</span>
         </el-form-item>
         
         <el-divider content-position="left">
@@ -110,7 +128,15 @@
           <el-tab-pane label="通用设置">
             <el-form-item label="默认分享图片">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.og_image" placeholder="输入图片URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.og_image" placeholder="输入图片URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.og_image"
+                            :preview-src-list="[seoConfig.og_image]"
+                            :src="seoConfig.og_image"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoOgImage'" 
@@ -125,7 +151,15 @@
             
             <el-form-item label="网站Logo">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.site_logo" placeholder="输入Logo URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.site_logo" placeholder="输入Logo URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.site_logo"
+                            :preview-src-list="[seoConfig.site_logo]"
+                            :src="seoConfig.site_logo"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoSiteLogo'" 
@@ -146,7 +180,15 @@
             
             <el-form-item label="网站标签页图标">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.site_icon" placeholder="输入图标URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.site_icon" placeholder="输入图标URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.site_icon"
+                            :preview-src-list="[seoConfig.site_icon]"
+                            :src="seoConfig.site_icon"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoSiteIcon'" 
@@ -162,7 +204,15 @@
 
             <el-form-item label="Apple Touch图标">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.apple_touch_icon" placeholder="输入图标URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.apple_touch_icon" placeholder="输入图标URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.apple_touch_icon"
+                            :preview-src-list="[seoConfig.apple_touch_icon]"
+                            :src="seoConfig.apple_touch_icon"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoAppleTouchIcon'" 
@@ -177,7 +227,15 @@
 
             <el-form-item label="PWA图标 (192x192)">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.site_icon_192" placeholder="输入图标URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.site_icon_192" placeholder="输入图标URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.site_icon_192"
+                            :preview-src-list="[seoConfig.site_icon_192]"
+                            :src="seoConfig.site_icon_192"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoSiteIcon192'" 
@@ -192,7 +250,15 @@
 
             <el-form-item label="PWA图标 (512x512)">
               <div class="icon-upload-container">
-                <el-input v-model="seoConfig.site_icon_512" placeholder="输入图标URL或点击上传"></el-input>
+                <div style="display: flex">
+                  <el-input v-model="seoConfig.site_icon_512" placeholder="输入图标URL或点击上传"></el-input>
+                  <el-image lazy class="table-td-thumb"
+                            style="margin-left: 10px"
+                            v-if="seoConfig.site_icon_512"
+                            :preview-src-list="[seoConfig.site_icon_512]"
+                            :src="seoConfig.site_icon_512"
+                            fit="cover"></el-image>
+                </div>
                 <uploadPicture 
                   :isAdmin="true" 
                   :prefix="'seoSiteIcon512'" 
@@ -356,8 +422,16 @@
 
               <el-form-item label="桌面端截图">
                 <div class="icon-upload-container">
-                  <el-input v-model="seoConfig.pwa_screenshot_desktop" placeholder="输入桌面端截图URL或点击上传">
-                  </el-input>
+                  <div style="display: flex">
+                    <el-input v-model="seoConfig.pwa_screenshot_desktop" placeholder="输入桌面端截图URL或点击上传">
+                    </el-input>
+                    <el-image lazy class="table-td-thumb"
+                              style="margin-left: 10px"
+                              v-if="seoConfig.pwa_screenshot_desktop"
+                              :preview-src-list="[seoConfig.pwa_screenshot_desktop]"
+                              :src="seoConfig.pwa_screenshot_desktop"
+                              fit="cover"></el-image>
+                  </div>
                   <uploadPicture 
                     :isAdmin="true" 
                     :prefix="'pwaDeskScreenshot'" 
@@ -372,8 +446,16 @@
 
               <el-form-item label="移动端截图">
                 <div class="icon-upload-container">
-                  <el-input v-model="seoConfig.pwa_screenshot_mobile" placeholder="输入移动端截图URL或点击上传">
-                  </el-input>
+                  <div style="display: flex">
+                    <el-input v-model="seoConfig.pwa_screenshot_mobile" placeholder="输入移动端截图URL或点击上传">
+                    </el-input>
+                    <el-image lazy class="table-td-thumb"
+                              style="margin-left: 10px"
+                              v-if="seoConfig.pwa_screenshot_mobile"
+                              :preview-src-list="[seoConfig.pwa_screenshot_mobile]"
+                              :src="seoConfig.pwa_screenshot_mobile"
+                              fit="cover"></el-image>
+                  </div>
                   <uploadPicture 
                     :isAdmin="true" 
                     :prefix="'pwaMobileScreenshot'" 
