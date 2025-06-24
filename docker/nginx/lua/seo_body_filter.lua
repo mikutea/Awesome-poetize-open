@@ -137,6 +137,9 @@ end
 
 -- 注入图标数据
 if ngx.ctx.icon_data and type(ngx.ctx.icon_data) == "string" and ngx.ctx.icon_data ~= "" and not ngx.ctx.icon_injected then
+    -- 首先移除现有的favicon相关标签
+    chunk = ngx.re.gsub(chunk, [[<link[^>]*rel=["\']?(?:icon|shortcut icon|apple-touch-icon)["\']?[^>]*>]], "", "jo")
+    
     -- 查找图标占位符并替换
     local icon_placeholder_exist = string.find(chunk, "<!-- ICON_META_PLACEHOLDER -->", 1, true)
     if icon_placeholder_exist then

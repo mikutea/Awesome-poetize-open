@@ -272,74 +272,69 @@
             </el-form-item>
 
               <el-form-item label="智能图标生成">
-               <div class="smart-icon-generator">
-                 <div class="generator-description">
-                   <h4>🤖 一键生成全套图标</h4>
-                   <p>上传一张高清图片，自动生成所有尺寸的网站图标，支持格式转换和智能压缩</p>
-                 </div>
-                 
-                 <div class="generator-upload">
-                   <el-upload
-                     ref="iconUpload"
-                     action="#"
-                     :auto-upload="false"
-                     :show-file-list="false"
-                     :accept="'image/*'"
-                     :on-change="handleIconUpload"
-                     drag
-                     class="smart-upload">
-                     <div class="upload-content">
-                       <i class="el-icon-upload"></i>
-                       <div class="upload-text">
-                         <p>点击或拖拽图片到此处</p>
-                         <p class="upload-hint">建议上传512x512以上的PNG或JPG图片</p>
-                       </div>
-                     </div>
-                   </el-upload>
-                   
-                   <div class="generator-actions" v-if="uploadedImage">
-                     <el-button 
-                       type="primary" 
-                       @click="batchGenerateIcons"
-                       :loading="generatingIcons"
-                       class="generate-btn">
-                       {{ generatingIcons ? '生成中...' : '🚀 生成全套图标' }}
-                     </el-button>
-                     
-                     <el-button @click="clearUploadedImage" class="clear-btn">
-                       清除
-                     </el-button>
-                   </div>
-                 </div>
-                 
-                 <div class="generation-progress" v-if="generatingIcons">
-                   <el-progress :percentage="generationProgress" :show-text="false"></el-progress>
-                   <p class="progress-text">{{ generationStatus }}</p>
-                 </div>
-                 
-                 <div class="generation-results" v-if="generationResults">
-                   <h4>✨ 生成结果</h4>
-                   <div class="results-summary">
-                     <span class="result-item">成功: {{ generationResults.summary.successful }}</span>
-                     <span class="result-item">总数: {{ generationResults.summary.total_types }}</span>
-                     <span class="result-item">压缩率: {{ generationResults.summary.overall_compression }}%</span>
-                   </div>
-                   
-                   <div class="results-actions">
-                     <el-button 
-                       type="success" 
-                       @click="applyGeneratedIcons"
-                       :disabled="generationResults.summary.successful === 0">
-                       ✅ 应用到配置
-                     </el-button>
-                     
-                     <el-button @click="clearGenerationResults">
-                       清除结果
-                     </el-button>
-                   </div>
-                 </div>
-               </div>
-             </el-form-item>
+                <div class="icon-generator-simple">
+                  <!-- 上传区域 -->
+                  <div class="upload-card">
+                    <el-upload
+                      ref="iconUpload"
+                      action="#"
+                      :auto-upload="false"
+                      :show-file-list="false"
+                      :accept="'image/*'"
+                      :on-change="handleIconUpload"
+                      drag
+                      class="simple-upload">
+                      
+                      <div class="upload-content" v-if="!uploadedImage">
+                        <i class="el-icon-upload2"></i>
+                        <p>拖拽图片到此处或点击上传</p>
+                        <span>建议512x512以上PNG/JPG</span>
+                      </div>
+                      
+                      <div class="file-preview" v-else>
+                        <img :src="getImagePreview(uploadedImage)" alt="预览">
+                        <div class="file-name">{{ uploadedImage.name }}</div>
+                      </div>
+                    </el-upload>
+                    
+                    <!-- 操作按钮 -->
+                    <div class="actions" v-if="uploadedImage">
+                      <el-button 
+                        type="primary" 
+                        @click="batchGenerateIcons"
+                        :loading="generatingIcons"
+                        size="small">
+                        {{ generatingIcons ? '生成中...' : '生成图标' }}
+                      </el-button>
+                      <el-button @click="clearUploadedImage" size="small">重选</el-button>
+                    </div>
+                  </div>
+
+                  <!-- 进度条 -->
+                  <div class="progress-card" v-if="generatingIcons">
+                    <el-progress :percentage="generationProgress" :show-text="false"></el-progress>
+                    <p>{{ generationStatus }}</p>
+                  </div>
+
+                  <!-- 结果 -->
+                  <div class="result-card" v-if="generationResults">
+                    <div class="result-info">
+                      <i class="el-icon-success"></i>
+                      <span>成功生成 {{ generationResults.summary.successful }} 个图标</span>
+                    </div>
+                    <div class="result-actions">
+                      <el-button 
+                        type="success" 
+                        @click="applyGeneratedIcons" 
+                        size="small"
+                        :disabled="generationResults.summary.successful === 0">
+                        应用配置
+                      </el-button>
+                      <el-button @click="clearGenerationResults" size="small">清除</el-button>
+                    </div>
+                  </div>
+                </div>
+              </el-form-item>
 
              <el-form-item label="图标预览">
                <div class="icon-preview">
@@ -2069,13 +2064,12 @@ export default {
       }
     },
 
-    applyGeneratedIcons() {
+    async applyGeneratedIcons() {
       if (!this.generationResults || !this.generationResults.results) {
         this.$message.error('没有可应用的图标结果');
         return;
       }
 
-      let appliedCount = 0;
       const results = this.generationResults.results;
 
       // 映射图标类型到配置字段
@@ -2087,43 +2081,143 @@ export default {
         'logo': 'site_logo'
       };
 
-             for (const [iconType, result] of Object.entries(results)) {
-         if (result.success && result.base64_data) {
-           const configField = iconMapping[iconType];
-           if (configField) {
-             // 确定MIME类型
-             let mimeType = 'image/png'; // 默认
-             if (result.format) {
-               const format = result.format.toLowerCase();
-               if (format === 'jpeg' || format === 'jpg') {
-                 mimeType = 'image/jpeg';
-               } else if (format === 'webp') {
-                 mimeType = 'image/webp';
-               } else if (format === 'ico') {
-                 mimeType = 'image/x-icon';
-               }
-             }
-             
-             // 将base64数据转换为data URL
-             const dataUrl = `data:${mimeType};base64,${result.base64_data}`;
-             this.seoConfig[configField] = dataUrl;
-             appliedCount++;
-           }
-         }
-       }
+      // 显示上传进度
+      this.$message.info('正在上传生成的图标...');
+      
+      try {
+        let uploadedCount = 0;
+        const uploadPromises = [];
 
-      if (appliedCount > 0) {
-        this.$message.success(`已应用 ${appliedCount} 个图标到配置中，记得保存配置`);
-        // 清除生成结果
-        this.clearGenerationResults();
-      } else {
-        this.$message.warning('没有可应用的图标');
+        for (const [iconType, result] of Object.entries(results)) {
+          if (result.success && result.base64_data) {
+            const configField = iconMapping[iconType];
+            if (configField) {
+              // 创建上传任务
+              const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField);
+              uploadPromises.push(uploadPromise);
+            }
+          }
+        }
+
+        // 并行上传所有图标
+        const uploadResults = await Promise.allSettled(uploadPromises);
+        
+        // 统计成功上传的数量
+        uploadResults.forEach(result => {
+          if (result.status === 'fulfilled') {
+            uploadedCount++;
+          } else {
+            console.error('图标上传失败:', result.reason);
+          }
+        });
+
+        if (uploadedCount > 0) {
+          this.$message.success(`已成功上传并应用 ${uploadedCount} 个图标，记得保存配置`);
+          this.clearGenerationResults();
+        } else {
+          this.$message.error('图标上传失败，请重试');
+        }
+
+      } catch (error) {
+        console.error('批量上传图标失败:', error);
+        this.$message.error('图标上传过程中出现错误: ' + error.message);
       }
     },
 
     clearGenerationResults() {
       this.generationResults = null;
       this.$message.info('已清除生成结果');
+    },
+
+    // 获取图片预览URL
+    getImagePreview(file) {
+      if (file) {
+        return URL.createObjectURL(file);
+      }
+      return '';
+    },
+
+    // 将base64转换为Blob对象
+    base64ToBlob(base64Data, format) {
+      try {
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers);
+        
+        // 确定MIME类型
+        let mimeType = 'image/png'; // 默认
+        if (format) {
+          const formatLower = format.toLowerCase();
+          if (formatLower === 'jpeg' || formatLower === 'jpg') {
+            mimeType = 'image/jpeg';
+          } else if (formatLower === 'webp') {
+            mimeType = 'image/webp';
+          } else if (formatLower === 'ico') {
+            mimeType = 'image/x-icon';
+          } else if (formatLower === 'png') {
+            mimeType = 'image/png';
+          }
+        }
+        
+        return new Blob([byteArray], { type: mimeType });
+      } catch (error) {
+        console.error('base64转换失败:', error);
+        throw new Error('图片数据格式错误');
+      }
+    },
+
+    // 上传单个图标到服务器
+    async uploadIconToServer(base64Data, format, iconType, configField) {
+      try {
+        // 转换base64为Blob
+        const blob = this.base64ToBlob(base64Data, format);
+        
+        // 生成文件信息
+        const fileExtension = format === 'ico' ? 'ico' : (format || 'png');
+        const fileName = `generated_${iconType}.${fileExtension}`;
+        const prefix = `seo${iconType.charAt(0).toUpperCase() + iconType.slice(1)}`;
+        
+        // 生成key（参考uploadPicture组件的逻辑）
+        const username = this.$store.state.currentAdmin.username.replace(/[^a-zA-Z]/g, '') + this.$store.state.currentAdmin.id;
+        const key = prefix + "/" + username + new Date().getTime() + Math.floor(Math.random() * 1000) + "." + fileExtension;
+        
+        // 创建FormData（使用与uploadPicture相同的字段结构）
+        const formData = new FormData();
+        formData.append('file', blob, fileName);
+        formData.append('originalName', fileName);
+        formData.append('key', key);
+        formData.append('relativePath', key);
+        formData.append('type', prefix);
+        formData.append('storeType', 'local');
+
+        console.log(`开始上传图标: ${iconType} (${fileName})`);
+
+        // 调用现有的上传接口
+        const response = await this.$http.upload(
+          this.$constant.baseURL + '/resource/upload',
+          formData,
+          true  // isAdmin = true
+        );
+
+        if (response && response.data) {
+          // 上传成功，设置配置字段
+          this.seoConfig[configField] = response.data;
+          console.log(`图标上传成功: ${iconType} -> ${response.data}`);
+          return response.data;
+        } else {
+          console.error(`图标上传失败: ${iconType}`, response);
+          throw new Error(response.message || `${iconType} 上传失败`);
+        }
+
+      } catch (error) {
+        console.error(`上传图标 ${iconType} 时出错:`, error);
+        throw new Error(`${iconType} 上传失败: ${error.message}`);
+      }
     }
   },
 
@@ -3286,159 +3380,126 @@ export default {
     line-height: 1.5;
   }
 
-  /* 智能图标生成器样式 */
-  .smart-icon-generator {
+  /* 智能图标生成器样式 - 极简版 */
+  .icon-generator-simple {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .upload-card {
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
     padding: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 16px;
-    color: white;
-    margin-bottom: 20px;
   }
 
-  .generator-description h4 {
-    margin: 0 0 8px 0;
-    font-size: 18px;
-    font-weight: 600;
-  }
-
-  .generator-description p {
-    margin: 0 0 20px 0;
-    font-size: 14px;
-    opacity: 0.9;
-    line-height: 1.5;
-  }
-
-  .smart-upload {
-    margin-bottom: 16px;
-  }
-
-  .smart-upload .el-upload-dragger {
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px dashed rgba(255, 255, 255, 0.3);
-    border-radius: 12px;
+  .simple-upload .el-upload-dragger {
+    background: #fafbfc;
+    border: 2px dashed #ddd;
+    border-radius: 6px;
     width: 100%;
     height: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
   }
 
-  .smart-upload .el-upload-dragger:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.5);
-    transform: translateY(-2px);
+  .simple-upload .el-upload-dragger:hover {
+    border-color: #409EFF;
+    background: #f0f9ff;
   }
 
   .upload-content {
     text-align: center;
   }
 
-  .upload-content .el-icon-upload {
-    font-size: 32px;
-    color: white;
+  .upload-content i {
+    font-size: 28px;
+    color: #909399;
     margin-bottom: 8px;
   }
 
-  .upload-text p {
-    margin: 4px 0;
-    color: white;
+  .upload-content p {
+    margin: 8px 0 4px 0;
+    color: #606266;
+    font-size: 14px;
   }
 
-  .upload-text .upload-hint {
+  .upload-content span {
+    color: #909399;
     font-size: 12px;
-    opacity: 0.8;
   }
 
-  .generator-actions {
+  .file-preview {
     display: flex;
-    gap: 12px;
     align-items: center;
-    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px;
   }
 
-  .generate-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    font-weight: 600;
-    padding: 10px 20px;
+  .file-preview img {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
   }
 
-  .clear-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
+  .file-name {
+    font-size: 14px;
+    color: #606266;
   }
 
-  .clear-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
-    color: white;
+  .actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f0;
   }
 
-  .generation-progress {
-    margin: 16px 0;
+  .progress-card, .result-card {
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    padding: 16px;
   }
 
-  .generation-progress .el-progress-bar__outer {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .generation-progress .el-progress-bar__inner {
-    background: linear-gradient(90deg, #fff 0%, #f0f0f0 100%);
-  }
-
-  .progress-text {
+  .progress-card p {
     text-align: center;
     margin: 8px 0 0 0;
-    font-size: 14px;
-    opacity: 0.9;
+    font-size: 13px;
+    color: #909399;
   }
 
-  .generation-results {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 16px;
-    margin-top: 16px;
+  .result-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
   }
 
-  .generation-results h4 {
-    margin: 0 0 12px 0;
+  .result-info i {
+    color: #67C23A;
     font-size: 16px;
-    font-weight: 600;
   }
 
-  .results-summary {
+  .result-actions {
     display: flex;
-    gap: 16px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
   }
 
-  .result-item {
-    background: rgba(255, 255, 255, 0.15);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  .results-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .results-actions .el-button {
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
-    border: none;
-    font-weight: 500;
-  }
-
-  .results-actions .el-button:hover {
-    background: white;
-    transform: translateY(-1px);
+  /* 输入框旁边的图片预览样式 - 固定尺寸 */
+  .table-td-thumb {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid #e4e7ed;
+    flex-shrink: 0;
   }
 
   /* 响应式设计 */
@@ -3519,46 +3580,39 @@ export default {
     }
     
     /* 智能图标生成器移动端适配 */
-    .smart-icon-generator {
+    .upload-card {
       padding: 16px;
     }
     
-    .generator-description h4 {
-      font-size: 16px;
-    }
-    
-    .generator-description p {
-      font-size: 13px;
-    }
-    
-    .smart-upload .el-upload-dragger {
+    .simple-upload .el-upload-dragger {
       height: 100px;
     }
     
-    .upload-content .el-icon-upload {
+    .upload-content i {
       font-size: 24px;
     }
     
-    .upload-text p {
+    .upload-content p {
       font-size: 13px;
     }
     
-    .upload-text .upload-hint {
+    .upload-content span {
       font-size: 11px;
     }
     
-    .generator-actions {
+    .actions {
       flex-direction: column;
       align-items: stretch;
     }
     
-    .results-summary {
+    .result-actions {
       flex-direction: column;
-      gap: 8px;
     }
-    
-    .results-actions {
-      flex-direction: column;
+
+    /* 移动端图片预览适配 */
+    .table-td-thumb {
+      width: 36px !important;
+      height: 36px !important;
     }
   }
 </style>
