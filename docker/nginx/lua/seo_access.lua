@@ -236,10 +236,39 @@ local function generate_icon_meta_tags(seo_config)
     return table.concat(meta_tags, '\n')
 end
 
+-- 输入验证函数
+local function validate_numeric_id(id, max_length)
+    if not id or id == "" then
+        return nil
+    end
+    
+    -- 限制长度，防止超长输入
+    max_length = max_length or 10
+    if string.len(id) > max_length then
+        ngx.log(ngx.WARN, "ID长度超出限制: " .. id)
+        return nil
+    end
+    
+    -- 只允许数字字符，防止注入攻击
+    if not string.match(id, "^%d+$") then
+        ngx.log(ngx.WARN, "ID包含非法字符: " .. id)
+        return nil
+    end
+    
+    -- 转换为数字并检查范围
+    local num_id = tonumber(id)
+    if not num_id or num_id <= 0 or num_id > 999999999 then
+        ngx.log(ngx.WARN, "ID数值超出有效范围: " .. id)
+        return nil
+    end
+    
+    return id
+end
+
 -- 获取文章SEO数据
-local article_id = ngx.var.article_id
-if article_id and article_id ~= "" then
-    -- ngx.log(ngx.INFO, "检测到文章ID: ", article_id)
+local article_id = validate_numeric_id(ngx.var.article_id)
+if article_id then
+    -- ngx.log(ngx.INFO, "检测到有效文章ID: ", article_id)
     local data = fetch_api("/python/seo/getArticleMeta", {
         id = article_id
     })
@@ -254,9 +283,9 @@ end
 
 -- 如果没有文章数据，尝试获取分类SEO数据
 if not ngx.ctx.seo_data or ngx.ctx.seo_data == "" then
-    local category_id = ngx.var.category_id
-    if category_id and category_id ~= "" then
-        -- ngx.log(ngx.INFO, "检测到分类ID: ", category_id)
+    local category_id = validate_numeric_id(ngx.var.category_id)
+    if category_id then
+        -- ngx.log(ngx.INFO, "检测到有效分类ID: ", category_id)
         local data = fetch_api("/python/seo/getCategoryMeta", {
             id = category_id
         })

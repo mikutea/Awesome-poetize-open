@@ -228,6 +228,32 @@ fi
 
 echo "证书域名: $DOMAIN"
 
+# 权限检查和修复函数（与certbot脚本保持一致）
+fix_cert_permissions_if_needed() {
+    # 检查是否能以nginx用户权限读取证书文件
+    if [ -f "$CERT_DIR/fullchain.pem" ] && [ ! -r "$CERT_DIR/fullchain.pem" ]; then
+        echo "警告：检测到证书文件权限问题，尝试修复..."
+        
+        # 以root权限修复权限（如果当前有root权限）
+        if [ "$(id -u)" = "0" ]; then
+            echo "以root权限修复证书文件权限..."
+            find /etc/letsencrypt/live -type d -exec chmod 755 {} \; 2>/dev/null || true
+            find /etc/letsencrypt/archive -type d -exec chmod 755 {} \; 2>/dev/null || true
+            find /etc/letsencrypt/live -name "*.pem" -exec chmod 644 {} \; 2>/dev/null || true
+            find /etc/letsencrypt/archive -name "*.pem" -exec chmod 644 {} \; 2>/dev/null || true
+            chmod 755 /etc/letsencrypt/live 2>/dev/null || true
+            chmod 755 /etc/letsencrypt/archive 2>/dev/null || true
+            echo "证书文件权限修复完成"
+        else
+            echo "当前用户不是root，无法修复权限"
+            echo "请确保certbot容器已正确设置证书文件权限"
+        fi
+    fi
+}
+
+# 修复证书权限（如果需要）
+fix_cert_permissions_if_needed
+
 # 检查证书文件是否存在
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     echo "找到SSL证书文件，启用HTTPS配置..."

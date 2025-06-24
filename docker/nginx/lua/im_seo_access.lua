@@ -1,6 +1,23 @@
 local cjson = require "cjson"
 local http = require "resty.http"
 
+-- 安全检查：验证请求URI是否包含可疑字符
+local uri = ngx.var.uri
+if uri and (
+    string.match(uri, "%.%.") or     -- 目录遍历
+    string.match(uri, "<") or        -- HTML注入
+    string.match(uri, ">") or        -- HTML注入
+    string.match(uri, "'") or        -- SQL注入
+    string.match(uri, '"') or        -- SQL注入  
+    string.match(uri, ";") or        -- 命令注入
+    string.match(uri, "&") or        -- 命令注入
+    string.match(uri, "|") or        -- 命令注入
+    string.len(uri) > 200            -- 超长URI
+) then
+    ngx.log(ngx.WARN, "IM页面检测到可疑URI，阻止处理: " .. uri)
+    return
+end
+
 -- 使用ngx.ctx来存储数据
 ngx.ctx.seo_data = ""
 ngx.ctx.title = ""
