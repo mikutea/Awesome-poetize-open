@@ -692,4 +692,144 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         
         return null;
     }
+
+    @Override
+    public PoetryResult<List<ArticleVO>> getArticlesByLikesTop() {
+        try {
+            // 查询可见的文章，获取所有需要计算热度的字段
+            LambdaQueryChainWrapper<Article> lambdaQuery = lambdaQuery()
+                    .select(Article::getId, Article::getUserId, Article::getSortId, Article::getLabelId, 
+                            Article::getArticleCover, Article::getArticleTitle, Article::getArticleContent,
+                            Article::getSummary, Article::getViewCount, Article::getLikeCount, 
+                            Article::getCommentStatus, Article::getRecommendStatus, Article::getViewStatus,
+                            Article::getCreateTime, Article::getUpdateTime, Article::getVideoUrl)
+                    .eq(Article::getViewStatus, true)  // 只查询可见的文章
+                    .orderByDesc(Article::getCreateTime);  // 先按时间排序，后面会重新排序
+
+            List<Article> articles = lambdaQuery.list();
+
+            if (CollectionUtils.isEmpty(articles)) {
+                return PoetryResult.success(new ArrayList<>());
+            }
+
+            // 转换为ArticleVO并计算热度分数
+            List<ArticleVO> articleVOList = articles.stream().map(article -> {
+                // 如果内容太长，截取用于显示
+                if (StringUtils.hasText(article.getArticleContent()) && article.getArticleContent().length() > CommonConst.SUMMARY) {
+                    article.setArticleContent(article.getArticleContent().substring(0, CommonConst.SUMMARY)
+                            .replace("`", "").replace("#", "").replace(">", ""));
+                }
+
+                ArticleVO articleVO = buildArticleVO(article, false);
+                
+                // 使用数据库中存储的摘要
+                if (StringUtils.hasText(article.getSummary())) {
+                    articleVO.setSummary(article.getSummary());
+                }
+                
+                // 设置视频标识
+                articleVO.setHasVideo(StringUtils.hasText(article.getVideoUrl()));
+                
+                // 清空敏感信息
+                articleVO.setPassword(null);
+                articleVO.setVideoUrl(null);
+                
+                return articleVO;
+            }).collect(Collectors.toList());
+
+            // 计算每篇文章的热度分数并排序
+            articleVOList = articleVOList.stream()
+                    .sorted((a1, a2) -> {
+                        double score1 = calculateHotScore(a1);
+                        double score2 = calculateHotScore(a2);
+                        return Double.compare(score2, score1);  // 降序排列
+                    })
+                    .limit(10)  // 限制返回前10篇
+                    .collect(Collectors.toList());
+
+            log.info("获取热门文章成功，返回{}篇文章", articleVOList.size());
+            return PoetryResult.success(articleVOList);
+
+        } catch (Exception e) {
+            log.error("获取热门文章失败", e);
+            return PoetryResult.fail("获取热门文章失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 计算文章热度分数的智能算法
+     * 综合考虑浏览量、点赞数、评论数、发布时间等因素
+     * 
+     * @param articleVO 文章VO对象
+     * @return 热度分数（越高越热门）
+     */
+    private double calculateHotScore(ArticleVO articleVO) {
+        // 基础数据
+        int viewCount = articleVO.getViewCount() != null ? articleVO.getViewCount() : 0;
+        int likeCount = articleVO.getLikeCount() != null ? articleVO.getLikeCount() : 0;
+        int commentCount = articleVO.getCommentCount() != null ? articleVO.getCommentCount() : 0;
+        LocalDateTime createTime = articleVO.getCreateTime();
+        
+        // 1. 浏览量权重 (40%) - 标准化处理
+        double viewScore = Math.log10(Math.max(viewCount, 1)) * 40;
+        
+        // 2. 点赞数权重 (30%) - 点赞的价值比浏览更高
+        double likeScore = Math.log10(Math.max(likeCount, 1)) * 30 * 3; // 点赞权重加强
+        
+        // 3. 评论数权重 (20%) - 评论表示深度参与
+        double commentScore = Math.log10(Math.max(commentCount, 1)) * 20 * 5; // 评论权重更高
+        
+        // 4. 时间衰减因子 (10%) - 新文章有加成，但不会完全压倒旧的热门文章
+        double timeScore = 0;
+        if (createTime != null) {
+            long daysSinceCreation = java.time.Duration.between(createTime, LocalDateTime.now()).toDays();
+            
+            // 使用指数衰减，但设置一个底线
+            if (daysSinceCreation <= 7) {
+                // 一周内的文章有时间加成
+                timeScore = 10 * Math.exp(-daysSinceCreation / 7.0);
+            } else if (daysSinceCreation <= 30) {
+                // 一个月内的文章保持一定分数
+                timeScore = 5 * Math.exp(-(daysSinceCreation - 7) / 23.0);
+            } else {
+                // 超过一个月的文章，时间分数较低但不为0
+                timeScore = 1;
+            }
+        }
+        
+        // 5. 互动比率加成 - 点赞率和评论率高的文章额外加分
+        double engagementBonus = 0;
+        if (viewCount > 0) {
+            double likeRate = (double) likeCount / viewCount;
+            double commentRate = (double) commentCount / viewCount;
+            
+            // 点赞率超过1%的文章加分
+            if (likeRate > 0.01) {
+                engagementBonus += Math.min(likeRate * 1000, 10); // 最多加10分
+            }
+            
+            // 评论率超过0.5%的文章加分
+            if (commentRate > 0.005) {
+                engagementBonus += Math.min(commentRate * 2000, 15); // 最多加15分
+            }
+        }
+        
+        // 6. 推荐文章额外加分
+        double recommendBonus = 0;
+        if (Boolean.TRUE.equals(articleVO.getRecommendStatus())) {
+            recommendBonus = 20; // 被推荐的文章额外加20分
+        }
+        
+        // 计算最终热度分数
+        double finalScore = viewScore + likeScore + commentScore + timeScore + engagementBonus + recommendBonus;
+        
+        // 调试日志
+        if (log.isDebugEnabled()) {
+            log.debug("文章[{}]热度计算: 浏览({})={:.2f}, 点赞({})={:.2f}, 评论({})={:.2f}, 时间={:.2f}, 互动={:.2f}, 推荐={:.2f}, 总分={:.2f}",
+                    articleVO.getArticleTitle(), viewCount, viewScore, likeCount, likeScore, 
+                    commentCount, commentScore, timeScore, engagementBonus, recommendBonus, finalScore);
+        }
+        
+        return finalScore;
+    }
 }

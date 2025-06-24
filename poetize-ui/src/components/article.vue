@@ -512,13 +512,19 @@
           $("#toc-button").css("bottom", "8vh");
         }
       },
-      '$route.params.id': function() {
-        // 重置翻译内容
-        this.translatedTitle = '';
-        this.translatedContent = '';
-        
-        // 获取文章
-        this.getArticle();
+      '$route.params.id': function(newId, oldId) {
+        // 如果新的文章ID和当前组件的ID不同，说明需要更新
+        if (newId && newId !== this.id) {
+          // 重置翻译内容
+          this.translatedTitle = '';
+          this.translatedContent = '';
+          
+          // 更新组件的id数据
+          this.id = newId;
+          
+          // 获取文章
+          this.getArticle();
+        }
       },
       '$route': function(newRoute, oldRoute) {
         // 检查变化是否仅仅是语言参数的变化

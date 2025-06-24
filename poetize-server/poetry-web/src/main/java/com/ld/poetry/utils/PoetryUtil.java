@@ -173,9 +173,13 @@ public class PoetryUtil {
     }
 
     public static String getIpAddr(HttpServletRequest request) {
-        String ipAddress;
+        String ipAddress = null;
         try {
-            ipAddress = request.getHeader("x-forwarded-for");
+            // 优先获取X-Real-IP头部
+            ipAddress = request.getHeader("X-Real-IP");
+            if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
+                ipAddress = request.getHeader("x-forwarded-for");
+            }
             if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
                 ipAddress = request.getHeader("Proxy-Client-IP");
             }
@@ -184,21 +188,67 @@ public class PoetryUtil {
             }
             if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
                 ipAddress = request.getRemoteAddr();
-                if (ipAddress.equals("127.0.0.1") || ipAddress.equals("0:0:0:0:0:0:0:1")) {
-                    // 根据网卡取本机配置的IP
-                    ipAddress = InetAddress.getLocalHost().getHostAddress();
-                }
             }
+            
             // 对于通过多个代理的情况，第一个IP为客户端真实IP,多个IP按照','分割
-            if (ipAddress != null && ipAddress.length() > 15) {
-                if (ipAddress.indexOf(",") > 0) {
-                    ipAddress = ipAddress.substring(0, ipAddress.indexOf(","));
+            if (ipAddress != null && ipAddress.indexOf(",") > 0) {
+                ipAddress = ipAddress.substring(0, ipAddress.indexOf(",")).trim();
+            }
+            
+            // 过滤Docker内部IP和本地IP
+            if (ipAddress != null) {
+                // 如果是本地回环地址，尝试使用X-Forwarded-For中的真实IP
+                if (ipAddress.equals("127.0.0.1") || ipAddress.equals("0:0:0:0:0:0:0:1") || ipAddress.equals("::1")) {
+                    String forwardedFor = request.getHeader("x-forwarded-for");
+                    if (forwardedFor != null && !forwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(forwardedFor)) {
+                        String[] ips = forwardedFor.split(",");
+                        for (String ip : ips) {
+                            ip = ip.trim();
+                            if (!isInternalIP(ip)) {
+                                ipAddress = ip;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // 如果仍然是内部IP，标记为未知
+                if (isInternalIP(ipAddress)) {
+                    ipAddress = "unknown";
                 }
             }
         } catch (Exception e) {
-            ipAddress = null;
+            // 异常时设置为unknown而不是null
+            ipAddress = "unknown";
         }
-        return ipAddress;
+        
+        return ipAddress != null ? ipAddress : "unknown";
+    }
+    
+    /**
+     * 判断是否为内部IP地址
+     */
+    private static boolean isInternalIP(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return true;
+        }
+        
+        // 本地回环地址
+        if (ip.equals("127.0.0.1") || ip.equals("localhost") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
+            return true;
+        }
+        
+        // Docker内部网络地址
+        if (ip.startsWith("172.") || ip.startsWith("10.") || ip.startsWith("192.168.")) {
+            return true;
+        }
+        
+        // 其他无效IP
+        if (ip.equals("unknown") || ip.equals("0.0.0.0")) {
+            return true;
+        }
+        
+        return false;
     }
 
 

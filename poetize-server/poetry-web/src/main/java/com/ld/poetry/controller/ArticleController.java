@@ -451,6 +451,25 @@ public class ArticleController {
     }
 
     /**
+     * 获取热门文章列表（智能热度算法排序）
+     * 综合考虑浏览量、点赞数、评论数、发布时间、互动率等多个因素
+     */
+    @GetMapping("/getArticlesByLikesTop")
+    public PoetryResult<List<ArticleVO>> getArticlesByLikesTop() {
+        return articleService.getArticlesByLikesTop();
+    }
+
+    /**
+     * 获取热门文章列表（智能热度算法排序）
+     * 综合考虑浏览量、点赞数、评论数、发布时间、互动率等多个因素
+     * 推荐使用此端点，命名更准确
+     */
+    @GetMapping("/getHotArticles")
+    public PoetryResult<List<ArticleVO>> getHotArticles() {
+        return articleService.getArticlesByLikesTop();
+    }
+
+    /**
      * 接收SEO推送结果并发送邮件通知
      * 此接口由Python SEO模块调用
      */

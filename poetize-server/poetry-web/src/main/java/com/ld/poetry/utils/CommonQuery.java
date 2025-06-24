@@ -56,12 +56,17 @@ public class CommonQuery {
     }
 
     public void saveHistory(String ip) {
+        // 过滤无效IP，避免记录Docker内部IP和无效地址
+        if (ip == null || ip.isEmpty() || "unknown".equals(ip) || isInvalidIP(ip)) {
+            return;
+        }
+        
         Integer userId = PoetryUtil.getUserId();
         String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
 
         @SuppressWarnings("unchecked")
         CopyOnWriteArraySet<String> ipHistory = (CopyOnWriteArraySet<String>) PoetryCache.get(CommonConst.IP_HISTORY);
-        if (!ipHistory.contains(ipUser)) {
+        if (ipHistory != null && !ipHistory.contains(ipUser)) {
             synchronized (ipUser.intern()) {
                 if (!ipHistory.contains(ipUser)) {
                     ipHistory.add(ipUser);
@@ -82,12 +87,40 @@ public class CommonQuery {
                                 historyInfo.setCity(region[3]);
                             }
                         } catch (Exception e) {
+                            // IP解析失败时记录日志，但仍然保存IP记录
+                            System.err.println("IP地理位置解析失败: " + ip + ", 错误: " + e.getMessage());
                         }
                     }
                     historyInfoMapper.insert(historyInfo);
                 }
             }
         }
+    }
+    
+    /**
+     * 判断是否为无效IP地址
+     */
+    private boolean isInvalidIP(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return true;
+        }
+        
+        // 本地回环地址
+        if (ip.equals("127.0.0.1") || ip.equals("localhost") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
+            return true;
+        }
+        
+        // Docker内部网络地址
+        if (ip.startsWith("172.") || ip.startsWith("10.") || ip.startsWith("192.168.")) {
+            return true;
+        }
+        
+        // 其他无效IP
+        if (ip.equals("unknown") || ip.equals("0.0.0.0") || ip.equals("null")) {
+            return true;
+        }
+        
+        return false;
     }
 
     public User getUser(Integer userId) {

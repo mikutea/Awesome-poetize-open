@@ -160,7 +160,7 @@ export default {
     this.getRecommendations();
     
     // 设置页面标题
-    document.title = '页面未找到 - ' + (this.$store.state.webInfo.webName || 'Poetize');
+    document.title = '页面未找到 - 404';
   },
   methods: {
     goHome() {
@@ -191,7 +191,7 @@ export default {
     
     async getRecommendations() {
       try {
-        // 获取热门文章（这里需要根据实际API调整）
+        // 获取热门文章（智能热度算法排序，已修复重复计数问题）
         const res = await this.$http.get(this.$constant.baseURL + "/article/getArticlesByLikesTop");
         if (res.data && res.data.length > 0) {
           this.recommendations = res.data.slice(0, 4); // 只显示前4个
