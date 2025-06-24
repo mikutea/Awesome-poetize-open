@@ -150,7 +150,7 @@ print_summary() {
       printf "  安全连接: ${GREEN}可用${NC}\n"
     else
       printf "  ${RED}HTTPS未正确配置${NC}\n"
-      printf "  启用命令: ${YELLOW}docker exec poetize-nginx /enable-https.sh${NC}\n"
+      printf "  启用命令: ${YELLOW}docker exec --user root poetize-nginx /enable-https.sh${NC}\n"
       printf "  请检查域名DNS解析和防火墙配置\n"
     fi
     printf "\n"
@@ -179,7 +179,7 @@ print_summary() {
   printf "  停止服务: ${GREEN}%s down${NC}\n" "$DOCKER_COMPOSE_CMD"
   printf "  启动服务: ${GREEN}%s up -d${NC}\n" "$DOCKER_COMPOSE_CMD"
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    printf "  手动启用HTTPS: ${GREEN}docker exec poetize-nginx /enable-https.sh${NC}\n"
+    printf "  手动启用HTTPS: ${GREEN}docker exec --user root poetize-nginx /enable-https.sh${NC}\n"
   fi
   printf "\n"
   
@@ -1483,7 +1483,7 @@ start_services() {
   # 确保enable-https.sh有执行权限
   if [ -f "docker/nginx/enable-https.sh" ]; then
     info "确保enable-https.sh有执行权限..."
-    chmod +x docker/nginx/enable-https.sh || warning "无法修改docker/nginx/enable-https.sh权限，容器内可能会出现权限问题"
+    sudo chmod +x docker/nginx/enable-https.sh || warning "无法修改docker/nginx/enable-https.sh权限，容器内可能会出现权限问题"
     # 检查是否成功赋权
     if [ -x "docker/nginx/enable-https.sh" ]; then
       success "成功设置enable-https.sh执行权限"
@@ -1571,9 +1571,9 @@ setup_https() {
     
     # 先给容器内脚本赋予执行权限
     info "给enable-https.sh赋予执行权限..."
-    if ! docker exec poetize-nginx chmod +x /enable-https.sh; then
+    if ! sudo docker exec --user root poetize-nginx chmod +x /enable-https.sh; then
       warning "直接chmod失败，尝试使用sudo..."
-      if ! docker exec poetize-nginx sh -c "command -v sudo >/dev/null && sudo chmod +x /enable-https.sh || chmod +x /enable-https.sh"; then
+      if ! sudo docker exec --user root poetize-nginx sh -c "chmod +x /enable-https.sh"; then
         warning "无法给脚本赋予执行权限，可能会导致HTTPS启用失败"
       fi
     fi
@@ -1586,7 +1586,7 @@ setup_https() {
     for i in $(seq 1 $retry_count); do
       info "第 $i 次尝试启用HTTPS..."
       
-      if docker exec poetize-nginx /enable-https.sh; then
+      if sudo docker exec --user root poetize-nginx /enable-https.sh; then
         success=true
         break
       else
@@ -1603,11 +1603,11 @@ setup_https() {
       
       # 验证HTTPS配置是否生效
       info "验证HTTPS配置..."
-      if docker exec poetize-nginx nginx -t >/dev/null 2>&1; then
+      if sudo docker exec poetize-nginx nginx -t >/dev/null 2>&1; then
         info "Nginx配置验证通过"
         
         # 重新加载Nginx配置
-        if docker exec poetize-nginx nginx -s reload >/dev/null 2>&1; then
+        if sudo docker exec poetize-nginx nginx -s reload >/dev/null 2>&1; then
           success "Nginx配置已重新加载，HTTPS现在应该可以正常工作"
         else
           warning "Nginx重新加载失败，可能需要手动重启Nginx容器"
@@ -1615,31 +1615,31 @@ setup_https() {
       else
         warning "Nginx配置验证失败，请检查SSL配置"
         info "可以运行以下命令检查详细错误:"
-        info "  docker exec poetize-nginx nginx -t"
+        info "  sudo docker exec poetize-nginx nginx -t"
       fi
       
       return 0
     else
       warning "多次尝试启用HTTPS都失败了"
-      warning "您可以稍后手动运行: docker exec poetize-nginx /enable-https.sh"
+      warning "您可以稍后手动运行: sudo docker exec --user root poetize-nginx /enable-https.sh"
       
       # 显示详细的错误诊断信息
       info "错误诊断信息:"
       info "1. 检查证书文件状态:"
-      docker exec poetize-nginx sh -c "ls -la /etc/letsencrypt/live/ 2>/dev/null || echo '证书目录不存在'"
+      sudo docker exec --user root poetize-nginx sh -c "ls -la /etc/letsencrypt/live/ 2>/dev/null || echo '证书目录不存在'"
       
       info "2. 检查Nginx配置:"
-      docker exec poetize-nginx nginx -t 2>&1 || echo "Nginx配置检查失败"
+      sudo docker exec poetize-nginx nginx -t 2>&1 || echo "Nginx配置检查失败"
       
       info "3. 检查enable-https.sh脚本内容:"
-      docker exec poetize-nginx head -10 /enable-https.sh 2>/dev/null || echo "脚本文件不存在或不可读"
+      sudo docker exec --user root poetize-nginx head -10 /enable-https.sh 2>/dev/null || echo "脚本文件不存在或不可读"
       
       return 1
     fi
   else
     warning "SSL证书申请失败 (退出代码: $CERTBOT_EXIT_CODE)"
     info "检查证书申请日志..."
-    CERT_ERROR=$(docker logs poetize-certbot 2>&1 | grep -A 5 "Certbot failed" || echo "未找到明确错误信息")
+    CERT_ERROR=$(sudo docker logs poetize-certbot 2>&1 | grep -A 5 "Certbot failed" || echo "未找到明确错误信息")
     
     echo "$CERT_ERROR"
     
@@ -1653,7 +1653,7 @@ setup_https() {
     info "您可以稍后手动运行以下命令重试SSL证书申请:"
     info "  docker restart poetize-certbot"
     info "然后启用HTTPS:"
-    info "  docker exec poetize-nginx /enable-https.sh"
+    info "  sudo docker exec --user root poetize-nginx /enable-https.sh"
     
     # 继续执行，跳过HTTPS配置
     return 2
@@ -2863,7 +2863,7 @@ verify_https_status() {
     
     if [ "$nginx_https_enabled" = false ]; then
       echo "1. Nginx HTTPS配置问题:"
-      echo "   - 运行: docker exec poetize-nginx /enable-https.sh"
+      echo "   - 运行: docker exec --user root poetize-nginx /enable-https.sh"
       echo "   - 检查: docker exec poetize-nginx nginx -t"
     fi
     
@@ -2884,7 +2884,7 @@ verify_https_status() {
     echo ""
     echo "如果问题持续存在，请:"
     echo "- 等待几分钟后重试（DNS和证书可能需要时间生效）"
-    echo "- 运行: docker exec poetize-nginx /enable-https.sh"
+    echo "- 运行: docker exec --user root poetize-nginx /enable-https.sh"
     echo "- 查看完整日志获取更多信息"
     
     return 1
@@ -3885,7 +3885,7 @@ main() {
         warning "SSL证书申请失败，但将继续以HTTP模式运行"
         info "您可以在部署完成后手动配置HTTPS"
       else
-        warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec poetize-nginx /enable-https.sh"
+        warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec --user root poetize-nginx /enable-https.sh"
       fi
     else
       info "本地域名环境不支持HTTPS，如需使用HTTPS请配置有效域名"

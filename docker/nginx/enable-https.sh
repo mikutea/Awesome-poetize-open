@@ -14,18 +14,13 @@ detect_os() {
 OS_TYPE=$(detect_os)
 echo "检测到系统类型: $OS_TYPE"
 
-# 定义安全的文件操作函数，优先使用sudo
+# 定义文件操作函数（nginx用户已有必要权限）
 safe_cp() {
     src="$1"
     dest="$2"
     echo "正在复制: $src -> $dest"
     
-    # 尝试使用sudo复制
-    if command -v sudo >/dev/null 2>&1; then
-        sudo cp "$src" "$dest" && return 0
-    fi
-    
-    # 直接尝试复制
+    # nginx用户有必要权限，直接复制
     cp "$src" "$dest" && return 0
     
     # 尝试创建父目录
@@ -40,12 +35,7 @@ safe_mv() {
     dest="$2"
     echo "正在移动: $src -> $dest"
     
-    # 尝试使用sudo移动
-    if command -v sudo >/dev/null 2>&1; then
-        sudo mv "$src" "$dest" && return 0
-    fi
-    
-    # 直接尝试移动
+    # nginx用户有必要权限，直接移动
     mv "$src" "$dest" && return 0
     
     return 1
@@ -55,12 +45,7 @@ safe_mkdir() {
     dir="$1"
     echo "正在创建目录: $dir"
     
-    # 尝试使用sudo创建
-    if command -v sudo >/dev/null 2>&1; then
-        sudo mkdir -p "$dir" && return 0
-    fi
-    
-    # 直接尝试创建
+    # nginx用户有必要权限，直接创建
     mkdir -p "$dir" && return 0
     
     return 1
@@ -70,58 +55,23 @@ safe_mkdir() {
 handle_error() {
     echo "错误：$1"
     echo "回退到HTTP配置..."
-    safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf 2>/dev/null || true
+    cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf 2>/dev/null || true
     return 0
 }
 
 # 安装软件包的跨平台函数
 install_package() {
     pkg_name="$1"
-    echo "安装 $pkg_name..."
+    echo "尝试安装 $pkg_name（通常应该已在构建时安装）..."
     
-    if [ "$OS_TYPE" = "debian" ]; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends $pkg_name
-        else
-            apt-get update -qq && apt-get install -y --no-install-recommends $pkg_name
-        fi
-    elif [ "$OS_TYPE" = "alpine" ]; then
-        if command -v sudo >/dev/null 2>&1; then
-            sudo apk add --no-cache $pkg_name
-        else
-            apk add --no-cache $pkg_name
-        fi
-    else
-        # 尝试两种方法
-        if command -v sudo >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends $pkg_name || sudo apk add --no-cache $pkg_name
-        else
-            apt-get update -qq && apt-get install -y --no-install-recommends $pkg_name || apk add --no-cache $pkg_name
-        fi
-    fi
-    
-    return $?
+    # 在容器中，通常以nginx用户运行，可能没有安装权限
+    # 如果OpenSSL等工具缺失，这表明Dockerfile需要更新
+    echo "警告：$pkg_name 缺失，请检查Dockerfile中是否已正确安装此包"
+    return 1
 }
 
-# 首先拷贝HTTP配置作为初始配置
-safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf || {
-    echo "警告：无法复制默认HTTP配置，将尝试创建最小配置"
-    cat > /tmp/default.conf << 'EOF'
-server {
-    listen 80;
-    server_name localhost;
-    
-    location / {
-        root /usr/share/nginx/html/poetize;
-        index index.html;
-        try_files $uri $uri/ /index.html;
-    }
-}
-EOF
-    safe_cp /tmp/default.conf /usr/local/openresty/nginx/conf/conf.d/default.conf || {
-        echo "无法创建最小配置，Nginx可能无法正常工作"
-    }
-}
+# 注意：默认配置文件已在构建时创建，这里只需要在需要时切换到HTTPS
+echo "默认HTTP配置已在构建时设置，当前将检查是否需要切换到HTTPS..."
 
 # 获取当前使用的配置文件中的域名信息
 ALL_DOMAINS=$(grep "server_name" /usr/local/openresty/nginx/conf/conf.d/default.conf | head -1 | sed 's/server_name //' | sed 's/;//' 2>/dev/null || echo "localhost")
@@ -234,17 +184,10 @@ if [ $IS_LOCAL -eq 1 ]; then
         # 如果nginx已经运行，使用reload，否则跳过（初始启动时会由主命令启动nginx）
         if pidof nginx >/dev/null; then
             echo "应用HTTPS配置（重新加载）..."
-            if command -v sudo >/dev/null 2>&1; then
-                sudo nginx -s reload || {
-                    handle_error "Nginx重新加载配置失败"
-                    exit 0
-                }
-            else
-                nginx -s reload || {
-                    handle_error "Nginx重新加载配置失败"
-                    exit 0
-                }
-            fi
+            nginx -s reload || {
+                handle_error "Nginx重新加载配置失败"
+                exit 0
+            }
         else
             echo "Nginx尚未运行，跳过重新加载，将在启动时应用配置"
         fi
@@ -253,7 +196,7 @@ if [ $IS_LOCAL -eq 1 ]; then
         echo "注意：因为使用自签名证书，浏览器可能会显示安全警告，这是正常的"
     else
         echo "错误：生成的Nginx配置文件无效，使用HTTP配置..."
-        safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
+        cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
         echo "HTTP配置已应用"
     fi
     
@@ -271,7 +214,7 @@ else
 
     if [ -z "$CERT_DIRS" ]; then
         echo "错误：找不到任何SSL证书目录。使用HTTP配置..."
-        safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
+        cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
         echo "HTTP配置已应用"
         exit 0
     fi
@@ -322,17 +265,10 @@ if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
         # 如果nginx已经运行，使用reload，否则跳过（初始启动时会由主命令启动nginx）
         if pidof nginx >/dev/null; then
             echo "应用HTTPS配置（重新加载）..."
-            if command -v sudo >/dev/null 2>&1; then
-                sudo nginx -s reload || {
-                    handle_error "Nginx重新加载配置失败"
-                    exit 0
-                }
-            else
-                nginx -s reload || {
-                    handle_error "Nginx重新加载配置失败"
-                    exit 0
-                }
-            fi
+            nginx -s reload || {
+                handle_error "Nginx重新加载配置失败"
+                exit 0
+            }
         else
             echo "Nginx尚未运行，跳过重新加载，将在启动时应用配置"
         fi
@@ -340,13 +276,13 @@ if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
         echo "HTTPS已成功启用！访问 https://$DOMAIN 查看您的网站"
     else
         echo "错误：生成的Nginx配置文件无效，使用HTTP配置..."
-        safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
+        cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
         echo "HTTP配置已应用"
     fi
 else
     echo "错误：在 $CERT_DIR 中找不到完整的SSL证书文件。"
     echo "需要的文件: fullchain.pem, privkey.pem"
     echo "使用HTTP配置..."
-    safe_cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
+    cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf
     echo "HTTP配置已应用"
 fi 

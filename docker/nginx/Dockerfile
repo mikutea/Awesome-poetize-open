@@ -148,8 +148,15 @@ RUN set -e; \
     cp -r lib/ngx /usr/local/openresty/lualib/ 2>/dev/null || true; \
     echo "✅ lua-resty-http安装完成"
 
-# 创建必要的目录
-RUN mkdir -p /var/log/nginx /var/cache/nginx
+# 创建nginx用户和组
+RUN addgroup -g 101 -S nginx && \
+    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
+
+# 创建必要的目录并设置权限
+RUN mkdir -p /var/log/nginx /var/cache/nginx /var/run /tmp && \
+    chown -R nginx:nginx /var/log/nginx /var/cache/nginx /var/run && \
+    chmod -R 755 /var/log/nginx /var/cache/nginx /var/run && \
+    chmod 777 /tmp
 
 # 从builder中复制Brotli模块
 COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/nginx/modules/
@@ -160,8 +167,29 @@ RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d
 # 复制自定义配置
 COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 
+# 复制配置模板文件
+COPY default.http.conf /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template
+COPY default.https.conf /usr/local/openresty/nginx/conf/conf.d/default.https.conf.template
+
+# 在构建时就处理配置文件，默认使用HTTP配置
+RUN cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template \
+       /usr/local/openresty/nginx/conf/conf.d/default.conf
+
+# 设置nginx相关目录的权限
+RUN chown -R nginx:nginx /usr/local/openresty/nginx/ && \
+    chown -R nginx:nginx /usr/share/nginx/ && \
+    chmod -R 755 /usr/local/openresty/nginx/conf/ && \
+    # 给nginx用户配置目录的写权限（用于HTTPS切换）
+    chmod 775 /usr/local/openresty/nginx/conf/conf.d/ && \
+    # 确保nginx用户可以读写必要的目录
+    mkdir -p /usr/share/nginx/html && \
+    chown -R nginx:nginx /usr/share/nginx/html
+
 # 暴露端口
 EXPOSE 80 443/tcp 443/udp
+
+# 切换到nginx用户
+USER nginx
 
 # 启动命令
 CMD ["openresty", "-g", "daemon off;"] 

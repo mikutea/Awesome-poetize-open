@@ -5,7 +5,6 @@ services:
       context: ./docker/nginx
       dockerfile: Dockerfile
     container_name: poetize-nginx
-    user: root
     logging:
       options:
         max-size: "50m"
@@ -14,9 +13,6 @@ services:
       - poetize_ui_dist:/usr/share/nginx/html/poetize
       - poetize_im_dist:/usr/share/nginx/html/im
       - poetize_uploads:/usr/share/nginx/html/uploads
-      - ./docker/nginx/default.http.conf:/usr/local/openresty/nginx/conf/conf.d/default.http.conf.template
-      - ./docker/nginx/default.https.conf:/usr/local/openresty/nginx/conf/conf.d/default.https.conf.template
-      - ./docker/nginx/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf
       - ./docker/nginx/enable-https.sh:/enable-https.sh
       - ./py/data:/app/data
       - certbot-etc:/etc/letsencrypt
@@ -39,7 +35,6 @@ services:
       python-backend:
         condition: service_healthy
     restart: always
-    command: ["/bin/sh", "-c", "cp /usr/local/openresty/nginx/conf/conf.d/default.http.conf.template /usr/local/openresty/nginx/conf/conf.d/default.conf && exec openresty -g 'daemon off;'"]
 
   # 主站前端（Vue 2）
   poetize-ui:
