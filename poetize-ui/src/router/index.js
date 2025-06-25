@@ -167,6 +167,11 @@ const routes = [
     component: () => import('../components/admin/verify')
   },
   {
+    path: '/403',
+    name: 'forbidden',
+    component: () => import('../components/Forbidden')
+  },
+  {
     path: '*',
     name: 'notFound', 
     component: () => import('../components/NotFound')
@@ -182,6 +187,12 @@ const router = new VueRouter({
 })
 
 router.beforeEach((to, from, next) => {
+  // 检查是否需要重定向到403页面（Nginx错误重定向）
+  if (to.query.redirect === '403') {
+    next('/403');
+    return;
+  }
+  
   // 检查是否需要管理员权限
   if (to.matched.some(record => record.meta.requiresAdmin)) {
     // 检查是否有管理员token

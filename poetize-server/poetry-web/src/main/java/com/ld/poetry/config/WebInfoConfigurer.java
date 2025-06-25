@@ -26,7 +26,16 @@ public class WebInfoConfigurer implements WebMvcConfigurer {
                     "/webInfo/getAdmire",
                     "/webInfo/getWaifuJson",
                     "/webInfo/getApiConfig",
-                    "/sysConfig/listSysConfig"
+                    "/webInfo/getUserIP",
+                    "/sysConfig/listSysConfig",
+                    "/sysConfig/saveOrUpdateConfig",
+                    "/sysConfig/deleteConfig",
+                    "/sysConfig/listConfig",
+                    "/api/sysConfig/listSysConfig",
+                    "/api/sysConfig/saveOrUpdateConfig",
+                    "/api/sysConfig/deleteConfig",
+                    "/api/sysConfig/listConfig",
+                    "/api/webInfo/getUserIP"
                 );
     }
 }

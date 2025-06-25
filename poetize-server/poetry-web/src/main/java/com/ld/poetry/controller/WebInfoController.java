@@ -51,6 +51,9 @@ public class WebInfoController {
     private SortMapper sortMapper;
 
     @Autowired
+    private LabelMapper labelMapper;
+
+    @Autowired
     private ArticleMapper articleMapper;
 
     @Autowired
@@ -110,6 +113,18 @@ public class WebInfoController {
             return PoetryResult.success(result);
         }
         return PoetryResult.success();
+    }
+
+    /**
+     * 获取用户IP地址 - 用于403页面显示
+     */
+    @GetMapping("/getUserIP")
+    public PoetryResult<Map<String, Object>> getUserIP() {
+        Map<String, Object> result = new HashMap<>();
+        String clientIP = PoetryUtil.getIpAddr(PoetryUtil.getRequest());
+        result.put("ip", clientIP);
+        result.put("timestamp", System.currentTimeMillis());
+        return PoetryResult.success(result);
     }
 
     /**
@@ -302,6 +317,57 @@ public class WebInfoController {
         PoetryCache.put(CommonConst.WEB_INFO, webInfo);
         
         return PoetryResult.success(newApiKey);
+    }
+
+    /**
+     * 获取分类信息 - 用于预渲染服务
+     * 此接口专门为prerender-worker提供分类列表数据
+     */
+    @GetMapping("/listSortForPrerender")
+    public PoetryResult<List<Sort>> listSortForPrerender() {
+        try {
+            // 获取所有分类信息，包含标签
+            List<Sort> sortList = new LambdaQueryChainWrapper<>(sortMapper)
+                    .orderByAsc(Sort::getSortType)
+                    .orderByAsc(Sort::getPriority)
+                    .list();
+            
+            log.debug("预渲染服务获取分类列表，共{}个分类", sortList.size());
+            return PoetryResult.success(sortList);
+        } catch (Exception e) {
+            log.error("获取预渲染分类列表失败", e);
+            return PoetryResult.fail("获取分类列表失败");
+        }
+    }
+
+    /**
+     * 获取分类详细信息 - 用于预渲染服务
+     * @param sortId 分类ID
+     */
+    @GetMapping("/getSortDetailForPrerender")
+    public PoetryResult<Sort> getSortDetailForPrerender(@RequestParam Integer sortId) {
+        if (sortId == null) {
+            return PoetryResult.fail("分类ID不能为空");
+        }
+        
+        try {
+            // 获取分类基本信息
+            Sort sort = sortMapper.selectById(sortId);
+            if (sort == null) {
+                return PoetryResult.fail("分类不存在");
+            }
+            
+            // 获取该分类下的标签信息
+            LambdaQueryChainWrapper<Label> labelWrapper = new LambdaQueryChainWrapper<>(labelMapper);
+            List<Label> labels = labelWrapper.eq(Label::getSortId, sortId).list();
+            sort.setLabels(labels);
+            
+            log.debug("预渲染服务获取分类详情，分类ID: {}, 标签数: {}", sortId, labels != null ? labels.size() : 0);
+            return PoetryResult.success(sort);
+        } catch (Exception e) {
+            log.error("获取预渲染分类详情失败，分类ID: {}", sortId, e);
+            return PoetryResult.fail("获取分类详情失败");
+        }
     }
     
     /**
