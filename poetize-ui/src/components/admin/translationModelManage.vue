@@ -891,6 +891,7 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
             this.apiConfig.llmApiKey = ''; // 不显示已有密钥内容
             this.apiConfig.llmPrompt = res.data.llm.prompt || '';
             this.apiConfig.llmInterfaceType = res.data.llm.interface_type || 'auto';  // 读取接口类型
+            this.apiConfig.llmTimeout = res.data.llm.timeout || 30;  // 读取超时时间
             
             console.log('LLM配置读取结果:', {
               model: this.apiConfig.llmModel,
@@ -983,7 +984,8 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
             model: this.apiConfig.llmModel,
             api_url: this.apiConfig.llmUrl,
             prompt: this.apiConfig.llmPrompt || '请将以下文本翻译成中文：',
-            interface_type: this.apiConfig.llmInterfaceType || 'auto'  // 保存接口类型
+            interface_type: this.apiConfig.llmInterfaceType || 'auto',  // 保存接口类型
+            timeout: this.apiConfig.llmTimeout || 30  // 保存超时时间
           };
           // 只有输入了新密钥才发送
           if (this.apiConfig.llmApiKey && this.apiConfig.llmApiKey.trim() !== '') {
@@ -1167,7 +1169,13 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
           style: this.apiConfig.summaryStyle
         };
         
-        const res = await this.$http.post(this.$constant.pythonBaseURL + '/api/translation/test-summary', testRequest);
+        // 前端超时时间 = 配置的超时时间 + 10秒缓冲
+        const timeoutMs = ((this.apiConfig.llmTimeout || 30) + 10) * 1000;
+        console.log(`后端配置超时: ${this.apiConfig.llmTimeout}秒，前端超时: ${(this.apiConfig.llmTimeout || 30) + 10}秒`);
+        
+        const res = await this.$http.post(this.$constant.pythonBaseURL + '/api/translation/test-summary', testRequest, {
+          timeout: timeoutMs
+        });
         
         if (res && res.code === 200 && res.data) {
           const result = res.data;

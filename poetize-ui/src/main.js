@@ -100,10 +100,14 @@ import './assets/css/font-awesome.min.css'
 import 'mavon-editor/dist/css/index.css'
 
 import {vueBaberrage} from 'vue-baberrage'
+import AsyncNotification from './components/common/AsyncNotification.vue'
 
 Vue.use(ElementUI)
 Vue.use(vueBaberrage)
 Vue.use(mavonEditor)
+
+// 全局注册异步通知组件
+Vue.component('AsyncNotification', AsyncNotification)
 
 Vue.prototype.$http = http
 Vue.prototype.$common = common
@@ -111,6 +115,79 @@ Vue.prototype.$constant = constant
 
 // 创建事件总线
 Vue.prototype.$bus = new Vue();
+
+// 创建全局通知实例（用于非组件环境调用）
+let globalNotificationInstance = null;
+Vue.prototype.$notify = {
+  // 获取或创建通知实例
+  getInstance() {
+    if (!globalNotificationInstance) {
+      // 如果还没有实例，返回一个占位对象
+      return {
+        addNotification: () => console.warn('通知组件尚未初始化'),
+        updateNotificationByTaskId: () => console.warn('通知组件尚未初始化'),
+        removeNotification: () => console.warn('通知组件尚未初始化'),
+        clearAllNotifications: () => console.warn('通知组件尚未初始化')
+      };
+    }
+    return globalNotificationInstance;
+  },
+  
+  // 设置全局实例
+  setInstance(instance) {
+    globalNotificationInstance = instance;
+  },
+  
+  // 便捷方法
+  loading(title, message, taskId) {
+    const notificationId = this.getInstance().addNotification({
+      title,
+      message,
+      type: 'loading',
+      duration: 0,
+      taskId
+    });
+    
+    // 如果有taskId，自动启动轮询
+    if (taskId && this.getInstance().startPolling) {
+      console.log('自动启动轮询，任务ID:', taskId);
+      this.getInstance().startPolling(taskId);
+    }
+    
+    return notificationId;
+  },
+  
+  success(title, message, duration = 2000) {
+    return this.getInstance().addNotification({
+      title,
+      message,
+      type: 'success',
+      duration
+    });
+  },
+  
+  error(title, message, duration = 5000) {
+    return this.getInstance().addNotification({
+      title,
+      message,
+      type: 'error',
+      duration
+    });
+  },
+  
+  info(title, message, duration = 3000) {
+    return this.getInstance().addNotification({
+      title,
+      message,
+      type: 'info',
+      duration
+    });
+  },
+  
+  updateByTaskId(taskId, updates) {
+    return this.getInstance().updateNotificationByTaskId(taskId, updates);
+  }
+};
 
 // 添加全局错误处理
 Vue.config.errorHandler = (err, vm, info) => {

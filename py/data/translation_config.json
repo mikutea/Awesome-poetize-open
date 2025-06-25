@@ -7,8 +7,15 @@
     "api_url": "https://api-inference.modelscope.cn/v1",
     "prompt": "请将以下{format}从{source_lang}翻译成{target_lang}，保持原意和格式，只返回翻译结果，不要添加任何说明或注释：",
     "interface_type": "openai",
+    "timeout": 240,
     "api_key": ""
   },
-  "default_source_lang": "en",
-  "default_target_lang": "zh"
+  "summary": {
+    "ai_enabled": true,
+    "style": "concise",
+    "max_length": 150,
+    "prompt": "请为以下文章生成一个简洁明了的摘要，突出文章的核心观点和主要内容，摘要长度控制在{max_length}字符以内。请直接返回摘要内容，不要添加任何前缀或说明："
+  },
+  "default_source_lang": "zh",
+  "default_target_lang": "en"
 }

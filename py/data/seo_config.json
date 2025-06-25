@@ -57,6 +57,6 @@
   "duckduckgo_site_verification": "",
   "baidu_push_token": "",
   "sitemap_exclude": "/love",
-  "push_delay_seconds": 3600,
+  "push_delay_seconds": 300,
   "site_address": "http://localhost:5000"
 }

@@ -316,7 +316,9 @@ class TranslationManager:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            # 从配置中获取超时时间，默认30秒
+            timeout_seconds = config.llm.get('timeout', 30) if config.llm else 30
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(
                     'https://fanyi-api.baidu.com/api/trans/vip/translate',
                     data=params
@@ -367,7 +369,9 @@ class TranslationManager:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            # 从配置中获取超时时间，默认30秒
+            timeout_seconds = config.llm.get('timeout', 30) if config.llm else 30
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(
                     api_url,
                     json=payload,
@@ -477,10 +481,12 @@ class TranslationManager:
                     error_message="OpenAI API密钥未配置"
                 )
             
+            # 从配置中获取超时时间，默认30秒
+            timeout_seconds = llm_config.get('timeout', 30)
             client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=api_url,
-                timeout=30.0
+                timeout=float(timeout_seconds)
             )
             
             response = await client.chat.completions.create(
@@ -525,9 +531,11 @@ class TranslationManager:
                     error_message="Anthropic API密钥未配置"
                 )
             
+            # 从配置中获取超时时间，默认30秒
+            timeout_seconds = llm_config.get('timeout', 30)
             client = AsyncAnthropic(
                 api_key=api_key,
-                timeout=30.0
+                timeout=float(timeout_seconds)
             )
             
             response = await client.messages.create(
@@ -588,7 +596,9 @@ class TranslationManager:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            # 从配置中获取超时时间，默认30秒
+            timeout_seconds = llm_config.get('timeout', 30)
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(
                     api_url,
                     json=payload,
@@ -708,25 +718,29 @@ class TranslationManager:
         prompt_template = summary_config.get('prompt') or default_prompt
         full_prompt = f"{prompt_template}\n\n{request.content}"
         
+        # 使用配置文件中的超时时间
+        timeout_seconds = llm_config.get('timeout', 30)
+        logger.info(f"使用配置文件中的超时时间: {timeout_seconds}秒")
+        
         # 使用与翻译相同的LLM接口
         interface_type = llm_config.get('interface_type', 'auto')
         model = llm_config.get('model', '')
         
         if interface_type == 'openai':
-            return await self._openai_summary(config, full_prompt)
+            return await self._openai_summary(config, full_prompt, timeout_seconds)
         elif interface_type == 'anthropic':
-            return await self._anthropic_summary(config, full_prompt)
+            return await self._anthropic_summary(config, full_prompt, timeout_seconds)
         elif interface_type == 'auto' or interface_type is None:
             if model and any(x in model.lower() for x in ['gpt', 'openai']):
-                return await self._openai_summary(config, full_prompt)
+                return await self._openai_summary(config, full_prompt, timeout_seconds)
             elif model and any(x in model.lower() for x in ['claude', 'anthropic']):
-                return await self._anthropic_summary(config, full_prompt)
+                return await self._anthropic_summary(config, full_prompt, timeout_seconds)
             else:
-                return await self._custom_llm_summary(config, full_prompt)
+                return await self._custom_llm_summary(config, full_prompt, timeout_seconds)
         else:
-            return await self._custom_llm_summary(config, full_prompt)
+            return await self._custom_llm_summary(config, full_prompt, timeout_seconds)
     
-    async def _openai_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+    async def _openai_summary(self, config: TranslationConfig, prompt: str, timeout_seconds: int = 30) -> SummaryResponse:
         """OpenAI摘要生成"""
         try:
             llm_config = config.llm or {}
@@ -743,7 +757,8 @@ class TranslationManager:
             client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=api_url,
-                timeout=30.0
+                timeout=float(timeout_seconds),  # 使用用户配置的超时时间
+                max_retries=2   # 减少重试次数
             )
             
             response = await client.chat.completions.create(
@@ -752,7 +767,8 @@ class TranslationManager:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=500  # 摘要不需要太多tokens
+                max_tokens=300,   # 减少最大token数，加快生成速度
+                stream=False      # 确保非流式响应
             )
             
             if response.choices:
@@ -775,7 +791,7 @@ class TranslationManager:
                 error_message=f"OpenAI摘要生成失败: {str(e)}"
             )
     
-    async def _anthropic_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+    async def _anthropic_summary(self, config: TranslationConfig, prompt: str, timeout_seconds: int = 30) -> SummaryResponse:
         """Anthropic摘要生成"""
         try:
             llm_config = config.llm or {}
@@ -790,7 +806,7 @@ class TranslationManager:
             
             client = AsyncAnthropic(
                 api_key=api_key,
-                timeout=30.0
+                timeout=float(timeout_seconds)
             )
             
             response = await client.messages.create(
@@ -821,7 +837,7 @@ class TranslationManager:
                 error_message=f"Anthropic摘要生成失败: {str(e)}"
             )
     
-    async def _custom_llm_summary(self, config: TranslationConfig, prompt: str) -> SummaryResponse:
+    async def _custom_llm_summary(self, config: TranslationConfig, prompt: str, timeout_seconds: int = 30) -> SummaryResponse:
         """自定义大模型摘要生成"""
         llm_config = config.llm or {}
         api_url = llm_config.get('api_url')
@@ -850,7 +866,7 @@ class TranslationManager:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
                 response = await client.post(api_url, json=payload, headers=headers)
                 response.raise_for_status()
                 
@@ -959,7 +975,7 @@ def register_translation_api(app):
                         'type': 'baidu',
                         'baidu': {'app_id': '', 'app_secret': ''},
                         'custom': {'api_url': '', 'api_key': '', 'app_secret': ''},
-                        'llm': {'model': '', 'api_url': '', 'api_key': '', 'prompt': '', 'interface_type': 'auto'},
+                        'llm': {'model': '', 'api_url': '', 'api_key': '', 'prompt': '', 'interface_type': 'auto', 'timeout': 30},
                         'summary': {'ai_enabled': True, 'style': 'concise', 'max_length': 150, 'prompt': '请为以下文章生成一个简洁明了的摘要，突出文章的核心观点和主要内容，摘要长度控制在{max_length}字符以内。请直接返回摘要内容，不要添加任何前缀或说明：'},
                         'default_source_lang': 'zh',
                         'default_target_lang': 'en'

@@ -68,7 +68,7 @@ public class ArticleController {
     private RestTemplate restTemplate;
 
     /**
-     * 保存文章
+     * 保存文章（同步版本）
      */
     @LoginCheck(1)
     @PostMapping("/saveArticle")
@@ -217,6 +217,81 @@ public class ArticleController {
             return PoetryResult.fail("保存文章失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 异步保存文章（快速响应版本）
+     */
+    @LoginCheck(1)
+    @PostMapping("/saveArticleAsync")
+    public PoetryResult<String> saveArticleAsync(@Validated @RequestBody ArticleVO articleVO) {
+        // 防止空指针异常，验证输入
+        if (articleVO == null) {
+            return PoetryResult.fail("文章内容不能为空");
+        }
+        
+        try {
+            // 确保用户ID不为空
+            if (articleVO.getUserId() == null) {
+                Integer currentUserId = PoetryUtil.getUserId();
+                if (currentUserId == null) {
+                    String token = PoetryUtil.getTokenWithoutBearer();
+                    if (token != null) {
+                        User user = (User) PoetryCache.get(token);
+                        if (user != null) {
+                            currentUserId = user.getId();
+                        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+                            User adminUser = PoetryUtil.getAdminUser();
+                            if (adminUser != null) {
+                                currentUserId = adminUser.getId();
+                            }
+                        }
+                    }
+                }
+                
+                if (currentUserId == null) {
+                    return PoetryResult.fail("无法获取当前用户信息，请重新登录后再试");
+                }
+                articleVO.setUserId(currentUserId);
+            }
+            
+            // 调用异步保存服务
+            PoetryResult<String> result = articleService.saveArticleAsync(articleVO);
+            
+            // 清理缓存
+            if (articleVO.getUserId() != null) {
+                PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + articleVO.getUserId().toString());
+            }
+            PoetryCache.remove(CommonConst.ARTICLE_LIST);
+            PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+            
+            return result;
+        } catch (Exception e) {
+            return PoetryResult.fail("启动异步保存失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询文章保存状态
+     */
+    @LoginCheck(1)
+    @GetMapping("/getArticleSaveStatus")
+    public PoetryResult<ArticleServiceImpl.ArticleSaveStatus> getArticleSaveStatus(@RequestParam("taskId") String taskId) {
+        if (!StringUtils.hasText(taskId)) {
+            return PoetryResult.fail("任务ID不能为空");
+        }
+        
+        try {
+            // 轮询期间的日志降级为DEBUG，减少噪音
+            log.debug("【Controller】收到状态查询请求，任务ID: {}", taskId);
+            PoetryResult<ArticleServiceImpl.ArticleSaveStatus> result = articleService.getArticleSaveStatus(taskId);
+            log.debug("【Controller】状态查询结果: {}", result.getCode() == 200 ? "成功" : "失败");
+            return result;
+        } catch (Exception e) {
+            log.error("【Controller】查询保存状态异常: {}", e.getMessage(), e);
+            return PoetryResult.fail("查询保存状态失败: " + e.getMessage());
+        }
+    }
+    
 
 
     /**

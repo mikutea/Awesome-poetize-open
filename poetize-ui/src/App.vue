@@ -3,6 +3,8 @@
     <router-view/>
     <!-- 全局验证码容器 -->
     <captcha-container />
+    <!-- 全局异步通知组件 -->
+    <async-notification ref="globalNotification" />
   </div>
 </template>
 
@@ -58,6 +60,12 @@ export default {
   mounted() {
     // 确保字体加载
     document.body.style.fontFamily = "var(--globalFont), serif";
+    
+    // 注册全局通知实例
+    if (this.$refs.globalNotification) {
+      this.$notify.setInstance(this.$refs.globalNotification);
+      console.log('全局通知组件已注册');
+    }
   },
 
   methods: {

@@ -128,36 +128,88 @@ public class SmartSummaryGenerator {
         
         // 移除代码块（保留内容但移除标记）
         result = CODE_BLOCK_PATTERN.matcher(result).replaceAll(match -> {
-            String codeContent = match.group().replaceAll("```\\w*\\n?", "").trim();
-            return codeContent.length() > 100 ? "" : codeContent; // 长代码块直接移除
+            try {
+                String codeContent = match.group().replaceAll("```\\w*\\n?", "").trim();
+                return codeContent.length() > 100 ? "" : codeContent; // 长代码块直接移除
+            } catch (Exception e) {
+                return "";
+            }
         });
         
         // 移除行内代码标记
-        result = INLINE_CODE_PATTERN.matcher(result).replaceAll("$1");
+        result = INLINE_CODE_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                // 行内代码模式 `code` 没有捕获组，所以需要手动处理
+                String matchedText = match.group();
+                return matchedText.replaceAll("`", "");
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理链接（保留链接文本）
-        result = LINK_PATTERN.matcher(result).replaceAll("$1");
+        result = LINK_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理图片（保留alt文本）
         result = IMAGE_PATTERN.matcher(result).replaceAll(match -> {
-            String altText = match.group(1);
-            return StringUtils.hasText(altText) ? altText : "";
+            try {
+                String altText = match.group(1);
+                return StringUtils.hasText(altText) ? altText : "";
+            } catch (Exception e) {
+                return "";
+            }
         });
         
         // 处理粗体和斜体（保留文本内容）
-        result = BOLD_ITALIC_PATTERN.matcher(result).replaceAll("$1");
+        result = BOLD_ITALIC_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理标题（保留标题文本，但不作为摘要的首选）
-        result = HEADING_PATTERN.matcher(result).replaceAll("$1");
+        result = HEADING_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理引用块
-        result = BLOCKQUOTE_PATTERN.matcher(result).replaceAll("$1");
+        result = BLOCKQUOTE_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理无序列表
-        result = LIST_PATTERN.matcher(result).replaceAll("$1");
+        result = LIST_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 处理有序列表
-        result = ORDERED_LIST_PATTERN.matcher(result).replaceAll("$1");
+        result = ORDERED_LIST_PATTERN.matcher(result).replaceAll(match -> {
+            try {
+                return match.group(1) != null ? match.group(1) : "";
+            } catch (Exception e) {
+                return "";
+            }
+        });
         
         // 移除表格
         result = TABLE_PATTERN.matcher(result).replaceAll("");

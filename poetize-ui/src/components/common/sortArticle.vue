@@ -100,9 +100,7 @@
           </span>
         </div>
         <!-- 内容 -->
-        <div class="recent-post-desc">
-          {{ article.summary || $common.removeMarkdown(article.articleContent) }}
-        </div>
+        <div class="recent-post-desc" v-html="getSummaryDisplay(article)"></div>
         <!-- 分类 标签 -->
         <div class="sort-label">
           <span style="margin-right: 12px"
@@ -148,7 +146,16 @@
         type: Array
       }
     },
-    methods: {}
+    methods: {
+      getSummaryDisplay(article) {
+        if (article.summary && article.summary.trim()) {
+          return article.summary;
+        }
+        
+        // 摘要为空时，回退显示文章内容截取
+        return this.$common.removeMarkdown(article.articleContent);
+      }
+    }
   }
 </script>
 

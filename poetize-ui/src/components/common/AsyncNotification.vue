@@ -1,0 +1,462 @@
+<template>
+  <div class="async-notification-container">
+    <!-- 通知列表 -->
+    <transition-group name="notification" tag="div" class="notification-list">
+      <div
+        v-for="notification in notifications"
+        :key="notification.id"
+        :class="['notification-item', notification.type]"
+        @click="removeNotification(notification.id)"
+      >
+        <div class="notification-content">
+          <div class="notification-icon">
+            <i v-if="notification.type === 'loading'" class="el-icon-loading"></i>
+            <i v-else-if="notification.type === 'success'" class="el-icon-success"></i>
+            <i v-else-if="notification.type === 'error'" class="el-icon-error"></i>
+            <i v-else class="el-icon-info"></i>
+          </div>
+          <div class="notification-text">
+            <div class="notification-title">{{ notification.title }}</div>
+            <div class="notification-message">{{ notification.message }}</div>
+          </div>
+          <div class="notification-close">
+            <i class="el-icon-close"></i>
+          </div>
+        </div>
+        <!-- 进度条 -->
+        <div v-if="notification.type === 'loading'" class="notification-progress">
+          <div class="progress-bar" :style="{width: notification.progress + '%'}"></div>
+        </div>
+      </div>
+    </transition-group>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'AsyncNotification',
+  data() {
+    return {
+      notifications: [],
+      pollTimers: {} // 存储每个任务的轮询定时器
+    }
+  },
+  mounted() {
+    // 确保组件能访问到全局常量
+    if (!this.$constant && this.$parent && this.$parent.$constant) {
+      this.$constant = this.$parent.$constant;
+    }
+  },
+  methods: {
+    /**
+     * 添加通知
+     * @param {Object} notification - 通知对象
+     * @param {string} notification.title - 标题
+     * @param {string} notification.message - 消息
+     * @param {string} notification.type - 类型：loading, success, error, info
+     * @param {number} notification.duration - 持续时间（毫秒），0表示不自动消失
+     * @param {string} notification.taskId - 任务ID（用于更新状态）
+     */
+    addNotification(notification) {
+      const id = Date.now() + Math.random();
+      const newNotification = {
+        id,
+        title: notification.title || '通知',
+        message: notification.message || '',
+        type: notification.type || 'info',
+        duration: notification.duration !== undefined ? notification.duration : 3000,
+        taskId: notification.taskId,
+        progress: 0,
+        createTime: Date.now()
+      };
+      
+      this.notifications.unshift(newNotification);
+      
+      // 自动移除（除非duration为0）
+      if (newNotification.duration > 0) {
+        setTimeout(() => {
+          this.removeNotification(id);
+        }, newNotification.duration);
+      }
+      
+      return id;
+    },
+    
+    /**
+     * 更新通知
+     */
+    updateNotification(id, updates) {
+      const notification = this.notifications.find(n => n.id === id);
+      if (notification) {
+        Object.assign(notification, updates);
+        
+        // 如果状态变为成功或失败，设置自动移除
+        if ((updates.type === 'success' || updates.type === 'error') && notification.duration === 0) {
+          notification.duration = updates.type === 'success' ? 2000 : 5000;
+          setTimeout(() => {
+            this.removeNotification(id);
+          }, notification.duration);
+        }
+      }
+    },
+    
+    /**
+     * 根据任务ID更新通知
+     */
+    updateNotificationByTaskId(taskId, updates) {
+      const notification = this.notifications.find(n => n.taskId === taskId);
+      if (notification) {
+        this.updateNotification(notification.id, updates);
+      }
+    },
+    
+    /**
+     * 移除通知
+     */
+    removeNotification(id) {
+      const index = this.notifications.findIndex(n => n.id === id);
+      if (index > -1) {
+        this.notifications.splice(index, 1);
+      }
+    },
+    
+    /**
+     * 清空所有通知
+     */
+    clearAllNotifications() {
+      this.notifications = [];
+      
+      // 清理所有轮询定时器
+      Object.values(this.pollTimers).forEach(timer => {
+        if (timer) clearInterval(timer);
+      });
+      this.pollTimers = {};
+    },
+    
+    /**
+     * 开始轮询任务状态
+     */
+    startPolling(taskId) {
+      if (!taskId) {
+        console.error('startPolling: taskId为空');
+        return;
+      }
+      
+      // 只在开始轮询时输出一次日志
+      console.log('开始轮询任务状态，任务ID:', taskId);
+      
+      // 清理之前的定时器（如果存在）
+      if (this.pollTimers[taskId]) {
+        clearInterval(this.pollTimers[taskId]);
+      }
+      
+      // 立即执行一次检查
+      this.checkTaskStatus(taskId);
+      
+      // 创建新的轮询定时器
+      this.pollTimers[taskId] = setInterval(() => {
+        this.checkTaskStatus(taskId);
+      }, 2000);
+    },
+    
+    /**
+     * 停止轮询任务状态
+     */
+    stopPolling(taskId) {
+      if (this.pollTimers[taskId]) {
+        clearInterval(this.pollTimers[taskId]);
+        delete this.pollTimers[taskId];
+      }
+    },
+    
+    /**
+     * 检查任务状态
+     */
+    checkTaskStatus(taskId) {
+      // 获取baseURL（通过多种方式尝试）
+      let baseURL = '';
+      if (this.$constant && this.$constant.baseURL) {
+        baseURL = this.$constant.baseURL;
+      } else if (window.VueAppConfig && window.VueAppConfig.baseURL) {
+        baseURL = window.VueAppConfig.baseURL;
+      } else {
+        baseURL = window.location.protocol + '//' + window.location.host;
+      }
+      
+      const url = `${baseURL}/article/getArticleSaveStatus`;
+      
+      // 获取token（管理员token通常以admin_access_token开头）
+      const tokens = [
+        localStorage.getItem('adminToken'),
+        localStorage.getItem('token'),
+        ...Object.keys(localStorage).filter(key => key.startsWith('admin_access_token')).map(key => localStorage.getItem(key))
+      ].filter(Boolean);
+      
+      const token = tokens[0];
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (token) {
+        headers['Authorization'] = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      }
+      
+      fetch(url + '?taskId=' + encodeURIComponent(taskId), {
+        method: 'GET',
+        headers: headers
+      })
+      .then(response => response.json())
+      .then(res => {
+        if (res.code === 200 && res.data) {
+          const status = res.data;
+          
+          // 更新通知状态
+          this.updateNotificationByTaskId(taskId, {
+            message: status.message
+          });
+          
+          // 如果完成（成功或失败），停止轮询
+          if (status.status === 'success') {
+            console.log('任务完成：', status.message);
+            this.stopPolling(taskId);
+            
+            this.updateNotificationByTaskId(taskId, {
+              type: 'success',
+              title: '保存成功',
+              message: '文章保存成功！AI摘要已生成'
+            });
+          } else if (status.status === 'failed') {
+            console.error('任务失败：', status.message);
+            this.stopPolling(taskId);
+            
+            this.updateNotificationByTaskId(taskId, {
+              type: 'error',
+              title: '保存失败',
+              message: status.message || '文章保存失败'
+            });
+          } else if (status.status === 'processing') {
+            // 进行中的状态不输出日志，减少噪音
+          } else {
+            console.warn('未知任务状态:', status.status, '消息:', status.message);
+          }
+        } else {
+          // 任务不存在或已过期
+          console.warn('任务不存在或已过期，停止轮询');
+          this.stopPolling(taskId);
+          
+          this.updateNotificationByTaskId(taskId, {
+            type: 'error',
+            title: '状态查询失败',
+            message: '无法查询保存状态，任务可能已完成或过期'
+          });
+        }
+      })
+      .catch(error => {
+        console.error('轮询请求失败:', error);
+        // 网络错误时不再输出额外日志，避免刷屏
+      });
+    }
+  }
+}
+</script>
+
+<style scoped>
+.async-notification-container {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 3000;
+  max-width: 350px;
+  pointer-events: none;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notification-item {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.3s ease;
+  max-width: 350px;
+  border-left: 4px solid;
+}
+
+.notification-item:hover {
+  transform: translateX(-5px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.notification-item.loading {
+  border-left-color: #409EFF;
+}
+
+.notification-item.success {
+  border-left-color: #67C23A;
+}
+
+.notification-item.error {
+  border-left-color: #F56C6C;
+}
+
+.notification-item.info {
+  border-left-color: #909399;
+}
+
+.notification-content {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+  gap: 12px;
+}
+
+.notification-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.notification-icon i {
+  font-size: 18px;
+}
+
+.loading .notification-icon i {
+  color: #409EFF;
+  animation: rotate 1s linear infinite;
+}
+
+.success .notification-icon i {
+  color: #67C23A;
+}
+
+.error .notification-icon i {
+  color: #F56C6C;
+}
+
+.info .notification-icon i {
+  color: #909399;
+}
+
+.notification-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.notification-message {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.notification-close {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.notification-close:hover {
+  background-color: #f5f7fa;
+}
+
+.notification-close i {
+  font-size: 12px;
+  color: #909399;
+}
+
+.notification-progress {
+  height: 3px;
+  background-color: #f5f7fa;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #409EFF, #67C23A);
+  transition: width 0.3s ease;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+/* 动画效果 */
+.notification-enter-active {
+  transition: all 0.3s ease;
+}
+
+.notification-leave-active {
+  transition: all 0.3s ease;
+}
+
+.notification-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.notification-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.notification-move {
+  transition: transform 0.3s ease;
+}
+
+/* 响应式设计 */
+@media screen and (max-width: 768px) {
+  .async-notification-container {
+    top: 60px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+  
+  .notification-item {
+    max-width: none;
+  }
+  
+  .notification-content {
+    padding: 12px;
+  }
+  
+  .notification-title {
+    font-size: 13px;
+  }
+  
+  .notification-message {
+    font-size: 12px;
+  }
+}
+</style> 

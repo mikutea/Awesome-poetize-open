@@ -6,6 +6,7 @@ import com.ld.poetry.entity.Article;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
+import com.ld.poetry.service.impl.ArticleServiceImpl.ArticleSaveStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -50,4 +51,20 @@ public interface ArticleService extends IService<Article> {
      * @return 热门文章列表
      */
     PoetryResult<List<ArticleVO>> getArticlesByLikesTop();
+
+    /**
+     * 异步保存文章（快速响应版本）
+     * @param articleVO 文章信息
+     * @return 任务ID
+     */
+    PoetryResult<String> saveArticleAsync(ArticleVO articleVO);
+
+    /**
+     * 查询文章保存状态
+     * @param taskId 任务ID
+     * @return 保存状态
+     */
+    PoetryResult<ArticleSaveStatus> getArticleSaveStatus(String taskId);
+
+
 }

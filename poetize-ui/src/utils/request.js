@@ -6,6 +6,53 @@ import qs from "qs";
 import store from "../store";
 import router from "../router";
 
+// 缓存翻译配置，避免重复请求
+let cachedTranslationConfig = null;
+let configCacheTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
+
+// 获取翻译配置中的超时时间
+async function getTranslationTimeout() {
+  const now = Date.now();
+  
+  // 如果缓存有效，直接使用
+  if (cachedTranslationConfig && (now - configCacheTime) < CACHE_DURATION) {
+    return cachedTranslationConfig.timeout || 30;
+  }
+  
+  try {
+    const adminToken = localStorage.getItem('adminToken');
+    const userToken = localStorage.getItem('userToken');
+    const token = adminToken || userToken;
+    
+    const headers = {
+      'User-Agent': 'axios'
+    };
+    if (token) {
+      // 确保Authorization头存在并添加Bearer前缀
+      headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+    }
+    
+    const response = await axios.get(constant.pythonBaseURL + '/api/translation/config', {
+      timeout: 10000,
+      headers: headers
+    });
+    
+    if (response.data && response.data.code === 200 && response.data.data) {
+      const timeout = response.data.data.llm?.timeout || 30;
+      cachedTranslationConfig = { timeout };
+      configCacheTime = now;
+      console.log(`获取到翻译配置超时时间: ${timeout}秒`);
+      return timeout;
+    }
+  } catch (error) {
+    console.warn('获取翻译配置失败，使用默认超时时间:', error.message);
+  }
+  
+  // 如果获取失败，返回默认值
+  return 30;
+}
+
 // 设置请求基本配置
 axios.defaults.baseURL = constant.baseURL;
 axios.defaults.timeout = 60000; // 设置60秒超时，从15秒改为60秒
@@ -30,8 +77,36 @@ axios.interceptors.request.use(function (config) {
   
   // 对文章保存和编辑接口设置更长的超时时间
   if (config.url && (config.url.includes('/article/saveArticle') || config.url.includes('/article/updateArticle'))) {
-    config.timeout = 120000; // 文章保存请求设置2分钟超时
-    console.log('文章保存请求设置更长超时时间: 120秒');
+    if (!config.timeout || config.timeout === 60000) {
+      // 使用缓存的配置（如果有的话）
+      const cachedTimeout = cachedTranslationConfig?.timeout || 30;
+      const dynamicTimeout = (cachedTimeout + 30) * 1000; // 配置超时 + 30秒缓冲
+      config.timeout = Math.max(dynamicTimeout, 300000); // 最少5分钟
+      console.log(`文章保存请求设置超时时间: ${config.timeout / 1000}秒（基于配置${cachedTimeout}秒+30秒缓冲）`);
+    }
+  }
+  
+  // 对翻译相关API设置更长的超时时间（仅针对没有明确设置超时的请求）
+  if (config.url && config.url.includes('/api/translation/')) {
+    // 如果组件明确设置了超时时间，就不要覆盖
+    if (!config.timeout || config.timeout === 60000) {
+      config.timeout = 300000; // 翻译API默认设置5分钟超时
+      console.log(`翻译API请求设置默认超时时间: 300秒 - ${config.url}`);
+    } else {
+      console.log(`翻译API请求保持组件设置的超时时间: ${config.timeout / 1000}秒 - ${config.url}`);
+    }
+  }
+
+  // 对翻译API请求，如果组件中已经设置了超时时间，就保持不变；否则使用全局默认值
+  if (config.url && config.url.includes('/api/translation/')) {
+    // 如果config.timeout已经被组件设置了（不等于全局默认值），就使用组件设置的值
+    if (config.timeout && config.timeout !== 60000) {
+      console.log(`翻译API使用组件设置的超时时间: ${config.timeout/1000}秒 - ${config.url}`);
+    } else {
+      // 如果没有特殊设置，使用较长的默认超时时间给AI模型
+      config.timeout = 120000; // 2分钟默认超时
+      console.log(`翻译API使用默认长超时时间: 120秒 - ${config.url}`);
+    }
   }
 
   // 如果是验证码相关的请求，不需要token
@@ -112,6 +187,9 @@ axios.interceptors.response.use(function (response) {
 
 // 当data为URLSearchParams对象时设置为application/x-www-form-urlencoded;charset=utf-8
 // 当data为普通对象时，会被设置为application/json;charset=utf-8
+
+// 导出工具函数
+export { getTranslationTimeout };
 
 export default {
   post(url, params = {}, isAdmin = false, json = true) {

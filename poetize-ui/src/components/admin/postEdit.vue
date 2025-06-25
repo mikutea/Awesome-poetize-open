@@ -109,7 +109,12 @@
       </el-form-item>
     </el-form>
     <div class="myCenter" style="margin-bottom: 22px">
-      <el-button type="primary" @click="submitForm('ruleForm')">保存</el-button>
+      <el-button type="primary" @click="submitForm('ruleForm')">保存并等待</el-button>
+      <el-button type="success" @click="submitFormAsync('ruleForm')" :loading="asyncSaveLoading">
+        <i class="el-icon-loading" v-if="asyncSaveLoading"></i>
+        <i class="el-icon-check" v-else></i>
+        保存并离开
+      </el-button>
       <el-button type="danger" @click="resetForm('ruleForm')">重置所有修改</el-button>
     </div>
   </div>
@@ -127,6 +132,8 @@
       return {
         id: this.$route.query.id,
         loading: null,
+        asyncSaveLoading: false,
+        currentTaskId: null,
         article: {
           articleTitle: "",
           articleContent: "",
@@ -188,6 +195,8 @@
     created() {
       this.getSortAndLabel();
     },
+
+
 
     methods: {
       // 图片上传处理
@@ -308,7 +317,7 @@
           });
       },
       
-      // 提交表单
+      // 提交表单（同步版本）
       submitForm(formName) {
         // 表单验证前预检查
         if (this.article.viewStatus === false && this.$common.isEmpty(this.article.password)) {
@@ -333,6 +342,33 @@
             }
             
             this.saveArticle(this.article, url);
+          } else {
+            this.showError("验证失败", "请完善必填项");
+          }
+        });
+      },
+
+      // 提交表单（异步版本）
+      submitFormAsync(formName) {
+        // 表单验证前预检查
+        if (this.article.viewStatus === false && this.$common.isEmpty(this.article.password)) {
+          this.showError("验证失败", "文章不可见时必须输入密码");
+          return;
+        }
+        
+        if (this.article.articleTitle && this.article.articleTitle.length > 500) {
+          this.showError("验证失败", "文章标题长度不能超过500个字符");
+          return;
+        }
+
+        // 正式表单验证
+        this.$refs[formName].validate((valid) => {
+          if (valid) {
+            if (!this.$common.isEmpty(this.id)) {
+              this.article.id = this.id;
+            }
+            
+            this.saveArticleAsync(this.article);
           } else {
             this.showError("验证失败", "请完善必填项");
           }
@@ -408,6 +444,57 @@
           // 用户取消保存，无需任何操作
         });
       },
+      
+      // 异步保存文章
+      saveArticleAsync(article) {
+        this.$confirm('文章将在后台保存，您可以立即返回文章列表，保存状态会显示在右侧通知中。', '确认异步保存', {
+          confirmButtonText: '保存并离开',
+          cancelButtonText: '取消',
+          type: 'info',
+          center: true
+        }).then(() => {
+          this.asyncSaveLoading = true;
+          
+          // 记录保存请求数据
+          console.log('准备异步保存文章:', JSON.stringify(article, null, 2));
+          
+          // 发送异步保存请求
+          this.$http.post(this.$constant.baseURL + "/article/saveArticleAsync", article, true)
+            .then(res => {
+              this.asyncSaveLoading = false;
+              
+              // 记录响应
+              console.log('异步保存响应:', JSON.stringify(res, null, 2));
+              
+              if (res.code === 200 && res.data) {
+                // 获取任务ID
+                this.currentTaskId = res.data;
+                console.log('获取到任务ID:', this.currentTaskId);
+                
+                // 添加通知（会自动启动轮询）
+                this.$notify.loading('保存文章', '正在保存文章，请稍候...', this.currentTaskId);
+                
+                // 延迟跳转，确保全局通知组件已接管轮询
+                setTimeout(() => {
+                  console.log('准备跳转到文章列表页面');
+                  this.$router.push({path: "/postList"});
+                }, 1000); // 延长到1秒，确保轮询已启动
+              } else {
+                console.error('异步保存失败:', res);
+                this.handleSaveError(res);
+              }
+            })
+            .catch(error => {
+              this.asyncSaveLoading = false;
+              console.error('异步保存请求失败:', error);
+              this.showError("启动异步保存失败", error.message || "网络请求错误");
+            });
+        }).catch(() => {
+          // 用户取消，无需任何操作
+        });
+      },
+
+
       
       // 注意：SEO推送功能已移至后端异步处理，以下方法已不再需要
       
