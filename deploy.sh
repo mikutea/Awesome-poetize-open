@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-06-28
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.23
+## 版本: 1.0.24
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4318,6 +4318,8 @@ update_debian12_base_source() {
   fi
   # 备份原始源列表
   if [ -f /etc/apt/sources.list ]; then
+    sudo apt-get update;
+    sudo apt-get install -y --no-install-recommends ca-certificates;
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
     cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
@@ -4345,27 +4347,16 @@ update_debian_base_source() {
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
     # debian11选择清华源
     if [ "$codename" -eq "bullseye" ]; then
-    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+      sudo apt-get update;
+      sudo apt-get install -y --no-install-recommends ca-certificates;
+      cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-updates main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-backports main contrib non-free
 deb https://security.debian.org/debian-security $codename-security main contrib non-free
 EOF
-    # debian10、9选择网易源
-    elif [ "$codename" -eq "bookworm" ] && [ "$codename" -eq "buster" ]; then
-      cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
-deb http://mirrors.163.com/debian/ $codename main non-free contrib
-deb http://mirrors.163.com/debian/ $codename-updates main non-free contrib
-deb http://mirrors.163.com/debian/ $codename-backports main non-free contrib
-deb http://mirrors.163.com/debian-security/ $codename/updates main non-free contrib
-
-deb-src http://mirrors.163.com/debian/ $codename main non-free contrib
-deb-src http://mirrors.163.com/debian/ $codename-updates main non-free contrib
-deb-src http://mirrors.163.com/debian/ $codename-backports main non-free contrib
-deb-src http://mirrors.163.com/debian-security/ $codename/updates main non-free contrib
-EOF
     else
-      warning "不支持的Debian版本: $codename，请升级到debian9或以上版本，跳过换源"
+      warning "不支持的Debian版本: $codename，请升级到debian11或以上版本，跳过换源"
     fi
   else
     warning "Debian $codename 源列表不存在，请检查是否为Debian $codename系统，跳过换源"
@@ -4763,6 +4754,8 @@ RUN set -eux; \
     version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"'); \
     codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2); \
     if [ "$version_id" -ge 12 ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends ca-certificates; \ 
         mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \
         security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \
         comps='main contrib non-free non-free-firmware'; \
