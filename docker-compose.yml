@@ -42,6 +42,8 @@ services:
       context: .
       dockerfile: docker/poetize-ui/Dockerfile
     container_name: poetize-ui
+    environment:
+      - PUPPETEER_DOWNLOAD_HOST=https://npmmirror.com/mirrors
     volumes:
       - ./poetize-ui:/app/src
       - poetize_node_modules:/app/src/node_modules
@@ -58,7 +60,7 @@ services:
                            echo '=== 安装依赖 ===' && \
                            npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --verbose && \
                            echo '=== 安装Brotli压缩工具 ===' && \
-                           npm install -g brotli --no-fund --no-audit 2>/dev/null || echo '警告: brotli安装失败，将跳过.br文件生成' && \
+                           (npm install -g brotli --no-fund --no-audit || echo '警告: brotli安装失败，将跳过.br文件生成') && \
                            echo '=== 运行构建 ===' && \
                            npm run build && \
                            echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
@@ -84,6 +86,8 @@ services:
       context: .
       dockerfile: docker/poetize-im-ui/Dockerfile
     container_name: poetize-im-ui
+    environment:
+      - PUPPETEER_DOWNLOAD_HOST=https://npmmirror.com/mirrors
     volumes:
       - ./poetize-im-ui:/app/src
       - im_node_modules:/app/src/node_modules

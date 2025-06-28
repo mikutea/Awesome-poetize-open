@@ -4318,25 +4318,30 @@ update_debian12_base_source() {
   fi
   # 备份原始源列表
   if [ -f /etc/apt/sources.list ]; then
+    sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak;
+    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
+
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
+
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
+
+deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
+EOF
     sudo apt-get update;
-    sudo apt-get install -y --no-install-recommends ca-certificates;
-    sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
+    sudo apt-get install apt-transport-https ca-certificates;
     cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
-deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
 
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
-deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
 
 deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
-deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
 
 deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
-deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
 EOF
   else
     error "Debian 12 源列表不存在，请检查是否为Debian 12系统"
-    exit 1
+    exit 0
   fi
 }
 
@@ -4745,7 +4750,6 @@ patch_dockerfile_slim_mirror() {
       exit 1
     fi
   }
-  # 生成临时文件保存完整代码块，使用单引号 here-doc 保留美元符号
   local tmp_file
   tmp_file=$(mktemp)
   cat > "$tmp_file" <<'BLOCK'
@@ -4754,24 +4758,40 @@ RUN set -eux; \
     version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"'); \
     codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2); \
     if [ "$version_id" -ge 12 ]; then \
+        # Debian 12: 先使用 TUNA 的 http 源安装 ca-certificates，再换 https
+        mirror='http://mirrors.tuna.tsinghua.edu.cn/debian'; \
+        security_mirror='http://mirrors.tuna.tsinghua.edu.cn/debian-security'; \
+        comps='main contrib non-free non-free-firmware'; \
+        rm -f /etc/apt/sources.list.d/debian.sources; \
+        echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${security_mirror}/ ${codename}-security ${comps}" >> /etc/apt/sources.list; \
         apt-get update; \
-        apt-get install -y --no-install-recommends ca-certificates; \ 
+        apt-get install -y --no-install-recommends apt-transport-https ca-certificates; \
+        # 替换为 https 源
         mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \
         security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \
-        comps='main contrib non-free non-free-firmware'; \
+        echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${security_mirror}/ ${codename}-security ${comps}" >> /etc/apt/sources.list; \
     elif [ "$version_id" -ge 11 ]; then \
+        # Debian 11: 使用 163 http 源安装 ca-certificates（如果需要 https 可再切换）
         mirror='http://mirrors.163.com/debian'; \
         security_mirror='http://mirrors.163.com/debian-security'; \
         comps='main contrib non-free'; \
+        rm -f /etc/apt/sources.list.d/debian.sources; \
+        echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
+        echo "deb ${security_mirror}/ ${codename}-security ${comps}" >> /etc/apt/sources.list; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends ca-certificates; \
     else \
         echo "Debian version $version_id detected; skipping mirror replacement as sources are EOL or unavailable."; \
-        exit 1; \
     fi; \
-    rm -f /etc/apt/sources.list.d/debian.sources; \
-    echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
-    echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
-    echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
-    echo "deb ${security_mirror}/ ${codename}-security ${comps}" >> /etc/apt/sources.list
+    apt-get update
 # ===== 国内镜像加速 end =====
 BLOCK
 
@@ -4779,6 +4799,7 @@ BLOCK
   sed_i "${insert_line}r $tmp_file" "$df"
   rm -f "$tmp_file"
 }
+
 
 
 patch_dockerfile_ubuntu_mirror() {
