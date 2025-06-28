@@ -40,7 +40,7 @@ services:
   poetize-ui:
     build:
       context: .
-      dockerfile: docker/node-base/Dockerfile
+      dockerfile: docker/poetize-ui/Dockerfile
     container_name: poetize-ui
     volumes:
       - ./poetize-ui:/app/src
@@ -82,7 +82,7 @@ services:
   poetize-im-ui:
     build:
       context: .
-      dockerfile: docker/node-base/Dockerfile
+      dockerfile: docker/poetize-im-ui/Dockerfile
     container_name: poetize-im-ui
     volumes:
       - ./poetize-im-ui:/app/src
