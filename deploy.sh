@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-06-28
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.21
+## 版本: 1.0.22
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4762,10 +4762,13 @@ RUN set -eux; \
         mirror='https://mirrors.tuna.tsinghua.edu.cn/debian'; \
         security_mirror='https://mirrors.tuna.tsinghua.edu.cn/debian-security'; \
         comps='main contrib non-free non-free-firmware'; \
-    else \
+    elif [ "$version_id" -ge 11 ]; then \
         mirror='http://mirrors.163.com/debian'; \
         security_mirror='http://mirrors.163.com/debian-security'; \
         comps='main contrib non-free'; \
+    else \
+        echo "Debian version $version_id detected; skipping mirror replacement as sources are EOL or unavailable."; \
+        exit 1; \
     fi; \
     echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
     echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
