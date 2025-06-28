@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-06-28
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.22
+## 版本: 1.0.23
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4312,6 +4312,10 @@ update_amazon_based() {
 
 # 更换国内源
 update_debian12_base_source() {
+  if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+    sudo cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak;
+    sudo rm -f /etc/apt/sources.list.d/debian.sources;
+  fi
   # 备份原始源列表
   if [ -f /etc/apt/sources.list ]; then
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
@@ -4770,6 +4774,7 @@ RUN set -eux; \
         echo "Debian version $version_id detected; skipping mirror replacement as sources are EOL or unavailable."; \
         exit 1; \
     fi; \
+    rm -f /etc/apt/sources.list.d/debian.sources; \
     echo "deb ${mirror}/ ${codename} ${comps}"        >  /etc/apt/sources.list; \
     echo "deb ${mirror}/ ${codename}-updates ${comps}" >> /etc/apt/sources.list; \
     echo "deb ${mirror}/ ${codename}-backports ${comps}" >> /etc/apt/sources.list; \
