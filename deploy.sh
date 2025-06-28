@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-06-28
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.20
+## 版本: 1.0.21
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4830,6 +4830,7 @@ patch_dockerfile_mirror() {
   if [ -f "docker/python/Dockerfile" ]; then
     patch_dockerfile_slim_mirror "docker/python/Dockerfile"
     patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile"
+    patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile"
   fi
   if [ -f "docker/node-base/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
     # 因换了清华源反而构建失败，所以此处不再更换源了，alpine官方源走的是cdn，不换源，通常也很快
