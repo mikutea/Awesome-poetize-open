@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-06-27
+## 修改时间: 2025-06-28
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.18
+## 版本: 1.0.19
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4829,6 +4829,7 @@ RUN sed -i 's#https\\?://dl-cdn.alpinelinux.org/alpine#https://mirrors.tuna.tsin
 patch_dockerfile_mirror() {
   if [ -f "docker/python/Dockerfile" ]; then
     patch_dockerfile_slim_mirror "docker/python/Dockerfile"
+    patch_dockerfile_slim_mirror "docker/node-base/Dockerfile"
   fi
   if [ -f "docker/node-base/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
     # 因换了清华源反而构建失败，所以此处不再更换源了，alpine官方源走的是cdn，不换源，通常也很快
