@@ -159,12 +159,8 @@ export default {
     }
   },
   mounted() {
-    // 设置当前时间
-    this.updateCurrentTime();
-    setInterval(this.updateCurrentTime, 1000);
-    
-    // 获取用户IP（如果可能）
-    this.getUserIP();
+    // 获取用户IP和服务器时间
+    this.getUserIPAndTime();
     
     // 设置页面标题
     document.title = '访问被拒绝 - 403';
@@ -173,23 +169,25 @@ export default {
     this.logAccessAttempt();
   },
   methods: {
-    updateCurrentTime() {
-      const now = new Date();
-      this.currentTime = now.toLocaleString('zh-CN');
-    },
-    
-    async getUserIP() {
+    async getUserIPAndTime() {
       try {
-        // 通过API获取用户真实IP地址
+        // 通过API获取用户真实IP地址和时间戳
         const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getUserIP");
         if (res.data && res.data.code === 200 && res.data.data) {
           this.userIP = res.data.data.ip || '无法获取';
+          if (res.data.data.timestamp) {
+            this.currentTime = new Date(res.data.data.timestamp).toLocaleString('zh-CN');
+          } else {
+            this.currentTime = new Date().toLocaleString('zh-CN');
+          }
         } else {
           this.userIP = '无法获取';
+          this.currentTime = '无法获取';
         }
       } catch (error) {
-        console.log('获取IP失败:', error);
+        console.log('获取IP和时间失败:', error);
         this.userIP = '无法获取';
+        this.currentTime = '无法获取';
       }
     },
     
@@ -687,4 +685,4 @@ export default {
     width: 200px;
   }
 }
-</style> 
+</style>
