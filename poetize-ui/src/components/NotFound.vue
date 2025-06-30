@@ -208,7 +208,7 @@ export default {
 
 <style scoped>
 .not-found-container {
-  height: 100vh;
+  min-height: 100vh;
   background: linear-gradient(135deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
   background-size: 400% 400%;
   animation: gradientShift 6s ease infinite;
@@ -217,8 +217,8 @@ export default {
   align-items: center;
   justify-content: center;
   position: relative;
-  overflow: auto;
-  padding: 10px;
+  overflow: hidden;
+  padding: 20px;
   box-sizing: border-box;
 }
 
@@ -265,22 +265,22 @@ export default {
 
 /* 标题区域 */
 .title-section {
-  margin-bottom: 20px;
+  margin-bottom: 40px;
 }
 
 .main-title {
-  font-size: 3rem;
+  font-size: 4rem;
   font-weight: 800;
   color: white;
-  margin: 0 0 5px 0;
+  margin: 0 0 10px 0;
   text-shadow: 0 4px 20px rgba(0,0,0,0.3);
   letter-spacing: 2px;
 }
 
 .subtitle {
-  font-size: 1.2rem;
+  font-size: 1.5rem;
   color: white;
-  margin: 0 0 5px 0;
+  margin: 0 0 10px 0;
   opacity: 0.9;
 }
 
@@ -294,9 +294,9 @@ export default {
 /* 3D插画区域 */
 .illustration-container {
   perspective: 1000px;
-  margin: 20px 0;
+  margin: 60px 0;
   position: relative;
-  height: 200px;
+  height: 300px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -310,8 +310,8 @@ export default {
 }
 
 .digit {
-  width: 60px;
-  height: 90px;
+  width: 80px;
+  height: 120px;
   position: relative;
   transform-style: preserve-3d;
   animation: digitFloat 4s ease-in-out infinite;
@@ -330,12 +330,12 @@ export default {
 
 .digit-face {
   position: absolute;
-  width: 60px;
-  height: 90px;
+  width: 80px;
+  height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
+  font-size: 4rem;
   font-weight: bold;
   color: white;
   text-shadow: 0 2px 10px rgba(0,0,0,0.3);
@@ -530,14 +530,14 @@ export default {
 
 /* 操作按钮区域 */
 .action-section {
-  margin-top: 15px;
+  margin-top: 40px;
 }
 
 .button-group {
   display: flex;
-  gap: 15px;
+  gap: 20px;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 40px;
   flex-wrap: wrap;
 }
 
@@ -597,7 +597,7 @@ export default {
 
 /* 搜索区域 */
 .search-section {
-  margin: 15px 0;
+  margin: 40px 0;
 }
 
 .search-hint {
@@ -646,7 +646,7 @@ export default {
 
 /* 推荐区域 */
 .recommendations {
-  margin-top: 15px;
+  margin-top: 40px;
 }
 
 .rec-title {
@@ -688,7 +688,7 @@ export default {
 
 /* 底部提示 */
 .footer-hint {
-  margin-top: 15px;
+  margin-top: 60px;
   text-align: center;
   z-index: 10;
 }
