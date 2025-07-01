@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-01
+## 修改时间: 2025-07-02
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 0.2.0
+## 版本: 0.3.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -27,6 +27,7 @@ DB_USER_PASSWORD=""
 BACKUP_DIR=""
 IS_CHINA_ENV=false
 CURRENT_DIR=$(dirname "$(pwd)")
+MIGRATE_PRERENDER="yes"  # 是否迁移预渲染文件，默认为yes
 
 # 断点续传和重试配置
 STATE_FILE=".migrate_state"
@@ -250,9 +251,12 @@ check_prerequisites() {
     fi
     
     # 检查docker-compose是否运行
-    if ! docker ps | grep -q "poetize-mariadb"; then
+    local running_container=$(docker ps --format "{{.Names}}" | grep "mariadb" | head -1)
+    if [ -z "$running_container" ]; then
         error "数据库容器未运行，请先启动服务: docker-compose up -d"
         exit 1
+    else
+        info "检测到运行中的MariaDB容器: $running_container"
     fi
     
     success "前置条件检查通过"
@@ -334,7 +338,22 @@ backup_database() {
     # 备份数据库
     info "正在导出数据库到 $BACKUP_DIR/poetry.sql..."
     
-    local backup_cmd="sudo docker exec poetize-mariadb mariadb-dump -u root -p'$DB_ROOT_PASSWORD' --single-transaction --routines --triggers --databases poetize > '$BACKUP_DIR/poetry.sql'"
+    # 动态获取实际的MariaDB容器名称
+    local actual_container=$(docker ps --format "{{.Names}}" | grep "mariadb" | head -1)
+    if [ -z "$actual_container" ]; then
+        # 如果没有找到运行中的容器，尝试查找所有容器（包括停止的）
+        actual_container=$(docker ps -a --format "{{.Names}}" | grep "mariadb" | head -1)
+        if [ -z "$actual_container" ]; then
+            error "未找到MariaDB容器，请确保数据库服务正在运行"
+            exit 1
+        else
+            error "MariaDB容器 $actual_container 未运行，请先启动数据库服务"
+            exit 1
+        fi
+    fi
+    
+    info "使用MariaDB容器: $actual_container"
+    local backup_cmd="sudo docker exec $actual_container mariadb-dump -u root -p'$DB_ROOT_PASSWORD' --single-transaction --routines --triggers --databases poetize > '$BACKUP_DIR/poetry.sql'"
     
     if retry_command "$MAX_RETRIES" "$RETRY_DELAY" "数据库备份" "$backup_cmd"; then
         save_state "$STEP_BACKUP_DB" "completed"
@@ -631,6 +650,96 @@ deploy_on_target() {
     fi
 }
 
+# 预渲染文件迁移函数
+migrate_prerender_files() {
+    if [ "$MIGRATE_PRERENDER" != "yes" ]; then
+        warning "跳过预渲染文件迁移"
+        return 0
+    fi
+    
+    info "开始迁移预渲染文件..."
+    
+    # 检查本地是否有预渲染文件
+    local prerender_backup="prerender_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    local has_prerender=false
+    
+    # 检查Docker volume中的预渲染文件
+    local actual_volume=$(docker volume ls --format "{{.Name}}" | grep "poetize_ui_dist")
+    if [ -n "$actual_volume" ]; then
+        info "检查Docker volume中的预渲染文件..."
+        info "找到volume: $actual_volume"
+        
+        # 创建临时容器来访问volume
+        if docker run --rm -v "$actual_volume":/data alpine sh -c "[ -d /data/prerender ] && [ \"\$(ls -A /data/prerender 2>/dev/null)\" ]"; then
+            success "发现预渲染文件"
+            has_prerender=true
+            
+            # 导出预渲染文件
+            info "导出预渲染文件到 $prerender_backup..."
+            if docker run --rm -v "$actual_volume":/data -v "$(pwd):/backup" alpine tar -czf "/backup/$prerender_backup" -C /data prerender; then
+                success "预渲染文件导出成功"
+            else
+                error "预渲染文件导出失败"
+                return 1
+            fi
+        else
+            warning "未发现预渲染文件或文件为空"
+        fi
+    else
+        warning "未发现poetize_ui_dist volume"
+    fi
+    
+    if [ "$has_prerender" = true ]; then
+        # 传输预渲染文件到目标服务器
+        info "传输预渲染文件到目标服务器..."
+        if scp_retry "预渲染文件" "$prerender_backup" "/tmp/"; then
+            success "预渲染文件传输成功"
+            
+            # 在目标服务器上导入预渲染文件
+            info "在目标服务器上导入预渲染文件..."
+            if ssh_retry "导入预渲染文件" "
+                cd /tmp && 
+                # 确保Docker volume存在（使用实际的volume名称）
+                local target_volume=\$(docker volume ls --format \"{{.Name}}\" | grep \"poetize_ui_dist\" | head -1)
+                if [ -z \"\$target_volume\" ]; then
+                    # 如果没有找到，尝试创建标准名称的volume（带项目前缀）
+                    target_volume=\"awesome-poetize-open_poetize_ui_dist\"
+                    docker volume create \$target_volume 2>/dev/null || true
+                    # 如果带前缀的创建失败，尝试创建不带前缀的
+                    if [ \$? -ne 0 ]; then
+                        target_volume=\"poetize_ui_dist\"
+                        docker volume create \$target_volume 2>/dev/null || true
+                    fi
+                fi && 
+                echo \"使用volume: \$target_volume\" && 
+                # 导入预渲染文件
+                docker run --rm -v \"\$target_volume\":/data -v /tmp:/backup alpine sh -c '
+                    mkdir -p /data/prerender && 
+                    cd /data && 
+                    tar -xzf /backup/$prerender_backup && 
+                    echo \"预渲染文件导入完成\"' && 
+                # 清理临时文件
+                rm -f /tmp/$prerender_backup
+            " "true"; then
+                success "预渲染文件导入成功"
+            else
+                error "预渲染文件导入失败"
+                return 1
+            fi
+        else
+            error "预渲染文件传输失败"
+            return 1
+        fi
+        
+        # 清理本地备份文件
+        rm -f "$prerender_backup"
+        success "已清理本地预渲染备份文件"
+    fi
+    
+    success "预渲染文件迁移完成"
+    return 0
+}
+
 # 清理临时文件
 cleanup() {
     info "清理临时文件..."
@@ -640,6 +749,14 @@ cleanup() {
         rm -rf "$BACKUP_DIR"
         success "临时备份目录已清理"
     fi
+    
+    # 清理预渲染备份文件
+    for file in prerender_backup_*.tar.gz; do
+        if [ -f "$file" ]; then
+            rm -f "$file"
+            success "已清理预渲染备份文件: $file"
+        fi
+    done
     
     success "临时文件清理完成"
 }
@@ -729,6 +846,13 @@ main() {
     transfer_files
     deploy_on_target
     
+    # 执行预渲染文件迁移
+    info "开始预渲染文件迁移..."
+    if ! migrate_prerender_files; then
+        error "预渲染文件迁移失败"
+        exit 1
+    fi
+    
     # 显示总结
     show_migration_summary
     
@@ -763,6 +887,12 @@ show_migration_summary() {
     
     step_status=$(get_step_status "$STEP_TRANSFER_FILES")
     echo "  ✓ 文件传输: ${GREEN}$step_status${NC}"
+    
+    if [ "$MIGRATE_PRERENDER" = "yes" ]; then
+        echo "  ✓ 预渲染文件迁移: ${GREEN}completed${NC}"
+    else
+        echo "  ⏭ 预渲染文件迁移: ${YELLOW}skipped${NC}"
+    fi
     
     step_status=$(get_step_status "$STEP_DEPLOY")
     echo "  ✓ 项目部署: ${GREEN}$step_status${NC}"
