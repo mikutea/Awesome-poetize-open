@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-01
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 0.1.1
+## 版本: 0.2.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -21,11 +21,150 @@ warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
 TARGET_IP=""
 TARGET_USER=""
 TARGET_PASSWORD=""
+TARGET_PORT="22"
 DB_ROOT_PASSWORD=""
 DB_USER_PASSWORD=""
 BACKUP_DIR=""
 IS_CHINA_ENV=false
 CURRENT_DIR=$(dirname "$(pwd)")
+
+# 断点续传和重试配置
+STATE_FILE=".migrate_state"
+MAX_RETRIES=3
+RETRY_DELAY=10
+SSH_TIMEOUT=30
+CONNECT_TIMEOUT=10
+
+# 迁移步骤状态
+STEP_BACKUP_DB="backup_db"
+STEP_TEST_SSH="test_ssh"
+STEP_DETECT_ENV="detect_env"
+STEP_PULL_CODE="pull_code"
+STEP_TRANSFER_FILES="transfer_files"
+STEP_DEPLOY="deploy"
+STEP_CLEANUP="cleanup"
+
+# 状态管理函数
+save_state() {
+    local step="$1"
+    local status="$2"  # completed, failed, in_progress
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$step:$status:$timestamp" >> "$STATE_FILE"
+    info "状态已保存: $step -> $status"
+}
+
+get_step_status() {
+    local step="$1"
+    if [ ! -f "$STATE_FILE" ]; then
+        echo "not_started"
+        return
+    fi
+    
+    local status=$(grep "^$step:" "$STATE_FILE" | tail -1 | cut -d':' -f2)
+    if [ -z "$status" ]; then
+        echo "not_started"
+    else
+        echo "$status"
+    fi
+}
+
+is_step_completed() {
+    local step="$1"
+    local status=$(get_step_status "$step")
+    [ "$status" = "completed" ]
+}
+
+show_migration_progress() {
+    info "迁移进度状态:"
+    local steps=("$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY" "$STEP_CLEANUP")
+    local step_names=("数据库备份" "SSH连接测试" "环境检测" "代码拉取" "文件传输" "部署执行" "清理工作")
+    
+    for i in "${!steps[@]}"; do
+        local step="${steps[$i]}"
+        local name="${step_names[$i]}"
+        local status=$(get_step_status "$step")
+        
+        case "$status" in
+            "completed")
+                printf "  ${GREEN}✓${NC} %s\n" "$name"
+                ;;
+            "failed")
+                printf "  ${RED}✗${NC} %s\n" "$name"
+                ;;
+            "in_progress")
+                printf "  ${YELLOW}⚠${NC} %s (进行中)\n" "$name"
+                ;;
+            *)
+                printf "  ${GRAY}○${NC} %s (未开始)\n" "$name"
+                ;;
+        esac
+    done
+}
+
+clean_state() {
+    if [ -f "$STATE_FILE" ]; then
+        rm -f "$STATE_FILE"
+        info "状态文件已清理"
+    fi
+}
+
+# 重试机制函数
+retry_command() {
+    local max_attempts="$1"
+    local delay="$2"
+    local description="$3"
+    shift 3
+    local cmd="$@"
+    
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        info "$description (尝试 $attempt/$max_attempts)"
+        
+        if eval "$cmd"; then
+            success "$description 成功"
+            return 0
+        fi
+        
+        if [ $attempt -lt $max_attempts ]; then
+            warning "$description 失败，等待 ${delay} 秒后重试..."
+            sleep "$delay"
+        else
+            error "$description 在 $max_attempts 次尝试后仍然失败"
+        fi
+        
+        ((attempt++))
+    done
+    
+    return 1
+}
+
+# SSH重试执行函数
+ssh_retry() {
+    local description="$1"
+    local ssh_cmd="$2"
+    local use_sudo="${3:-false}"
+    
+    local full_cmd
+    if [ "$use_sudo" = "true" ] && [ "$TARGET_USER" != "root" ]; then
+        full_cmd="sshpass -p '$TARGET_PASSWORD' ssh -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT -o ServerAliveInterval=60 '$TARGET_USER@$TARGET_IP' \"echo '$TARGET_PASSWORD' | sudo -S bash -c '$ssh_cmd'\""
+    else
+        full_cmd="sshpass -p '$TARGET_PASSWORD' ssh -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT -o ServerAliveInterval=60 '$TARGET_USER@$TARGET_IP' '$ssh_cmd'"
+    fi
+    
+    retry_command "$MAX_RETRIES" "$RETRY_DELAY" "$description" "$full_cmd"
+}
+
+# SCP重试传输函数
+scp_retry() {
+    local description="$1"
+    local source="$2"
+    local destination="$3"
+    local options="${4:-}"
+    
+    local scp_cmd="sshpass -p '$TARGET_PASSWORD' scp -P $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT $options '$source' '$TARGET_USER@$TARGET_IP:$destination'"
+    
+    retry_command "$MAX_RETRIES" "$RETRY_DELAY" "$description" "$scp_cmd"
+}
 # 检查必要工具
 check_prerequisites() {
     info "检查迁移前置条件..."
@@ -146,8 +285,20 @@ get_user_input() {
         fi
     done
     
+    # 获取SSH端口
+    read -p "SSH端口 (默认: 22): " TARGET_PORT
+    if [ -z "$TARGET_PORT" ]; then
+        TARGET_PORT="22"
+    fi
+    
+    # 验证端口号
+    if ! [[ "$TARGET_PORT" =~ ^[0-9]+$ ]] || [ "$TARGET_PORT" -lt 1 ] || [ "$TARGET_PORT" -gt 65535 ]; then
+        warning "端口号无效，使用默认端口22"
+        TARGET_PORT="22"
+    fi
+    
     success "目标服务器信息获取完成"
-    info "目标服务器: $TARGET_USER@$TARGET_IP"
+    info "目标服务器: $TARGET_USER@$TARGET_IP:$TARGET_PORT"
 }
 
 # 读取数据库凭据
@@ -167,6 +318,13 @@ read_db_credentials() {
 
 # 备份数据库
 backup_database() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_BACKUP_DB"; then
+        success "数据库备份已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_BACKUP_DB" "in_progress"
     info "开始备份数据库..."
     
     # 创建临时备份目录
@@ -176,17 +334,13 @@ backup_database() {
     # 备份数据库
     info "正在导出数据库到 $BACKUP_DIR/poetry.sql..."
     
-    sudo docker exec poetize-mariadb mariadb-dump \
-        -u root \
-        -p"$DB_ROOT_PASSWORD" \
-        --single-transaction \
-        --routines \
-        --triggers \
-        --databases poetize > "$BACKUP_DIR/poetry.sql"
+    local backup_cmd="sudo docker exec poetize-mariadb mariadb-dump -u root -p'$DB_ROOT_PASSWORD' --single-transaction --routines --triggers --databases poetize > '$BACKUP_DIR/poetry.sql'"
     
-    if [ $? -eq 0 ]; then
+    if retry_command "$MAX_RETRIES" "$RETRY_DELAY" "数据库备份" "$backup_cmd"; then
+        save_state "$STEP_BACKUP_DB" "completed"
         success "数据库备份成功: $BACKUP_DIR/poetry.sql"
     else
+        save_state "$STEP_BACKUP_DB" "failed"
         error "数据库备份失败"
         exit 1
     fi
@@ -194,12 +348,20 @@ backup_database() {
 
 # 测试SSH连接
 test_ssh_connection() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_TEST_SSH"; then
+        success "SSH连接测试已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_TEST_SSH" "in_progress"
     info "测试SSH连接到目标服务器..."
     
-    # 测试SSH连接
-    if sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$TARGET_USER@$TARGET_IP" "echo 'SSH连接测试成功'" &>/dev/null; then
+    # 测试基本SSH连接
+    if ssh_retry "SSH连接测试" "echo 'SSH连接测试成功'" "false"; then
         success "SSH连接测试成功"
     else
+        save_state "$STEP_TEST_SSH" "failed"
         error "SSH连接失败，请检查IP地址、用户名和密码"
         exit 1
     fi
@@ -207,31 +369,59 @@ test_ssh_connection() {
     # 检查sudo权限（如果不是root用户）
     if [ "$TARGET_USER" != "root" ]; then
         info "检查sudo权限..."
-        if sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "echo '$TARGET_PASSWORD' | sudo -S echo 'sudo权限检查成功'" &>/dev/null; then
+        if ssh_retry "sudo权限检查" "echo 'sudo权限检查成功'" "true"; then
             success "sudo权限检查通过"
         else
+            save_state "$STEP_TEST_SSH" "failed"
             error "用户 $TARGET_USER 没有sudo权限，请使用root用户或具有sudo权限的用户"
             exit 1
         fi
     fi
+    
+    save_state "$STEP_TEST_SSH" "completed"
 }
 
 # 检测目标服务器环境
 detect_target_environment() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_DETECT_ENV"; then
+        success "环境检测已完成，跳过此步骤"
+        # 从状态文件读取环境信息
+        local env_info=$(grep "^$STEP_DETECT_ENV:completed:" "$STATE_FILE" | tail -1 | cut -d':' -f4-)
+        if [[ "$env_info" == *"china"* ]]; then
+            IS_CHINA_ENV=true
+            info "读取到国内网络环境配置"
+        else
+            IS_CHINA_ENV=false
+            info "读取到国外网络环境配置"
+        fi
+        return 0
+    fi
+    
+    save_state "$STEP_DETECT_ENV" "in_progress"
     info "检测目标服务器网络环境..."
     
     # 检测是否能访问Google（判断是否为国内环境）
-    if sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1"; then
+    if ssh_retry "网络环境检测" "curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1" "false"; then
         IS_CHINA_ENV=false
+        save_state "$STEP_DETECT_ENV" "completed:foreign"
         success "检测到国外网络环境，将使用GitHub仓库"
     else
         IS_CHINA_ENV=true
+        save_state "$STEP_DETECT_ENV" "completed:china"
         success "检测到国内网络环境，将使用Gitee仓库"
     fi
 }
 
 # 在目标服务器上拉取代码
 pull_code_on_target() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_PULL_CODE"; then
+        success "项目代码拉取已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_PULL_CODE" "in_progress"
     info "在目标服务器上拉取项目代码..."
     
     local git_url
@@ -293,15 +483,12 @@ pull_code_on_target() {
         fi
     "
     
-    if [ "$TARGET_USER" = "root" ]; then
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "$ssh_cmd"
-    else
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "echo '$TARGET_PASSWORD' | sudo -S bash -c \"$ssh_cmd\""
-    fi
-    
-    if [ $? -eq 0 ]; then
+    # 使用重试机制执行代码拉取
+    if ssh_retry "项目代码拉取" "$ssh_cmd" "true"; then
+        save_state "$STEP_PULL_CODE" "completed"
         success "项目代码拉取成功"
     else
+        save_state "$STEP_PULL_CODE" "failed"
         error "项目代码拉取失败"
         exit 1
     fi
@@ -309,6 +496,13 @@ pull_code_on_target() {
 
 # 传输文件到目标服务器
 transfer_files() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_TRANSFER_FILES"; then
+        success "文件传输已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_TRANSFER_FILES" "in_progress"
     info "传输备份文件到目标服务器..."
     
     local target_path
@@ -316,56 +510,57 @@ transfer_files() {
     
     # 传输数据库备份文件
     info "传输数据库备份文件..."
-    sshpass -p "$TARGET_PASSWORD" scp -o StrictHostKeyChecking=no "$BACKUP_DIR/poetry.sql" "$TARGET_USER@$TARGET_IP:$target_path/poetize-server/sql/poetry.sql"
-    
-    if [ $? -eq 0 ]; then
-        success "数据库备份文件传输成功"
-    else
+    if ! scp_retry "数据库备份文件" "$BACKUP_DIR/poetry.sql" "$target_path/poetize-server/sql/poetry.sql"; then
+        save_state "$STEP_TRANSFER_FILES" "failed"
         error "数据库备份文件传输失败"
         exit 1
     fi
     
     # 传输数据库凭据文件
     info "传输数据库凭据文件..."
-    if [ "$TARGET_USER" = "root" ]; then
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "mkdir -p $target_path/.config"
-    else
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "echo '$TARGET_PASSWORD' | sudo -S mkdir -p $target_path/.config"
+    if ! ssh_retry "创建配置目录" "mkdir -p $target_path/.config" "true"; then
+        save_state "$STEP_TRANSFER_FILES" "failed"
+        error "创建配置目录失败"
+        exit 1
     fi
-    sshpass -p "$TARGET_PASSWORD" scp -o StrictHostKeyChecking=no ".config/db_credentials.txt" "$TARGET_USER@$TARGET_IP:$target_path/.config/db_credentials.txt"
     
-    if [ $? -eq 0 ]; then
-        success "数据库凭据文件传输成功"
-    else
+    if ! scp_retry "数据库凭据文件" ".config/db_credentials.txt" "$target_path/.config/db_credentials.txt"; then
+        save_state "$STEP_TRANSFER_FILES" "failed"
         error "数据库凭据文件传输失败"
         exit 1
     fi
     
     # 传输py/data配置目录
     info "传输Python配置文件..."
-    sshpass -p "$TARGET_PASSWORD" scp -r -o StrictHostKeyChecking=no "py/data" "$TARGET_USER@$TARGET_IP:$target_path/py/"
-    
-    if [ $? -eq 0 ]; then
-        success "Python配置文件传输成功"
-        
-        # 如果不是root用户，需要确保文件权限正确
-        if [ "$TARGET_USER" != "root" ]; then
-            info "设置文件权限..."
-            sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "echo '$TARGET_PASSWORD' | sudo -S chown -R $TARGET_USER:$TARGET_USER $target_path"
-            if [ $? -eq 0 ]; then
-                success "文件权限设置成功"
-            else
-                warning "文件权限设置失败，可能需要手动调整"
-            fi
-        fi
-    else
+    if ! scp_retry "Python配置文件" "py/data" "$target_path/py/" "-r"; then
+        save_state "$STEP_TRANSFER_FILES" "failed"
         error "Python配置文件传输失败"
         exit 1
     fi
+    
+    # 如果不是root用户，需要确保文件权限正确
+    if [ "$TARGET_USER" != "root" ]; then
+        info "设置文件权限..."
+        if ! ssh_retry "设置文件权限" "chown -R $TARGET_USER:$TARGET_USER $target_path" "true"; then
+            warning "文件权限设置失败，可能需要手动调整"
+        else
+            success "文件权限设置成功"
+        fi
+    fi
+    
+    save_state "$STEP_TRANSFER_FILES" "completed"
+    success "文件传输完成"
 }
 
 # 在目标服务器上执行部署
 deploy_on_target() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_DEPLOY"; then
+        success "项目部署已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_DEPLOY" "in_progress"
     info "在目标服务器上开始部署..."
     
     local target_path
@@ -375,40 +570,78 @@ deploy_on_target() {
     info "部署过程中可能需要您的交互输入（如域名配置、HTTPS设置等）"
     
     # 设置部署脚本执行权限
-    if [ "$TARGET_USER" = "root" ]; then
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "cd $target_path && chmod +x deploy.sh"
-    else
-        sshpass -p "$TARGET_PASSWORD" ssh -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "echo '$TARGET_PASSWORD' | sudo -S bash -c 'cd $target_path && chmod +x deploy.sh'"
+    if ! ssh_retry "设置部署脚本权限" "cd $target_path && chmod +x deploy.sh" "true"; then
+        save_state "$STEP_DEPLOY" "failed"
+        error "设置部署脚本权限失败"
+        exit 1
     fi
     
-    # 执行部署脚本（支持交互式操作）
+    # 执行部署脚本（支持交互式操作和实时输出）
     echo -e "${YELLOW}[提示]${NC} 即将连接到目标服务器执行部署脚本，请根据提示进行交互操作"
-    echo -e "${YELLOW}[提示]${NC} 如果需要退出，请按 Ctrl+C"
+    echo -e "${YELLOW}[提示]${NC} 部署过程可能需要较长时间（国内服务器通常需要30-60分钟）"
+    echo -e "${YELLOW}[提示]${NC} 您将看到实时的部署进度输出，如果需要退出，请按 Ctrl+C"
+    echo -e "${BLUE}[信息]${NC} 正在连接目标服务器并开始部署..."
     echo ""
     
+    # 显示部署开始时间
+    local start_time=$(date '+%Y-%m-%d %H:%M:%S')
+    info "部署开始时间: $start_time"
+    echo ""
+    
+    # 执行部署脚本，保持实时输出和交互性
     if [ "$TARGET_USER" = "root" ]; then
-        sshpass -p "$TARGET_PASSWORD" ssh -t -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "cd $target_path && echo '开始执行部署脚本...' && ./deploy.sh"
+        sshpass -p "$TARGET_PASSWORD" ssh -t -p $TARGET_PORT -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 "$TARGET_USER@$TARGET_IP" "
+            cd $target_path && \
+            echo '========================================' && \
+            echo '开始执行部署脚本...' && \
+            echo '部署过程中请耐心等待，不要中断连接' && \
+            echo '========================================' && \
+            echo '' && \
+            ./deploy.sh
+        "
     else
-        sshpass -p "$TARGET_PASSWORD" ssh -t -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_IP" "cd $target_path && echo '开始执行部署脚本...' && sudo ./deploy.sh"
+        sshpass -p "$TARGET_PASSWORD" ssh -t -p $TARGET_PORT -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 "$TARGET_USER@$TARGET_IP" "
+            cd $target_path && \
+            echo '========================================' && \
+            echo '开始执行部署脚本...' && \
+            echo '部署过程中请耐心等待，不要中断连接' && \
+            echo '========================================' && \
+            echo '' && \
+            sudo ./deploy.sh
+        "
     fi
     
     local exit_code=$?
+    local end_time=$(date '+%Y-%m-%d %H:%M:%S')
+    echo ""
+    info "部署结束时间: $end_time"
+    
     if [ $exit_code -eq 0 ]; then
+        save_state "$STEP_DEPLOY" "completed"
         success "目标服务器部署完成"
+        echo -e "${GREEN}[成功]${NC} 部署脚本执行成功，服务应该已经启动"
     elif [ $exit_code -eq 130 ]; then
+        save_state "$STEP_DEPLOY" "failed"
         warning "部署被用户中断"
+        echo -e "${YELLOW}[警告]${NC} 如需继续部署，请重新运行迁移脚本"
     else
-        warning "部署过程中可能出现了一些问题，请检查目标服务器状态"
+        save_state "$STEP_DEPLOY" "failed"
+        warning "部署过程中出现了问题（退出码: $exit_code）"
+        echo -e "${YELLOW}[建议]${NC} 请检查目标服务器状态，或重新运行迁移脚本继续部署"
     fi
 }
 
 # 清理临时文件
 cleanup() {
+    info "清理临时文件..."
+    
+    # 删除临时备份目录
     if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
-        info "清理临时文件..."
         rm -rf "$BACKUP_DIR"
-        success "临时文件清理完成"
+        success "临时备份目录已清理"
     fi
+    
+    success "临时文件清理完成"
 }
 
 # 显示迁移总结
@@ -422,7 +655,7 @@ show_summary() {
     printf "${BLUE}迁移信息${NC}\n"
     printf "${BLUE}%s${NC}\n" "$(printf '%*s' 8 '' | tr ' ' '-')"
     printf "  源服务器: %s\n" "$(hostname)"
-    printf "  目标服务器: %s@%s\n" "$TARGET_USER" "$TARGET_IP"
+    printf "  目标服务器: %s@%s:%s\n" "$TARGET_USER" "$TARGET_IP" "$TARGET_PORT"
     printf "  网络环境: %s\n" "$([ "$IS_CHINA_ENV" = true ] && echo '国内环境 (使用Gitee)' || echo '国外环境 (使用GitHub)')"
     printf "\n"
     
@@ -454,6 +687,7 @@ show_summary() {
 
 # 主函数
 main() {
+    echo ""
   printf "${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}\n"
   printf "${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}\n"
   printf "${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}\n"
@@ -463,14 +697,31 @@ main() {
     echo -e "${BLUE}博客迁移工具====================================================${NC}"
     echo ""
     
+    # 初始化状态管理
+    info "初始化迁移状态管理..."
+    
+    # 检查是否有未完成的迁移
+    if [ -f "$STATE_FILE" ]; then
+        warning "检测到未完成的迁移任务"
+        show_migration_progress
+        echo
+        read -p "是否继续之前的迁移? (y/n): " continue_migration
+        if [[ ! "$continue_migration" =~ ^[Yy]$ ]]; then
+            info "清理之前的迁移状态..."
+            clean_state
+        fi
+    fi
+    
     # 设置错误处理
     set -e
     trap cleanup EXIT
     
-    # 执行迁移步骤
-    check_prerequisites
-    get_user_input
-    read_db_credentials
+    # 收集用户输入
+    collect_user_input
+    
+    # 显示当前进度
+    show_migration_progress
+    
     backup_database
     test_ssh_connection
     detect_target_environment
@@ -479,7 +730,68 @@ main() {
     deploy_on_target
     
     # 显示总结
-    show_summary
+    show_migration_summary
+    
+    # 清理临时文件和状态
+    cleanup
+    clean_state
+}
+
+# 显示迁移总结
+show_migration_summary() {
+    echo
+    echo "${GREEN}===========================================${NC}"
+    echo "${GREEN}           迁移完成总结${NC}"
+    echo "${GREEN}===========================================${NC}"
+    echo
+    
+    # 显示各步骤状态
+    local step_status
+    echo "${BLUE}迁移步骤完成情况:${NC}"
+    
+    step_status=$(get_step_status "$STEP_BACKUP_DB")
+    echo "  ✓ 数据库备份: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_TEST_SSH")
+    echo "  ✓ SSH连接测试: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_DETECT_ENV")
+    echo "  ✓ 环境检测: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_PULL_CODE")
+    echo "  ✓ 代码拉取: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_TRANSFER_FILES")
+    echo "  ✓ 文件传输: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_DEPLOY")
+    echo "  ✓ 项目部署: ${GREEN}$step_status${NC}"
+    
+    echo
+    echo "${GREEN}目标服务器信息:${NC}"
+    echo "  IP地址: $TARGET_IP"
+        echo "  端口: $TARGET_PORT"
+        echo "  用户名: $TARGET_USER"
+    echo "  项目路径: /opt/$CURRENT_DIR"
+    echo
+    
+    # 检查是否所有步骤都完成
+    local all_completed=true
+    for step in "$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY"; do
+        if ! is_step_completed "$step"; then
+            all_completed=false
+            break
+        fi
+    done
+    
+    if [ "$all_completed" = true ]; then
+        echo "${GREEN}🎉 迁移已成功完成！${NC}"
+        echo "${YELLOW}请访问目标服务器验证服务是否正常运行。${NC}"
+    else
+        echo "${YELLOW}⚠️  迁移未完全完成，请检查失败的步骤。${NC}"
+        echo "${YELLOW}可以重新运行脚本继续未完成的步骤。${NC}"
+    fi
+    echo
 }
 
 # 运行主函数
