@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-01
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.0.28
+## 版本: 1.1.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -4053,11 +4053,29 @@ generate_secure_password() {
 
 # 替换数据库密码
 replace_db_passwords() {
-  echo "生成随机数据库密码..."
-  
-  # 生成随机密码
-  ROOT_PASSWORD=$(generate_secure_password 24)
-  USER_PASSWORD=$(generate_secure_password 24)
+  # 检查是否存在现有的数据库凭据文件
+  if [ -f ".config/db_credentials.txt" ]; then
+    info "【迁移模式】检测到现有数据库凭据文件，读取现有密码..."
+    
+    # 从现有文件中读取密码
+    ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: //')
+    USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: //')
+    
+    # 验证密码是否成功读取
+    if [ -z "$ROOT_PASSWORD" ] || [ -z "$USER_PASSWORD" ]; then
+      warning "警告: 无法从现有凭据文件中读取密码，将生成新的随机密码..."
+      ROOT_PASSWORD=$(generate_secure_password 24)
+      USER_PASSWORD=$(generate_secure_password 24)
+    else
+      success "成功读取现有数据库密码"
+    fi
+  else
+    info "生成随机数据库密码..."
+    
+    # 生成随机密码
+    ROOT_PASSWORD=$(generate_secure_password 24)
+    USER_PASSWORD=$(generate_secure_password 24)
+  fi
   
   # 替换docker-compose.yml中的默认密码
   sed_i "s/MARIADB_ROOT_PASSWORD=root123/MARIADB_ROOT_PASSWORD=${ROOT_PASSWORD}/g" docker-compose.yml
@@ -4093,7 +4111,11 @@ EOF
   chmod 600 .config/db_credentials.txt
   
   echo "====================================================="
-  echo "      数据库密码已成功更新为随机强密码"
+  if [ -f ".config/db_credentials.txt" ] && grep -q "数据库ROOT密码:" .config/db_credentials.txt 2>/dev/null; then
+    info "【迁移模式】数据库密码配置完成（使用现有密码）"
+  else
+    info "数据库密码已成功更新为随机强密码"
+  fi
   echo "====================================================="
   echo ""
   echo "数据库ROOT密码: ${ROOT_PASSWORD}"
