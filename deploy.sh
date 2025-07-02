@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.5
+## 版本: 1.2.6
 
 # 定义颜色
 RED='\033[0;31m'
@@ -2908,21 +2908,57 @@ start_services() {
   
   # 启动所有服务
   info "启动所有服务中..."
-  if [ -z "$SKIP_BUILD" ] && [ "$DISABLE_DOCKER_CACHE" = true ]; then
-    # 如果需要构建且禁用缓存
-    info "启动服务（已禁用Docker构建缓存）..."
-    DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 BUILDKIT_PROGRESS=auto \
-    run_docker_compose up -d --build
-  else
-    # 使用离线镜像或正常构建
-    info "启动所有服务中..."
-    run_docker_compose up -d $SKIP_BUILD
-  fi
   
-  START_RESULT=$?
+  # 重试配置
+  local max_retries=3
+  local base_delay=10
+  local retry_count=0
+  local start_success=false
   
-  if [ $START_RESULT -ne 0 ]; then
-    error "服务启动失败，请检查日志"
+  while [ $retry_count -lt $max_retries ]; do
+    retry_count=$((retry_count + 1))
+    
+    if [ $retry_count -gt 1 ]; then
+      # 指数退避：10s、20s、40s
+      local retry_delay=$((base_delay * (2 ** (retry_count - 2))))
+      warning "第 $retry_count 次尝试启动服务..."
+      info "使用指数退避策略，等待 ${retry_delay} 秒后重试..."
+      sleep $retry_delay
+    fi
+    
+    if [ -z "$SKIP_BUILD" ] && [ "$DISABLE_DOCKER_CACHE" = true ]; then
+      # 如果需要构建且禁用缓存
+      info "启动服务（已禁用Docker构建缓存）..."
+      DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 BUILDKIT_PROGRESS=auto \
+      run_docker_compose up -d --build
+    else
+      # 使用离线镜像或正常构建
+      info "启动所有服务中..."
+      run_docker_compose up -d $SKIP_BUILD
+    fi
+    
+    START_RESULT=$?
+    
+    if [ $START_RESULT -eq 0 ]; then
+      start_success=true
+      break
+    else
+      warning "第 $retry_count 次启动失败（退出码: $START_RESULT）"
+      
+      if [ $retry_count -lt $max_retries ]; then
+        # 计算下次重试的延迟时间
+        local next_delay=$((base_delay * (2 ** (retry_count - 1))))
+        warning "网络波动或临时问题，将在 ${next_delay} 秒后重试..."
+        # 清理可能的残留容器
+        info "清理可能的残留容器..."
+        run_docker_compose down --remove-orphans >/dev/null 2>&1 || true
+      fi
+    fi
+  done
+  
+  if [ "$start_success" = false ]; then
+    error "服务启动失败，已重试 $max_retries 次，请检查日志"
+    error "可能的原因：网络连接问题、Docker资源不足、配置错误等"
     exit 1
   fi
   
