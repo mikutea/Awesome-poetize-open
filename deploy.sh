@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.2
+## 版本: 1.2.3
 
 # 定义颜色
 RED='\033[0;31m'
@@ -329,6 +329,10 @@ parse_arguments() {
     case "$1" in
       -d|--domain)
         DOMAINS+=("$2")
+        # 如果 PRIMARY_DOMAIN 还没有设置，将第一个域名设为主域名
+        if [ -z "$PRIMARY_DOMAIN" ]; then
+          PRIMARY_DOMAIN="$2"
+        fi
         shift 2
         ;;
       -e|--email)
@@ -5395,7 +5399,7 @@ require_root_or_sudo() {
 main() {
   # 解析命令行参数
   parse_arguments "$@"
-  
+
   # 显示横幅
   echo ""
   printf "${BLUE}╔═══════════════════════════════════════════════════════════════════╗${NC}\n"
