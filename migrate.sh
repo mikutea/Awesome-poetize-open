@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 0.4.0
+## 版本: 0.4.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -18,6 +18,7 @@ error() { echo -e "${RED}[失败]${NC} $1"; }
 warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
 
 # 全局变量
+NGINX_DOMAINS=""
 TARGET_IP=""
 TARGET_USER=""
 TARGET_PASSWORD=""
@@ -34,12 +35,17 @@ MIGRATE_IM_DIST="yes"    # 是否迁移聊天室前端文件，默认为yes
 
 # 断点续传和重试配置
 STATE_FILE=".migrate_state"
+DATA_FILE=".migrate_data"
 MAX_RETRIES=3
 RETRY_DELAY=10
 SSH_TIMEOUT=30
 CONNECT_TIMEOUT=10
 
 # 迁移步骤状态
+STEP_PREREQUISITES="prerequisites"
+STEP_READ_CREDENTIALS="read_credentials"
+STEP_USER_INPUT="user_input"
+STEP_EXTRACT_DOMAINS="extract_domains"
 STEP_BACKUP_DB="backup_db"
 STEP_TEST_SSH="test_ssh"
 STEP_DETECT_ENV="detect_env"
@@ -80,8 +86,8 @@ is_step_completed() {
 
 show_migration_progress() {
     info "迁移进度状态:"
-    local steps=("$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY" "$STEP_CLEANUP")
-    local step_names=("数据库备份" "SSH连接测试" "环境检测" "代码拉取" "文件传输" "部署执行" "清理工作")
+    local steps=("$STEP_PREREQUISITES" "$STEP_READ_CREDENTIALS" "$STEP_USER_INPUT" "$STEP_EXTRACT_DOMAINS" "$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY" "$STEP_CLEANUP")
+    local step_names=("前置条件检查" "读取数据库凭据" "用户输入收集" "域名提取" "数据库备份" "SSH连接测试" "环境检测" "代码拉取" "文件传输" "部署执行" "清理工作")
     
     for i in "${!steps[@]}"; do
         local step="${steps[$i]}"
@@ -109,6 +115,77 @@ clean_state() {
     if [ -f "$STATE_FILE" ]; then
         rm -f "$STATE_FILE"
         info "状态文件已清理"
+    fi
+    if [ -f "$DATA_FILE" ]; then
+        rm -f "$DATA_FILE"
+        info "数据文件已清理"
+    fi
+}
+
+# 增量保存单个变量到数据文件
+save_variable() {
+    local var_name="$1"
+    local var_value="$2"
+    
+    # 如果数据文件不存在，创建它
+    if [ ! -f "$DATA_FILE" ]; then
+        touch "$DATA_FILE"
+    fi
+    
+    # 删除已存在的同名变量行
+    if [ -f "$DATA_FILE" ]; then
+        grep -v "^$var_name=" "$DATA_FILE" > "$DATA_FILE.tmp" 2>/dev/null || true
+        mv "$DATA_FILE.tmp" "$DATA_FILE"
+    fi
+    
+    # 添加新的变量值
+    echo "$var_name=\"$var_value\"" >> "$DATA_FILE"
+}
+
+# 保存用户输入的目标服务器信息
+save_target_server_data() {
+    save_variable "TARGET_IP" "$TARGET_IP"
+    save_variable "TARGET_USER" "$TARGET_USER"
+    save_variable "TARGET_PASSWORD" "$TARGET_PASSWORD"
+    save_variable "TARGET_SSH_KEY" "$TARGET_SSH_KEY"
+    save_variable "TARGET_PORT" "$TARGET_PORT"
+    info "目标服务器信息已保存"
+}
+
+# 保存数据库凭据
+save_db_credentials() {
+    save_variable "DB_ROOT_PASSWORD" "$DB_ROOT_PASSWORD"
+    save_variable "DB_USER_PASSWORD" "$DB_USER_PASSWORD"
+    info "数据库凭据已保存"
+}
+
+# 保存提取的域名
+save_nginx_domains() {
+    save_variable "NGINX_DOMAINS" "$NGINX_DOMAINS"
+    info "提取的域名已保存"
+}
+
+# 保存环境检测结果
+save_environment_info() {
+    save_variable "IS_CHINA_ENV" "$IS_CHINA_ENV"
+    info "环境信息已保存"
+}
+
+# 保存备份目录信息
+save_backup_info() {
+    save_variable "BACKUP_DIR" "$BACKUP_DIR"
+    info "备份信息已保存"
+}
+
+# 加载用户输入数据
+load_user_data() {
+    if [ -f "$DATA_FILE" ]; then
+        source "$DATA_FILE"
+        info "用户数据已从 $DATA_FILE 加载"
+        return 0
+    else
+        warning "数据文件 $DATA_FILE 不存在"
+        return 1
     fi
 }
 
@@ -210,6 +287,13 @@ scp_retry() {
 }
 # 检查必要工具
 check_prerequisites() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_PREREQUISITES"; then
+        success "前置条件检查已完成，跳过此步骤"
+        return 0
+    fi
+    
+    save_state "$STEP_PREREQUISITES" "in_progress"
     info "检查迁移前置条件..."
     CURRENT_DIR=$(dirname "$(pwd)")
     # 检查必要命令
@@ -301,11 +385,25 @@ check_prerequisites() {
         info "检测到运行中的MariaDB容器: $running_container"
     fi
     
+    save_state "$STEP_PREREQUISITES" "completed"
     success "前置条件检查通过"
 }
 
 # 获取用户输入
 get_user_input() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_USER_INPUT"; then
+        success "用户输入收集已完成，跳过此步骤"
+        # 从数据文件中恢复用户输入
+        if ! load_user_data; then
+            error "无法加载用户输入数据，请重新运行迁移"
+            clean_state
+            exit 1
+        fi
+        return 0
+    fi
+    
+    save_state "$STEP_USER_INPUT" "in_progress"
     info "请输入目标服务器信息:"
     
     # 获取目标服务器IP
@@ -387,12 +485,28 @@ get_user_input() {
         TARGET_PORT="22"
     fi
     
+    save_state "$STEP_USER_INPUT" "completed"
+    save_target_server_data
     success "目标服务器信息获取完成"
     info "目标服务器: $TARGET_USER@$TARGET_IP:$TARGET_PORT"
 }
 
 # 读取数据库凭据
 read_db_credentials() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_READ_CREDENTIALS"; then
+        success "数据库凭据读取已完成，跳过此步骤"
+        # 从数据文件中恢复数据库凭据
+        if ! load_user_data; then
+            # 如果数据文件不存在，重新读取凭据
+            DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+            DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+            save_db_credentials
+        fi
+        return 0
+    fi
+    
+    save_state "$STEP_READ_CREDENTIALS" "in_progress"
     info "读取数据库凭据..."
     
     DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
@@ -403,7 +517,55 @@ read_db_credentials() {
         exit 1
     fi
     
+    save_state "$STEP_READ_CREDENTIALS" "completed"
+    save_db_credentials
     success "数据库凭据读取成功"
+}
+
+# 从nginx配置文件中提取域名
+extract_domains_from_nginx() {
+    # 检查是否已完成
+    if is_step_completed "$STEP_EXTRACT_DOMAINS"; then
+        success "域名提取已完成，跳过此步骤"
+        # 从数据文件中恢复提取的域名
+        if ! load_user_data; then
+            # 如果数据文件不存在，重新提取域名
+            local nginx_config_file="docker/nginx/default.https.conf"
+            if [ -f "$nginx_config_file" ]; then
+                local domains=$(grep "server_name" "$nginx_config_file" | sed 's/server_name \(.*\);/\1/' | tr -d ' ' | tr ';' '\n' | grep -v "example.com" | grep -v "^$" | sort -u)
+                if [ -n "$domains" ]; then
+                    NGINX_DOMAINS="$domains"
+                    save_nginx_domains
+                fi
+            fi
+        fi
+        return 0
+    fi
+    
+    save_state "$STEP_EXTRACT_DOMAINS" "in_progress"
+    info "从nginx配置文件中提取域名..."
+    
+    local nginx_config_file="docker/nginx/default.https.conf"
+    
+    if [ ! -f "$nginx_config_file" ]; then
+        warning "nginx配置文件不存在: $nginx_config_file"
+        return 1
+    fi
+    
+    # 提取server_name行中的域名，排除example.com
+    local domains=$(grep "server_name" "$nginx_config_file" | sed 's/server_name \(.*\);/\1/' | tr -d ' ' | tr ';' '\n' | grep -v "example.com" | grep -v "^$" | sort -u)
+    
+    if [ -n "$domains" ]; then
+        NGINX_DOMAINS="$domains"
+        save_state "$STEP_EXTRACT_DOMAINS" "completed"
+        save_nginx_domains
+        success "成功提取到域名: $(echo "$domains" | tr '\n' ' ')"
+        return 0
+    else
+        save_state "$STEP_EXTRACT_DOMAINS" "completed"
+        warning "未找到有效域名或只有example.com默认域名"
+        return 1
+    fi
 }
 
 # 备份数据库
@@ -411,6 +573,8 @@ backup_database() {
     # 检查是否已完成
     if is_step_completed "$STEP_BACKUP_DB"; then
         success "数据库备份已完成，跳过此步骤"
+        # 从数据文件中恢复备份目录信息
+        load_user_data || true
         return 0
     fi
     
@@ -443,6 +607,7 @@ backup_database() {
     
     if retry_command "$MAX_RETRIES" "$RETRY_DELAY" "数据库备份" "$backup_cmd"; then
         save_state "$STEP_BACKUP_DB" "completed"
+        save_backup_info
         success "数据库备份成功: $BACKUP_DIR/poetry.sql"
     else
         save_state "$STEP_BACKUP_DB" "failed"
@@ -491,14 +656,17 @@ detect_target_environment() {
     # 检查是否已完成
     if is_step_completed "$STEP_DETECT_ENV"; then
         success "环境检测已完成，跳过此步骤"
-        # 从状态文件读取环境信息
-        local env_info=$(grep "^$STEP_DETECT_ENV:completed:" "$STATE_FILE" | tail -1 | cut -d':' -f4-)
-        if [[ "$env_info" == *"china"* ]]; then
-            IS_CHINA_ENV=true
-            info "读取到国内网络环境配置"
-        else
-            IS_CHINA_ENV=false
-            info "读取到国外网络环境配置"
+        # 从数据文件中恢复环境信息
+        if ! load_user_data; then
+            # 如果数据文件不存在，从状态文件读取环境信息
+            local env_info=$(grep "^$STEP_DETECT_ENV:completed:" "$STATE_FILE" | tail -1 | cut -d':' -f4-)
+            if [[ "$env_info" == *"china"* ]]; then
+                IS_CHINA_ENV=true
+                info "读取到国内网络环境配置"
+            else
+                IS_CHINA_ENV=false
+                info "读取到国外网络环境配置"
+            fi
         fi
         return 0
     fi
@@ -510,10 +678,12 @@ detect_target_environment() {
     if ssh_retry "网络环境检测" "curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1" "false"; then
         IS_CHINA_ENV=false
         save_state "$STEP_DETECT_ENV" "completed:foreign"
+        save_environment_info
         success "检测到国外网络环境，将使用GitHub仓库"
     else
         IS_CHINA_ENV=true
         save_state "$STEP_DETECT_ENV" "completed:china"
+        save_environment_info
         success "检测到国内网络环境，将使用Gitee仓库"
     fi
 }
@@ -693,6 +863,20 @@ deploy_on_target() {
     info "部署开始时间: $start_time"
     echo ""
     
+    # 构建deploy.sh命令参数
+    local deploy_cmd="./deploy.sh"
+    
+    # 如果提取到了域名，自动添加域名参数
+    if [ -n "$NGINX_DOMAINS" ]; then
+        info "使用提取到的域名参数: $(echo "$NGINX_DOMAINS" | tr '\n' ' ')"
+        for domain in $NGINX_DOMAINS; do
+            deploy_cmd="$deploy_cmd -d $domain"
+        done
+        info "完整的部署命令: $deploy_cmd"
+    else
+        info "未提取到域名，将使用交互式域名输入"
+    fi
+    
     # 执行部署脚本，保持实时输出和交互性
     if [ "$TARGET_USER" = "root" ]; then
         sshpass -p "$TARGET_PASSWORD" ssh -t -p $TARGET_PORT -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 "$TARGET_USER@$TARGET_IP" "
@@ -702,17 +886,17 @@ deploy_on_target() {
             echo '部署过程中请耐心等待，不要中断连接' && \
             echo '========================================' && \
             echo '' && \
-            ./deploy.sh
+            $deploy_cmd
         "
     else
         sshpass -p "$TARGET_PASSWORD" ssh -t -p $TARGET_PORT -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 "$TARGET_USER@$TARGET_IP" "
-            cd $target_path && \
+            sudo cd $target_path && \
             echo '========================================' && \
             echo '开始执行部署脚本...' && \
             echo '部署过程中请耐心等待，不要中断连接' && \
             echo '========================================' && \
             echo '' && \
-            sudo ./deploy.sh
+            sudo $deploy_cmd
         "
     fi
     
@@ -956,6 +1140,9 @@ main() {
         if [[ ! "$continue_migration" =~ ^[Yy]$ ]]; then
             info "清理之前的迁移状态..."
             clean_state
+        else
+            # 尝试加载之前保存的用户数据
+            load_user_data || true
         fi
     fi
     
@@ -963,8 +1150,20 @@ main() {
     set -e
     trap cleanup EXIT
     
-    # 收集用户输入
-    collect_user_input
+    # 执行初始化步骤（支持断点续传）
+    check_prerequisites
+    read_db_credentials
+    get_user_input
+    
+    # 确保所有必要的数据都已保存
+    save_user_data
+    
+    # 尝试从nginx配置文件中提取域名
+    if extract_domains_from_nginx; then
+        info "已从nginx配置文件中提取域名，将在部署时自动使用"
+    else
+        info "未能从nginx配置文件中提取域名，部署时将使用交互式输入"
+    fi
     
     # 显示当前进度
     show_migration_progress
@@ -1017,6 +1216,18 @@ show_migration_summary() {
     local step_status
     echo "${BLUE}迁移步骤完成情况:${NC}"
     
+    step_status=$(get_step_status "$STEP_PREREQUISITES")
+    echo "  ✓ 前置条件检查: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_READ_CREDENTIALS")
+    echo "  ✓ 读取数据库凭据: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_USER_INPUT")
+    echo "  ✓ 用户输入收集: ${GREEN}$step_status${NC}"
+    
+    step_status=$(get_step_status "$STEP_EXTRACT_DOMAINS")
+    echo "  ✓ 域名提取: ${GREEN}$step_status${NC}"
+    
     step_status=$(get_step_status "$STEP_BACKUP_DB")
     echo "  ✓ 数据库备份: ${GREEN}$step_status${NC}"
     
@@ -1063,7 +1274,7 @@ show_migration_summary() {
     
     # 检查是否所有步骤都完成
     local all_completed=true
-    for step in "$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY"; do
+    for step in "$STEP_PREREQUISITES" "$STEP_READ_CREDENTIALS" "$STEP_USER_INPUT" "$STEP_EXTRACT_DOMAINS" "$STEP_BACKUP_DB" "$STEP_TEST_SSH" "$STEP_DETECT_ENV" "$STEP_PULL_CODE" "$STEP_TRANSFER_FILES" "$STEP_DEPLOY"; do
         if ! is_step_completed "$step"; then
             all_completed=false
             break

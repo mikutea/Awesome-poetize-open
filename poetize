@@ -126,7 +126,7 @@ show_help() {
     printf "  -start, -up               启动所有服务\n"
     printf "  -stop, -down              停止所有服务\n"
     printf "  -restart                  重启所有服务\n"
-    printf "  -deploy                   执行部署脚本\n"
+    printf "  -deploy, -bushu, -bs      执行部署脚本\n"
     printf "\n"
     printf "${BLUE}日志管理:${NC}\n"
     printf "  -logs [服务名]            查看服务日志 (默认显示所有)\n"
@@ -141,6 +141,7 @@ show_help() {
     printf "${BLUE}示例:${NC}\n"
     printf "  poetize -status           # 查看服务状态\n"
     printf "  poetize -qy               # 快速迁移\n"
+    printf "  poetize -bs               # 快速部署\n"
     printf "  poetize -logs nginx       # 查看nginx日志\n"
     printf "  poetize -restart          # 重启所有服务\n"
     printf "\n"
@@ -394,7 +395,7 @@ main() {
         "-restart")
             restart_services
             ;;
-        "-deploy")
+        "-deploy"|"-bushu"|"-bs")
             run_deployment
             ;;
         "-logs")

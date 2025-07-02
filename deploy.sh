@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.0
+## 版本: 1.2.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -40,7 +40,7 @@ auto_confirm() {
 RUN_IN_BACKGROUND=false
 DOMAINS=()
 PRIMARY_DOMAIN=""
-EMAIL=""
+EMAIL="example@qq.com"
 ENABLE_HTTPS=false
 CONFIG_FILE=".poetize-config"
 SAVE_CONFIG=false
@@ -291,15 +291,20 @@ load_config() {
 
 # 显示帮助
 show_help() {
-  echo "Poetize 自动部署脚本"
+  printf "\n"
+  printf "${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}\n"
+  printf "${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}\n"
+  printf "${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}\n"
+  printf "${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}\n"
+  printf "${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}\n"
+  printf "${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}\n"
   echo ""
   echo "用法: $0 [选项]"
   echo ""
   echo "选项:"
   echo "  -d, --domain DOMAIN     设置域名（可多次使用添加多个域名）"
-  echo "  -e, --email EMAIL       设置管理员邮箱"
+  echo "  -e, --email EMAIL       设置管理员邮箱（默认：example@qq.com）"
   echo "  -h, --help              显示此帮助信息"
-  echo "  --enable-https          启用HTTPS"
   echo "  --config FILE           从文件加载配置"
   echo "  --save-config [FILE]    保存配置到文件（默认为.poetize-config）"
   echo "  --enable-swap           启用swap空间（默认启用）"
@@ -3240,16 +3245,16 @@ prompt_for_domains() {
   PRIMARY_DOMAIN=${DOMAINS[0]}
 }
 
-# 提示用户输入邮箱
-prompt_for_email() {
-  echo -n "请输入邮箱 (默认: example@qq.com): "
-  read EMAIL
+# # 提示用户输入邮箱
+# prompt_for_email() {
+#   echo -n "请输入邮箱 (默认: example@qq.com): "
+#   read EMAIL
   
-  if [ -z "$EMAIL" ]; then
-    EMAIL="example@qq.com"
-    info "使用默认邮箱: $EMAIL"
-  fi
-}
+#   if [ -z "$EMAIL" ]; then
+#     EMAIL="example@qq.com"
+#     info "使用默认邮箱: $EMAIL"
+#   fi
+# }
 
 # 确认设置
 confirm_setup() {
@@ -5390,27 +5395,27 @@ require_root_or_sudo() {
 main() {
   # 显示横幅
   echo ""
-  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════════╗${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}║                            ${GREEN}P O E T I Z E${BLUE}                              ║${NC}\n"
-  printf "${BLUE}║                      ${YELLOW}* 优雅的博客与聊天平台 *${BLUE}                         ║${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════╣${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${BLUE}          ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${BLUE}          ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${BLUE}            ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${BLUE}            ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${BLUE}          ║${NC}\n"
-  printf "${BLUE}║        ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${BLUE}          ║${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════════╣${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}║         ${YELLOW}* 作者: ${GREEN}LeapYa${BLUE}                                                ║${NC}\n"
-  printf "${BLUE}║         ${YELLOW}* 邮箱: ${GREEN}enable_lazy@qq.com${BLUE}                                    ║${NC}\n"
-  printf "${BLUE}║         ${YELLOW}* 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${BLUE}        ║${NC}\n"
-  printf "${BLUE}║                                                                       ║${NC}\n"
-  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════════╝${NC}\n"
+  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}║                          ${GREEN}P O E T I Z E${BLUE}                            ║${NC}\n"
+  printf "${BLUE}║                    ${YELLOW}* 优雅的博客与聊天平台 *${BLUE}                       ║${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${BLUE}        ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${BLUE}        ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${BLUE}          ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${BLUE}          ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${BLUE}        ║${NC}\n"
+  printf "${BLUE}║      ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${BLUE}        ║${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}║       ${YELLOW}* 作者: ${GREEN}LeapYa${BLUE}                                              ║${NC}\n"
+  printf "${BLUE}║       ${YELLOW}* 邮箱: ${GREEN}enable_lazy@qq.com${BLUE}                                  ║${NC}\n"
+  printf "${BLUE}║       ${YELLOW}* 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${BLUE}      ║${NC}\n"
+  printf "${BLUE}║                                                                   ║${NC}\n"
+  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════╝${NC}\n"
   
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
@@ -5419,11 +5424,11 @@ main() {
   require_root_or_sudo
 
   # 如果未设置域名和邮箱，则提示用户输入
-  if [ -z "$PRIMARY_DOMAIN" ] && [ -z "$EMAIL" ]; then
+  if [ -z "$PRIMARY_DOMAIN" ]; then
     # 输入域名
     prompt_for_domains
-    # 输入邮箱
-    prompt_for_email
+    # # 输入邮箱
+    # prompt_for_email
   fi
 
   check_write_permission
@@ -5598,10 +5603,10 @@ main() {
     prompt_for_domains
   fi
   
-  # 如果没有输入邮箱，提示用户
-  if [ -z "$EMAIL" ]; then
-    prompt_for_email
-  fi
+  # # 如果没有输入邮箱，提示用户
+  # if [ -z "$EMAIL" ]; then
+  #   prompt_for_email
+  # fi
   
   # 确保PRIMARY_DOMAIN已设置
   if [ -z "$PRIMARY_DOMAIN" ]; then
