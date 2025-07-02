@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.4
+## 版本: 1.2.5
 
 # 定义颜色
 RED='\033[0;31m'
@@ -5771,6 +5771,7 @@ if [ "$RUN_IN_BACKGROUND" = true ]; then
   echo "Poetize 部署脚本将在后台运行，日志输出到: $LOG_FILE"
   echo "使用 'tail -f $LOG_FILE' 命令可以实时查看部署进度"
   echo "注意：后台运行模式下会自动回答'y'确认所有提示"
+  
   # 过滤掉后台运行相关参数，避免无限递归
   FILTERED_ARGS=()
   for arg in "$@"; do
@@ -5779,9 +5780,21 @@ if [ "$RUN_IN_BACKGROUND" = true ]; then
     fi
     prev_arg="$arg"
   done
+  
   # 添加AUTO_YES环境变量，在后台运行时自动回答所有确认
   export AUTO_YES=true
-  nohup bash "$0" "${FILTERED_ARGS[@]}" > "$LOG_FILE" 2>&1 &
+  
+  # 检查脚本文件是否可访问（通过curl执行时$0可能不是有效路径）
+  if [ -f "$0" ] && [ -r "$0" ]; then
+    # 脚本文件存在且可读，使用nohup重新执行
+    nohup bash "$0" "${FILTERED_ARGS[@]}" > "$LOG_FILE" 2>&1 &
+  else
+    # 脚本文件不存在或不可读（如通过curl执行），直接后台运行main函数
+    {
+      main "${FILTERED_ARGS[@]}"
+    } > "$LOG_FILE" 2>&1 &
+  fi
+  
   echo "后台进程ID: $!"
   exit 0
 else
