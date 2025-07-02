@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.1
+## 版本: 1.2.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -5423,6 +5423,9 @@ main() {
   # 检查是否需要特权
   require_root_or_sudo
 
+  # 解析命令行参数
+  parse_arguments "$@"
+
   # 如果未设置域名和邮箱，则提示用户输入
   if [ -z "$PRIMARY_DOMAIN" ]; then
     # 输入域名
@@ -5498,8 +5501,6 @@ main() {
       info "已跳过 Dockerfile 加速处理"
     fi
   fi
-  # 解析命令行参数
-  parse_arguments "$@"
   
   # 检查是否需要显示帮助
   if [ "$SHOW_HELP" = true ]; then
