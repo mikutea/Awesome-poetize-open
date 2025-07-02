@@ -1,0 +1,428 @@
+#!/bin/bash
+## 作者: LeapYa
+## 修改时间: 2025-07-02
+## 描述: Poetize 博客系统全局管理命令
+## 版本: 1.0.0
+
+# 定义颜色
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# 函数
+info() { echo -e "${BLUE}[信息]${NC} $1"; }
+success() { echo -e "${GREEN}[成功]${NC} $1"; }
+error() { echo -e "${RED}[失败]${NC} $1"; }
+warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
+
+# 检查是否在项目根目录
+check_project_root() {
+    if [ ! -f "docker-compose.yml" ] || [ ! -f "migrate.sh" ] || [ ! -f "deploy.sh" ]; then
+        error "请在Poetize项目根目录中运行此命令"
+        error "当前目录应包含docker-compose.yml、migrate.sh和deploy.sh文件"
+        exit 1
+    fi
+}
+
+# 检查用户权限
+check_user_permissions() {
+    # 检查是否为root用户
+    if [ "$EUID" -eq 0 ]; then
+        return 0  # root用户，权限充足
+    fi
+    
+    # 检查是否在docker组中
+    if groups "$USER" 2>/dev/null | grep -q "\bdocker\b"; then
+        return 0  # 在docker组中，权限充足
+    fi
+    
+    # 检查是否有sudo权限
+    if sudo -n true 2>/dev/null; then
+        # 检查当前是否以sudo方式运行
+        if [ -z "$SUDO_USER" ]; then
+            warning "当前用户不在docker组中，但具有sudo权限"
+            warning "建议使用sudo运行以确保Docker访问权限："
+            printf "  ${YELLOW}推荐方式：${NC} sudo poetize [选项]\n"
+            printf "  ${YELLOW}或添加到docker组：${NC} sudo usermod -aG docker $USER && newgrp docker\n"
+        else
+            info "以sudo权限运行，权限充足"
+        fi
+        return 0  # 有sudo权限，可以继续
+    fi
+    
+    # 权限不足
+    error "权限不足！当前用户既不是root用户，也不在docker组中，且无sudo权限"
+    error "请执行以下操作之一："
+    printf "  ${YELLOW}1. 切换到root用户：${NC} su -\n"
+    printf "  ${YELLOW}2. 切换到有sudo权限的用户${NC}\n"
+    printf "  ${YELLOW}3. 将当前用户添加到docker组：${NC} sudo usermod -aG docker $USER\n"
+    printf "  ${YELLOW}4. 使用sudo运行：${NC} sudo poetize [选项]\n"
+    exit 1
+}
+
+# 检查Docker和Docker Compose
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        error "Docker未安装或未在PATH中"
+        exit 1
+    fi
+    
+    # 检查用户权限
+    check_user_permissions
+    
+    # 尝试访问Docker
+    if ! docker info &> /dev/null; then
+        # 如果直接访问失败，尝试使用sudo
+        if [ "$EUID" -ne 0 ] && ! groups "$USER" 2>/dev/null | grep -q "\bdocker\b"; then
+            if sudo docker info &> /dev/null 2>&1; then
+                warning "使用sudo权限访问Docker"
+                DOCKER_COMPOSE_CMD="sudo docker-compose"
+                # 重新定义docker命令为sudo版本
+                alias docker='sudo docker' 2>/dev/null || true
+            else
+                error "Docker服务未运行或权限不足"
+                exit 1
+            fi
+        else
+            error "Docker服务未运行"
+            exit 1
+        fi
+    fi
+    
+    # 检查docker-compose或docker compose
+    if command -v docker-compose &> /dev/null; then
+        DOCKER_COMPOSE_CMD="${DOCKER_COMPOSE_CMD:-docker-compose}"
+    elif docker compose version &> /dev/null 2>&1 || sudo docker compose version &> /dev/null 2>&1; then
+        DOCKER_COMPOSE_CMD="${DOCKER_COMPOSE_CMD:-docker} compose"
+    else
+        error "Docker Compose未安装"
+        exit 1
+    fi
+}
+
+# 显示帮助信息
+show_help() {
+    printf "\n"
+    printf "${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${NC}\n"
+    printf "${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${NC}\n"
+    printf "${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${NC}\n"
+    printf "${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${NC}\n"
+    printf "${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${NC}\n"
+    printf "${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${NC}\n"
+    printf "\n"
+    printf "${CYAN}Poetize 博客系统全局管理工具${NC}\n"
+    printf "\n"
+    printf "${BLUE}使用方法:${NC}\n"
+    printf "  poetize [选项]\n"
+    printf "\n"
+    printf "${BLUE}迁移相关:${NC}\n"
+    printf "  -qianyi, -migrate, -qy    执行博客迁移到远程服务器\n"
+    printf "\n"
+    printf "${BLUE}服务管理:${NC}\n"
+    printf "  -status                   查看所有服务状态\n"
+    printf "  -start, -up               启动所有服务\n"
+    printf "  -stop, -down              停止所有服务\n"
+    printf "  -restart                  重启所有服务\n"
+    printf "  -deploy                   执行部署脚本\n"
+    printf "\n"
+    printf "${BLUE}日志管理:${NC}\n"
+    printf "  -logs [服务名]            查看服务日志 (默认显示所有)\n"
+    printf "  -logs-follow [服务名]     实时跟踪服务日志\n"
+    printf "\n"
+    printf "${BLUE}系统信息:${NC}\n"
+    printf "  -info                     显示系统和项目信息\n"
+    printf "  -health                   检查服务健康状态\n"
+    printf "  -version, -v              显示版本信息\n"
+    printf "  -help, -h                 显示此帮助信息\n"
+    printf "\n"
+    printf "${BLUE}示例:${NC}\n"
+    printf "  poetize -status           # 查看服务状态\n"
+    printf "  poetize -qy               # 快速迁移\n"
+    printf "  poetize -logs nginx       # 查看nginx日志\n"
+    printf "  poetize -restart          # 重启所有服务\n"
+    printf "\n"
+}
+
+# 显示版本信息
+show_version() {
+    printf "${GREEN}Poetize 管理工具 v1.0.0${NC}\n"
+    printf "作者: LeapYa\n"
+    printf "项目: Awesome-poetize-open\n"
+}
+
+# 查看服务状态
+show_status() {
+    info "正在检查Poetize服务状态..."
+    printf "\n"
+    
+    # 显示Docker容器状态
+    printf "${CYAN}=== Docker 容器状态 ===${NC}\n"
+    if docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" --filter "name=poetize" | grep -q "poetize"; then
+        docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" --filter "name=poetize"
+    else
+        warning "未发现Poetize相关容器"
+    fi
+    
+    printf "\n"
+    
+    # 显示服务健康状态
+    printf "${CYAN}=== 服务健康状态 ===${NC}\n"
+    
+    # 检查主要服务
+    local services=("poetize-nginx" "poetize-java" "poetize-python" "poetize-mysql")
+    for service in "${services[@]}"; do
+        if docker ps --format "{{.Names}}" | grep -q "^${service}$"; then
+            local status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "unknown")
+            case "$status" in
+                "healthy")
+                    printf "  ${GREEN}✓${NC} %-20s ${GREEN}健康${NC}\n" "$service"
+                    ;;
+                "unhealthy")
+                    printf "  ${RED}✗${NC} %-20s ${RED}不健康${NC}\n" "$service"
+                    ;;
+                "starting")
+                    printf "  ${YELLOW}⚠${NC} %-20s ${YELLOW}启动中${NC}\n" "$service"
+                    ;;
+                *)
+                    printf "  ${BLUE}?${NC} %-20s ${BLUE}运行中${NC}\n" "$service"
+                    ;;
+            esac
+        else
+            printf "  ${RED}✗${NC} %-20s ${RED}未运行${NC}\n" "$service"
+        fi
+    done
+    
+    printf "\n"
+    
+    # 显示端口占用情况
+    printf "${CYAN}=== 端口占用情况 ===${NC}\n"
+    local ports=("80" "443" "3306" "8081" "5000")
+    for port in "${ports[@]}"; do
+        if netstat -tuln 2>/dev/null | grep -q ":${port} " || ss -tuln 2>/dev/null | grep -q ":${port} "; then
+            printf "  ${GREEN}✓${NC} 端口 %-6s ${GREEN}已占用${NC}\n" "$port"
+        else
+            printf "  ${RED}✗${NC} 端口 %-6s ${RED}未占用${NC}\n" "$port"
+        fi
+    done
+    
+    printf "\n"
+}
+
+# 启动服务
+start_services() {
+    info "正在启动Poetize服务..."
+    
+    if $DOCKER_COMPOSE_CMD up -d; then
+        success "服务启动成功"
+        sleep 3
+        show_status
+    else
+        error "服务启动失败"
+        exit 1
+    fi
+}
+
+# 停止服务
+stop_services() {
+    info "正在停止Poetize服务..."
+    
+    if $DOCKER_COMPOSE_CMD down; then
+        success "服务停止成功"
+    else
+        error "服务停止失败"
+        exit 1
+    fi
+}
+
+# 重启服务
+restart_services() {
+    info "正在重启Poetize服务..."
+    
+    if $DOCKER_COMPOSE_CMD restart; then
+        success "服务重启成功"
+        sleep 3
+        show_status
+    else
+        error "服务重启失败"
+        exit 1
+    fi
+}
+
+# 查看日志
+show_logs() {
+    local service="$1"
+    local follow="$2"
+    
+    if [ -n "$service" ]; then
+        info "正在查看 $service 服务日志..."
+        if [ "$follow" = "true" ]; then
+            $DOCKER_COMPOSE_CMD logs -f "$service"
+        else
+            $DOCKER_COMPOSE_CMD logs --tail=100 "$service"
+        fi
+    else
+        info "正在查看所有服务日志..."
+        if [ "$follow" = "true" ]; then
+            $DOCKER_COMPOSE_CMD logs -f
+        else
+            $DOCKER_COMPOSE_CMD logs --tail=50
+        fi
+    fi
+}
+
+# 执行迁移
+run_migration() {
+    info "正在执行博客迁移..."
+    
+    if [ ! -f "migrate.sh" ]; then
+        error "迁移脚本 migrate.sh 不存在"
+        exit 1
+    fi
+    
+    chmod +x migrate.sh
+    ./migrate.sh
+}
+
+# 执行部署
+run_deployment() {
+    info "正在执行博客部署..."
+    
+    if [ ! -f "deploy.sh" ]; then
+        error "部署脚本 deploy.sh 不存在"
+        exit 1
+    fi
+    
+    chmod +x deploy.sh
+    ./deploy.sh
+}
+
+# 显示系统信息
+show_info() {
+    printf "\n"
+    printf "${CYAN}=== 系统信息 ===${NC}\n"
+    printf "操作系统: $(uname -s)\n"
+    printf "内核版本: $(uname -r)\n"
+    printf "架构: $(uname -m)\n"
+    printf "\n"
+    
+    printf "${CYAN}=== Docker 信息 ===${NC}\n"
+    printf "Docker版本: $(docker --version 2>/dev/null || echo '未安装')\n"
+    printf "Docker Compose: $DOCKER_COMPOSE_CMD\n"
+    printf "\n"
+    
+    printf "${CYAN}=== 项目信息 ===${NC}\n"
+    printf "项目路径: $(pwd)\n"
+    printf "配置文件: $([ -f '.poetize-config' ] && echo '存在' || echo '不存在')\n"
+    printf "数据库凭据: $([ -f '.config/db_credentials.txt' ] && echo '存在' || echo '不存在')\n"
+    printf "\n"
+}
+
+# 检查服务健康状态
+check_health() {
+    info "正在检查服务健康状态..."
+    printf "\n"
+    
+    local all_healthy=true
+    local services=("poetize-nginx" "poetize-java" "poetize-python" "poetize-mysql")
+    
+    for service in "${services[@]}"; do
+        if docker ps --format "{{.Names}}" | grep -q "^${service}$"; then
+            printf "${BLUE}检查 $service...${NC}\n"
+            
+            # 检查容器状态
+            local container_status=$(docker inspect --format='{{.State.Status}}' "$service" 2>/dev/null)
+            if [ "$container_status" != "running" ]; then
+                printf "  ${RED}✗ 容器未运行 (状态: $container_status)${NC}\n"
+                all_healthy=false
+                continue
+            fi
+            
+            # 检查健康状态
+            local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "no-healthcheck")
+            case "$health_status" in
+                "healthy")
+                    printf "  ${GREEN}✓ 健康检查通过${NC}\n"
+                    ;;
+                "unhealthy")
+                    printf "  ${RED}✗ 健康检查失败${NC}\n"
+                    all_healthy=false
+                    ;;
+                "starting")
+                    printf "  ${YELLOW}⚠ 健康检查启动中${NC}\n"
+                    ;;
+                "no-healthcheck")
+                    printf "  ${BLUE}? 无健康检查配置${NC}\n"
+                    ;;
+            esac
+        else
+            printf "${RED}✗ $service 容器未运行${NC}\n"
+            all_healthy=false
+        fi
+    done
+    
+    printf "\n"
+    if [ "$all_healthy" = true ]; then
+        success "所有服务健康状态良好"
+    else
+        warning "部分服务存在问题，请检查日志"
+    fi
+}
+
+# 主函数
+main() {
+    # 检查项目环境
+    check_project_root
+    check_docker
+    
+    # 解析命令行参数
+    case "${1:-}" in
+        "-qianyi"|"-migrate"|"-qy")
+            run_migration
+            ;;
+        "-status")
+            show_status
+            ;;
+        "-start"|"-up")
+            start_services
+            ;;
+        "-stop"|"-down")
+            stop_services
+            ;;
+        "-restart")
+            restart_services
+            ;;
+        "-deploy")
+            run_deployment
+            ;;
+        "-logs")
+            show_logs "$2" "false"
+            ;;
+        "-logs-follow")
+            show_logs "$2" "true"
+            ;;
+        "-info")
+            show_info
+            ;;
+        "-health")
+            check_health
+            ;;
+        "-version"|"-v")
+            show_version
+            ;;
+        "-help"|"-h"|"")
+            show_help
+            ;;
+        *)
+            error "未知选项: $1"
+            printf "\n"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+# 运行主函数
+main "$@"

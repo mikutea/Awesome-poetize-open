@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-01
+## 修改时间: 2025-07-02
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.1.1
+## 版本: 1.2.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -91,6 +91,42 @@ is_wsl() {
   fi
 }
 
+# 创建全局poetize命令符号链接（静默执行）
+create_global_poetize_command() {
+  local poetize_script="$(pwd)/poetize"
+  local target_path="/usr/local/bin/poetize"
+  
+  # 检查poetize脚本是否存在
+  if [ ! -f "$poetize_script" ]; then
+    return 1
+  fi
+  
+  # 静默检查sudo权限
+  if ! sudo -n true 2>/dev/null; then
+    # 尝试获取sudo权限，但不显示提示
+    if ! sudo true 2>/dev/null; then
+      return 1
+    fi
+  fi
+  
+  # 确保目标目录存在
+  if [ ! -d "/usr/local/bin" ]; then
+    sudo mkdir -p /usr/local/bin 2>/dev/null || return 1
+  fi
+  
+  # 删除已存在的符号链接或文件
+  if [ -L "$target_path" ] || [ -f "$target_path" ]; then
+    sudo rm -f "$target_path" 2>/dev/null
+  fi
+  
+  # 静默创建符号链接
+  if sudo ln -sf "$poetize_script" "$target_path" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 # 打印部署汇总信息
 print_summary() {
   local https_enabled=false
@@ -173,6 +209,20 @@ print_summary() {
   # 常用命令
   printf "${CYAN}常用管理命令${NC}\n"
   printf "${CYAN}%s${NC}\n" "$(printf '%*s' 12 '' | tr ' ' '-')"
+  
+  # 检查是否存在全局poetize命令
+  if [ -L "/usr/local/bin/poetize" ] || [ -f "/usr/local/bin/poetize" ]; then
+    printf "  ${GREEN}全局命令已安装，可在任意位置使用:${NC}\n"
+    printf "  查看服务状态: ${GREEN}poetize -status${NC}\n"
+    printf "  快速迁移: ${GREEN}poetize -qy${NC}\n"
+    printf "  重启所有服务: ${GREEN}poetize -restart${NC}\n"
+    printf "  停止所有服务: ${GREEN}poetize -stop${NC}\n"
+    printf "  启动所有服务: ${GREEN}poetize -start${NC}\n"
+    printf "  查看帮助: ${GREEN}poetize -help${NC}\n"
+    printf "\n"
+  fi
+  
+  printf "  ${YELLOW}Docker原生命令:${NC}\n"
   printf "  查看所有容器: ${GREEN}docker ps -a${NC}\n"
   printf "  查看容器日志: ${GREEN}docker logs poetize-nginx${NC}\n"
   printf "  重启容器: ${GREEN}%s restart${NC}\n" "$DOCKER_COMPOSE_CMD"
@@ -5674,6 +5724,9 @@ main() {
     
   # 调用部署完成函数
   clean_docker_build_cache
+  
+  # 创建全局poetize命令符号链接
+  create_global_poetize_command
   
   # 打印部署汇总信息
   print_summary
