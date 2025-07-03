@@ -2654,8 +2654,26 @@ function clearDirectory(dirPath) {
   }
 }
 
+// Initialize output directory at startup
+function initializeOutputDirectory() {
+  const outputPath = process.env.PRERENDER_OUTPUT || path.resolve(__dirname, './dist/prerender');
+  try {
+    if (!fs.existsSync(outputPath)) {
+      fs.mkdirSync(outputPath, { recursive: true });
+      logger.info('Output directory created', { path: outputPath });
+    } else {
+      logger.info('Output directory already exists', { path: outputPath });
+    }
+  } catch (error) {
+    logger.error('Failed to create output directory', { path: outputPath, error: error.message });
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
+  // Initialize output directory on startup
+  initializeOutputDirectory();
+  
   logger.info('Prerender worker started', {
     port: PORT,
     nodeVersion: process.version,
