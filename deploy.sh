@@ -1,15 +1,15 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-02
+## 修改时间: 2025-07-03
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.2.6
+## 版本: 1.3.0
 
 # 定义颜色
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # 初始化变量
 # 自动确认模式（后台运行时自动回答yes）
@@ -30,8 +30,17 @@ auto_confirm() {
     return 0
   fi
   
-  # 否则执行正常的提示
-  read -p "$prompt" $options
+  # 带超时的用户输入
+  echo -n "$prompt"
+  if read -t 30 $options; then
+    # 用户在30秒内输入了内容
+    echo ""
+  else
+    # 超时或用户未输入，使用默认答案
+    echo ""
+    echo "30秒内未收到输入，自动选择默认选项: $default_answer"
+    REPLY="$default_answer"
+  fi
   echo ""
   return 0
 }
@@ -101,6 +110,8 @@ create_global_poetize_command() {
     return 1
   fi
   
+  sudo chmod +x "$poetize_script"
+
   # 静默检查sudo权限
   if ! sudo -n true 2>/dev/null; then
     # 尝试获取sudo权限，但不显示提示
@@ -802,8 +813,6 @@ configure_docker_registry() {
         return 0
     fi
     
-    info "配置Docker Registry镜像加速（使用多个备用镜像源）..."
-    
     local docker_config_dir="/etc/docker"
     local docker_config_file="$docker_config_dir/daemon.json"
     
@@ -812,9 +821,16 @@ configure_docker_registry() {
     
     # 备份原配置文件
     if [ -f "$docker_config_file" ]; then
-        sudo cp "$docker_config_file" "$docker_config_file.bak.$(date +%Y%m%d_%H%M%S)"
-        info "已备份原配置文件"
+        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？" "y"; then
+            info "跳过更换镜像源，保持原有配置"
+            return 0
+        else
+            info "备份原配置文件"
+            sudo cp "$docker_config_file" "$docker_config_file.bak.$(date +%Y%m%d_%H%M%S)"
+        fi
     fi
+
+    info "配置Docker Registry镜像加速（使用多个备用镜像源）..."
     
     # 配置多个镜像源
     local config_content
@@ -1000,7 +1016,7 @@ install_docker_china_centos8() {
     info "CentOS 8/Fedora/Red Hat Docker安装完成"
     return 0
 }
-                    
+
 # 国内环境Anolis OS系统安装Docker
 install_docker_china_anolis() {
     info "在Anolis OS系统安装Docker (使用 $DOCKER_MIRROR_SOURCE 镜像源)..."
@@ -1694,6 +1710,39 @@ install_docker_china_almalinux() {
     fi
 }
 
+install_docker_compose() {
+  local DOCKER_CONFIG={$1:-/usr/local/lib/docker}
+  # 尝试多个下载源，优化国内网络环境
+  local arch=$(uname -m)
+  local compose_url="https://github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-$arch"
+  local compose_mirrors=(
+      "$compose_url"
+      "https://gh-proxy.com/github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-$arch"
+      "https://ghfast.top/$compose_url"
+  )
+  
+  local download_success=false
+  for mirror in "${compose_mirrors[@]}"; do
+      info "尝试从 $mirror 下载Docker Compose..."
+      if sudo curl --connect-timeout 30 --max-time 300 -SL "$mirror" -o $DOCKER_CONFIG/docker-compose; then
+          download_success=true
+          info "Docker Compose下载成功"
+          break
+      else
+          warn "从 $mirror 下载失败，尝试下一个源..."
+          sleep 2
+      fi
+  done
+  
+  if [ "$download_success" = false ]; then
+      error "所有下载源都失败，请检查网络连接或手动下载Docker Compose"
+      exit 1
+  fi
+  sudo chmod +x $DOCKER_CONFIG/docker-compose
+  info "成功安装Docker Compose"
+  return 0
+}
+
 # Amazon Linux安装Docker
 install_docker_china_amazon() {
     info "在Amazon Linux系统安装Docker (使用系统仓库)..."
@@ -1715,69 +1764,14 @@ install_docker_china_amazon() {
 
         local DOCKER_CONFIG=${DOCKER_CONFIG:-/usr/local/lib/docker}
         sudo mkdir -p $DOCKER_CONFIG/cli-plugins
-        
-        # 尝试多个下载源，优化国内网络环境
-        local compose_url="https://github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64"
-        local compose_mirrors=(
-            "$compose_url"
-            "https://gh-proxy.com/github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64"
-            "https://ghfast.top/$compose_url"
-        )
-        
-        local download_success=false
-        for mirror in "${compose_mirrors[@]}"; do
-            info "尝试从 $mirror 下载Docker Compose..."
-            if sudo curl --connect-timeout 30 --max-time 300 -SL "$mirror" -o $DOCKER_CONFIG/cli-plugins/docker-compose; then
-                download_success=true
-                info "Docker Compose下载成功"
-                break
-            else
-                warn "从 $mirror 下载失败，尝试下一个源..."
-                sleep 2
-            fi
-        done
-        
-        if [ "$download_success" = false ]; then
-            error "所有下载源都失败，请检查网络连接或手动下载Docker Compose"
-            exit 1
-        fi
-        
-        sudo chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
-        info "成功安装Docker Compose v2插件"
+        install_docker_compose $DOCKER_CONFIG/cli-plugins
     else
         sudo yum install -y docker
         sudo systemctl enable --now docker
 
         local DOCKER_CONFIG=${DOCKER_CONFIG:-/usr/local/lib/docker}
         sudo mkdir -p $DOCKER_CONFIG/cli-plugins
-         # 尝试多个下载源，优化国内网络环境
-        local compose_url="https://github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64"
-        local compose_mirrors=(
-            "$compose_url"
-            "https://gh-proxy.com/github.com/docker/compose/releases/download/v2.37.3/docker-compose-linux-x86_64"
-            "https://ghfast.top/$compose_url"
-        )
-        
-        local download_success=false
-        for mirror in "${compose_mirrors[@]}"; do
-            info "尝试从 $mirror 下载Docker Compose..."
-            if sudo curl --connect-timeout 30 --max-time 300 -SL "$mirror" -o $DOCKER_CONFIG/cli-plugins/docker-compose; then
-                download_success=true
-                info "Docker Compose下载成功"
-                break
-            else
-                warn "从 $mirror 下载失败，尝试下一个源..."
-                sleep 2
-            fi
-        done
-        
-        if [ "$download_success" = false ]; then
-            error "所有下载源都失败，请检查网络连接或手动下载Docker Compose"
-            exit 1
-        fi
-        
-        sudo chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
-        info "成功安装Docker Compose v2插件"
+        install_docker_compose $DOCKER_CONFIG/cli-plugins
     fi
     
     # 启动和启用Docker服务
@@ -2675,7 +2669,7 @@ setup_docker_compose_command() {
             echo "   - 勾选 'Use the WSL 2 based engine'"
             echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
             echo ""
-            read -p "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
+            auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
               if ! install_docker; then
@@ -2875,6 +2869,95 @@ update_nginx_volumes() {
   fi
 }
 
+# 智能等待服务启动就绪
+wait_for_services_ready() {
+  info "智能等待服务启动就绪..."
+  
+  # 定义需要检查的服务及其健康检查超时时间
+  local services=("poetize-mariadb:60" "poetize-java:90" "poetize-python:80" "poetize-prerender:40" "poetize-nginx:30")
+  # 总超时时间5分钟
+  local max_total_wait=300
+  # 检查间隔5秒
+  local check_interval=5   
+  local total_wait=0
+  local all_ready=false
+  
+  info "开始检查服务健康状态..."
+  
+  while [ $total_wait -lt $max_total_wait ] && [ "$all_ready" = false ]; do
+    all_ready=true
+    local ready_count=0
+    local total_count=${#services[@]}
+    
+    for service_info in "${services[@]}"; do
+      local service_name=$(echo "$service_info" | cut -d':' -f1)
+      local service_timeout=$(echo "$service_info" | cut -d':' -f2)
+      
+      # 检查容器是否运行
+      if ! sudo docker ps --format "{{.Names}}" | grep -q "^${service_name}$"; then
+        if [ $total_wait -gt 30 ]; then  # 给容器30秒启动时间
+          warning "容器 $service_name 未运行"
+          all_ready=false
+        fi
+        continue
+      fi
+      
+      # 检查容器健康状态
+      local health_status=$(sudo docker inspect --format='{{.State.Health.Status}}' "$service_name" 2>/dev/null || echo "no-healthcheck")
+      
+      case "$health_status" in
+        "healthy")
+          ready_count=$((ready_count + 1))
+          ;;
+        "unhealthy")
+          warning "服务 $service_name 健康检查失败"
+          all_ready=false
+          ;;
+        "starting")
+          # 检查是否超过服务特定的超时时间
+          if [ $total_wait -gt $service_timeout ]; then
+            warning "服务 $service_name 启动超时（>${service_timeout}s）"
+            all_ready=false
+          else
+            all_ready=false
+          fi
+          ;;
+        "no-healthcheck")
+          # 对于没有健康检查的服务，检查容器状态
+          local container_status=$(sudo docker inspect --format='{{.State.Status}}' "$service_name" 2>/dev/null || echo "unknown")
+          if [ "$container_status" = "running" ]; then
+            ready_count=$((ready_count + 1))
+          else
+            all_ready=false
+          fi
+          ;;
+        *)
+          all_ready=false
+          ;;
+      esac
+    done
+    
+    # 显示进度
+    if [ $((total_wait % 15)) -eq 0 ] || [ "$all_ready" = true ]; then  # 每15秒或完成时显示进度
+      info "服务启动进度: $ready_count/$total_count 就绪 (${total_wait}s/${max_total_wait}s)"
+    fi
+    
+    if [ "$all_ready" = true ]; then
+      success "所有服务已就绪！总耗时: ${total_wait}s"
+      return 0
+    fi
+    
+    sleep $check_interval
+    total_wait=$((total_wait + check_interval))
+  done
+  
+  if [ "$all_ready" = false ]; then
+    warning "等待服务启动超时（${max_total_wait}s），但将继续部署"
+    warning "您可以稍后使用 'docker ps' 和 'docker logs <容器名>' 检查服务状态"
+    return 1
+  fi
+}
+
 # 构建和启动Docker服务
 start_services() {
   info "启动Docker服务..."
@@ -2971,9 +3054,11 @@ setup_https() {
   info "等待SSL证书生成..."
   
   # 给certbot容器更多时间来完成，并增加重试机制
-  local max_wait=120  # 最多等待2分钟
+  # 最多等待2分钟
+  local max_wait=120
   local wait_time=0
-  local interval=10   # 每10秒检查一次
+  # 每10秒检查一次
+  local interval=10  
   
   while [ $wait_time -lt $max_wait ]; do
     # 检查certbot容器状态
@@ -3195,16 +3280,6 @@ check_docker_compose() {
       info "检测到Docker Compose版本 $COMPOSE_VERSION，某些功能可能不被支持"
       info "如果启动失败，请考虑更新Docker Compose到v2.x版本"
     fi
-  fi
-  
-  # 检查docker-compose.yml中的路径和卷配置
-  # 确保volumes部分定义了所有需要的命名卷
-  if ! grep -q "poetize_ui_dist:" docker-compose.yml || ! grep -q "poetize_im_dist:" docker-compose.yml; then
-    error "docker-compose.yml缺少必要的命名卷定义"
-    info "请确保在volumes部分添加以下行:"
-    echo "  poetize_ui_dist:"
-    echo "  poetize_im_dist:"
-    exit 1
   fi
   
   success "Docker Compose配置检查完成"
@@ -3454,9 +3529,9 @@ apply_memory_optimizations() {
   local NGINX_LIMIT
   local MYSQL_LIMIT
   
-  # 根据不同内存模式设置不同的参数
+  # 根据不同内存模式设置不同的参数，very-low:2G内存以下、low:2-4G内存、medium:4-8G内存、high:8-16G内存、very-high:16G内存以上
   case "$MEMORY_MODE" in
-    "very-low") # 极低内存模式 (<=2GB)
+    "very-low")
       MYSQL_BUFFER_POOL_SIZE="128M"
       MYSQL_LOG_BUFFER_SIZE="8M"
       MYSQL_QUERY_CACHE_SIZE="16M"
@@ -3476,8 +3551,7 @@ apply_memory_optimizations() {
       NGINX_LIMIT="128M"
       MYSQL_LIMIT="256M"
       ;;
-      
-    "low") # 中低内存模式 (2-4GB)
+    "low")
       MYSQL_BUFFER_POOL_SIZE="256M"
       MYSQL_LOG_BUFFER_SIZE="16M"
       MYSQL_QUERY_CACHE_SIZE="32M"
@@ -3498,7 +3572,7 @@ apply_memory_optimizations() {
       MYSQL_LIMIT="384M"
       ;;
       
-    "medium") # 中等内存模式 (4-8GB)
+    "medium") 
       MYSQL_BUFFER_POOL_SIZE="256M"
       MYSQL_LOG_BUFFER_SIZE="16M"
       MYSQL_QUERY_CACHE_SIZE="32M"
@@ -3519,7 +3593,7 @@ apply_memory_optimizations() {
       MYSQL_LIMIT="1024M"
       ;;
       
-    "high") # 高内存模式 (8-16GB)
+    "high")
       MYSQL_BUFFER_POOL_SIZE="512M"
       MYSQL_LOG_BUFFER_SIZE="32M"
       MYSQL_QUERY_CACHE_SIZE="64M"
@@ -3540,7 +3614,7 @@ apply_memory_optimizations() {
       MYSQL_LIMIT="2048M"
       ;;
       
-    "very-high") # 超高内存模式 (>16GB)
+    "very-high")
       MYSQL_BUFFER_POOL_SIZE="1024M"
       MYSQL_LOG_BUFFER_SIZE="64M"
       MYSQL_QUERY_CACHE_SIZE="128M"
@@ -4513,11 +4587,120 @@ install_git() {
   esac
 }
 
+# 检测已运行的Poetize容器
+check_existing_poetize_containers() {  
+  # 检查是否有运行中的Poetize容器
+  local running_containers=$(sudo docker ps --filter "name=poetize-" --format "{{.Names}}" 2>/dev/null | wc -l)
+  
+  if [ "$running_containers" -gt 0 ]; then
+    return 0
+  fi
+  return 1
+}
+
+# 停止已运行的Poetize容器
+stop_existing_poetize_containers() {
+  info "正在停止已运行的Poetize容器..."
+  
+  # 停止所有Poetize相关容器
+  local containers=$(docker ps --filter "name=poetize-" --format "{{.Names}}" 2>/dev/null)
+  
+  if [ -n "$containers" ]; then
+    echo "$containers" | xargs docker stop 2>/dev/null || true
+    echo "$containers" | xargs docker rm 2>/dev/null || true
+    success "已停止并删除所有Poetize容器"
+  fi
+  
+  # 删除相关网络
+  sudo docker network rm poetize-network 2>/dev/null || true
+  
+  success "容器清理完成，继续正常安装流程"
+}
+
+# 处理多实例部署
+handle_multi_instance_deployment() {
+  info "开始处理多实例部署..."
+  local new_instance_dir=${1:-"/home"}
+  local blog_numbers=${2:-"2"}
+
+  info "新实例将创建在: $new_instance_dir"
+  
+  # 进入新实例目录
+  cd "$new_instance_dir"
+
+  # 下载项目
+  download_and_extract_project "Awesome-poetize-open-blog$blog_numbers"
+  
+  # 修改docker-compose.yml以支持多实例
+  modify_docker_compose_for_multi_instance "$blog_numbers"
+  
+  success "多实例配置完成，继续部署流程..."
+}
+
+# 修改docker-compose.yml以支持多实例
+modify_docker_compose_for_multi_instance() {
+  local instance_num=${1:-"2"}
+  local suffix="-blog$instance_num"
+  
+  info "正在修改docker-compose.yml以支持多实例..."
+  
+  # 修改容器名称
+  sed_i "s/container_name: poetize-nginx/container_name: poetize-nginx$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-ui/container_name: poetize-ui$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-im-ui/container_name: poetize-im-ui$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-certbot/container_name: poetize-certbot$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-python/container_name: poetize-python$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-java/container_name: poetize-java$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-mariadb/container_name: poetize-mariadb$suffix/g" docker-compose.yml
+  sed_i "s/container_name: poetize-prerender/container_name: poetize-prerender$suffix/g" docker-compose.yml
+  
+  # 修改网络名称
+  sed_i "s/poetize-network/poetize-network$suffix/g" docker-compose.yml
+  
+  # 修改卷名称
+  sed_i "s/mysql_data:/mysql_data$suffix:/g" docker-compose.yml
+  sed_i "s/certbot-etc:/certbot-etc$suffix:/g" docker-compose.yml
+  sed_i "s/certbot-var:/certbot-var$suffix:/g" docker-compose.yml
+  sed_i "s/web-root:/web-root$suffix:/g" docker-compose.yml
+  sed_i "s/poetize_node_modules:/poetize_node_modules$suffix:/g" docker-compose.yml
+  sed_i "s/im_node_modules:/im_node_modules$suffix:/g" docker-compose.yml
+  sed_i "s/poetize_ui_dist:/poetize_ui_dist$suffix:/g" docker-compose.yml
+  sed_i "s/poetize_im_dist:/poetize_im_dist$suffix:/g" docker-compose.yml
+  sed_i "s/poetize_uploads:/poetize_uploads$suffix:/g" docker-compose.yml
+  sed_i "s/ollama_data:/ollama_data$suffix:/g" docker-compose.yml
+
+  # 修改容器间通信的主机名
+  sed_i "s/poetize-java:8081/poetize-java$suffix:8081/g" docker-compose.yml
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker-compose.yml
+  sed_i "s/poetize-mariadb:3306/poetize-mariadb$suffix:3306/g" docker-compose.yml
+  sed_i "s/poetize-prerender:4000/poetize-prerender$suffix:4000/g" docker-compose.yml
+  
+  # 修改数据库相关配置
+  sed_i "s/MYSQL_HOST=poetize-mariadb/MYSQL_HOST=poetize-mariadb$suffix/g" docker-compose.yml
+  sed_i "s/JAVA_BACKEND_HOST=poetize-java/JAVA_BACKEND_HOST=poetize-java$suffix/g" docker-compose.yml
+  sed_i "s/PYTHON_BACKEND_HOST=poetize-python/PYTHON_BACKEND_HOST=poetize-python$suffix/g" docker-compose.yml
+  sed_i "s/PRERENDER_HOST=poetize-prerender/PRERENDER_HOST=poetize-prerender$suffix/g" docker-compose.yml
+  
+  # 修改nginx配置
+  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.conf
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.conf
+  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.http.conf
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.http.conf
+  sed_i "s/poetize-java/poetize-java$suffix/g" docker/nginx/default.https.conf
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/default.https.conf
+  
+  # 修改nginx lua配置
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/lua/im_seo_access.lua
+  sed_i "s/poetize-python:5000/poetize-python$suffix:5000/g" docker/nginx/lua/seo_access.lua
+
+  success "docker-compose.yml多实例配置完成"
+}
+
 # 下载并解压项目源码
 download_and_extract_project() {
   local download_url="https://github.com/LeapYa/Awesome-poetize-open.git"
   local tar_file="Awesome-poetize-open.tar.gz"
-  local extract_dir="Awesome-poetize-open"
+  local extract_dir="$1"
   local repo_url="https://gitee.com/leapya/poetize.git"
   
   info "正在下载项目源码..."
@@ -4552,21 +4735,155 @@ download_and_extract_project() {
   fi
 }
 
-# 环境检测后的处理逻辑
+find_directory() {
+  DIR_NAME="$1"
+  sudo find / \
+    -path /proc -prune -o \
+    -path /sys -prune -o \
+    -path /dev -prune -o \
+    -type d -name "$DIR_NAME" -print
+}
+
+find_directory_num() {
+  # 查找目录，找到最大数字，如果没有，默认为1+1=2
+  pattern="Awesome-poetize-open-blog[0-9]*"
+  local last_number=$(sudo find / \
+    -path /proc -prune -o \
+    -path /sys -prune -o \
+    -path /dev -prune -o \
+    -path /run -prune -o \
+    -type d -name "$pattern" -print 2>/dev/null \
+    | grep -oE 'Awesome-poetize-open-blog[0-9]+' \
+    | sed -E 's/.*blog([0-9]+)/\1/' \
+    | sort -n \
+    | tail -n 1)
+
+  if [ -z "$last_number" ]; then
+    last_number=1
+  fi
+  last_number=$((last_number + 1))
+  echo "$last_number"
+}
+
+# 环境检测后的处理逻辑，根据环境状态执行不同的操作，逻辑：
+# 检测是否是项目环境目录下，如果是->检测已运行的Poetize容器，如果有->二次安装/重新安装/取消安装
+#                                                    如果没有->结束，继续部署流程
+#                       如果不是，检测已运行的Poetize容器，如果有->二次安装/重新安装/取消安装
+#                                                      如果没有->检测是否有项目环境目录，如果有->进入目录，不再下载项目
+#                                                                                   如果没有->下载项目
 handle_environment_status() {
 
   check_project_environment
   status=$?
   
+  # 在项目环境下执行
   if [ $status -eq 0 ]; then
-    :
-  else    
-    if download_and_extract_project; then
-      success "✅ 源码下载和解压完成，继续部署安装..."
+    # 检测已运行的Poetize容器
+    if check_existing_poetize_containers; then
+      warning "检测到已运行的Poetize容器:"
+      sudo docker ps --filter "name=poetize-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
       echo ""
+      
+      echo -e "${YELLOW}请选择操作:${NC}"
+      echo "1) 二次安装 (创建新的博客实例)"
+      echo "2) 下线已运行的容器后重新安装"
+      echo "3) 取消安装"
+      echo ""
+
+      auto_confirm "请输入选择 (1/2/3): " "1" "-n 1 -r"
+      # 如今pwd所在目录在例如/root/Awesome-poetize-open，那么我们就要回到/root目录
+      local DIR=$(dirname "$(pwd)")
+
+      if [ -z "$DIR" ]; then
+        error "未找到项目目录，如果你认为这是一个错误，请提交issue"
+        return 1
+      fi
+
+      case "$REPLY" in
+        1)
+          local last_number=$(find_directory_num)
+          info "选择二次安装，将创建新的博客实例..."
+          handle_multi_instance_deployment "$DIR" "$last_number"
+          ;;
+        2)
+          info "选择重新安装，将下线已运行的容器..."
+          stop_existing_poetize_containers
+          ;;
+        3)
+          info "用户取消安装"
+          exit 0
+          ;;
+        *)
+          local last_number=$(find_directory_num)
+          warning "无效选择，默认选择二次安装"
+          handle_multi_instance_deployment "$DIR" "$blog_numbers"
+          ;;
+      esac
     else
-      error "❌ 源码下载失败，部署终止"
-      exit 1
+      :
+    fi
+  # 非项目环境下执行
+  else
+    # 检测已运行的Poetize容器
+    if check_existing_poetize_containers; then
+      warning "检测到已运行的Poetize容器:"
+      sudo docker ps --filter "name=poetize-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+      echo ""
+      
+      echo -e "${YELLOW}请选择操作:${NC}"
+      echo "1) 二次安装 (创建新的博客实例)"
+      echo "2) 下线已运行的容器后重新安装"
+      echo "3) 取消安装"
+      echo ""
+      
+      auto_confirm "请输入选择 (1/2/3): " "1" "-n 1 -r"
+      # 找到项目目录及其完整路径，如/root/Awesome-poetize-open
+      local DIR=$(find_directory "Awesome-poetize-open" | head -n 1)
+
+      if [ -z "$DIR" ]; then
+        error "未找到项目目录，如果你认为这是一个错误，请提交issue"
+        return 1
+      fi
+      # 项目所在目录，/root/Awesome-poetize-open -> /root
+      DIR=$(dirname "$DIR")
+
+      case "$REPLY" in
+        1)
+          local last_number=$(find_directory_num)
+          info "选择二次安装，将创建新的博客实例..."
+          handle_multi_instance_deployment "$DIR" "$last_number"
+          ;;
+        2)
+          info "选择重新安装，将下线已运行的容器..."
+          stop_existing_poetize_containers
+          sudo cd "$DIR"
+          ;;
+        3)
+          info "用户取消安装"
+          exit 0
+          ;;
+        *)
+          local last_number=$(find_directory_num)
+          warning "无效选择，默认选择二次安装"
+          handle_multi_instance_deployment "$DIR" "$last_number"
+          ;;
+      esac
+    else
+      # 检测是否有项目环境目录
+      if sudo find / -type d -name "Awesome-poetize-open-blog*" | grep -q . > /dev/null; then
+        info "检测到已存在的博客项目目录，将进入博客目录以继续安装..."
+        local DIR=$(find_directory "Awesome-poetize-open-blog*" | tail -n 1)
+        cd "$DIR"
+        info "当前目录: $(pwd)"
+      else
+        if download_and_extract_project "Awesome-poetize-open"; then
+          success "✅ 源码下载和解压完成，继续部署安装..."
+          echo ""
+        else
+          error "❌ 源码下载失败，部署终止"
+          exit 1
+        fi
+      fi
     fi
   fi
 }
@@ -5114,9 +5431,9 @@ update_kylin_base_source() {
       fi
     fi
     
-    # 如果仍然没找到版本信息，使用默认值
+    # 如果仍然没找到版本信息，使用默认值，版本代号为focal
     if [ -z "$codename" ]; then
-      codename="focal"  # 默认使用Ubuntu 20.04 LTS的代号
+      codename="focal"
       warning "无法检测麒麟版本代号，使用默认值: $codename"
     fi
     
@@ -5417,12 +5734,12 @@ patch_dockerfile_mirror() {
 require_root_or_sudo() {
   # $EUID == 0 说明当前就是 root
   if [ "$EUID" -eq 0 ]; then
-    return 0        # OK
+    return 0
   fi
 
   # 尝试寻找 sudo
   if command -v sudo >/dev/null 2>&1; then
-    return 0        # 有 sudo 也算 OK
+    return 0
   fi
 
   # 两者都没有 则报错并退出
@@ -5436,27 +5753,27 @@ main() {
 
   # 显示横幅
   echo ""
-  printf "${BLUE}╔═══════════════════════════════════════════════════════════════════╗${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}║                          ${GREEN}P O E T I Z E${BLUE}                            ║${NC}\n"
-  printf "${BLUE}║                    ${YELLOW}* 优雅的博客与聊天平台 *${BLUE}                       ║${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════╣${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${BLUE}        ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${BLUE}        ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${BLUE}          ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${BLUE}          ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${BLUE}        ║${NC}\n"
-  printf "${BLUE}║      ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${BLUE}        ║${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}╠═══════════════════════════════════════════════════════════════════╣${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}║       ${YELLOW}* 作者: ${GREEN}LeapYa${BLUE}                                              ║${NC}\n"
-  printf "${BLUE}║       ${YELLOW}* 邮箱: ${GREEN}enable_lazy@qq.com${BLUE}                                  ║${NC}\n"
-  printf "${BLUE}║       ${YELLOW}* 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${BLUE}      ║${NC}\n"
-  printf "${BLUE}║                                                                   ║${NC}\n"
-  printf "${BLUE}╚═══════════════════════════════════════════════════════════════════╝${NC}\n"
+  printf "${BLUE}╔═════════════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}║                         ${GREEN}P O E T I Z E${BLUE}                           ║${NC}\n"
+  printf "${BLUE}║                   ${YELLOW}* 优雅的博客与聊天平台 *${BLUE}                      ║${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}╠═════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}██████╗  ██████╗ ███████╗████████╗██╗███████╗███████╗${BLUE}       ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}██╔══██╗██╔═══██╗██╔════╝╚══██╔══╝██║╚══███╔╝██╔════╝${BLUE}       ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}██████╔╝██║   ██║█████╗     ██║   ██║  ███╔╝ █████╗${BLUE}         ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}██╔═══╝ ██║   ██║██╔══╝     ██║   ██║ ███╔╝  ██╔══╝${BLUE}         ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}██║     ╚██████╔╝███████╗   ██║   ██║███████╗███████╗${BLUE}       ║${NC}\n"
+  printf "${BLUE}║     ${GREEN}╚═╝      ╚═════╝ ╚══════╝   ╚═╝   ╚═╝╚══════╝╚══════╝${BLUE}       ║${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}╠═════════════════════════════════════════════════════════════════╣${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}║      ${YELLOW}* 作者: ${GREEN}LeapYa${BLUE}                                             ║${NC}\n"
+  printf "${BLUE}║      ${YELLOW}* 邮箱: ${GREEN}enable_lazy@qq.com${BLUE}                                 ║${NC}\n"
+  printf "${BLUE}║      ${YELLOW}* 仓库: ${GREEN}https://github.com/LeapYa/Awesome-poetize-open${BLUE}     ║${NC}\n"
+  printf "${BLUE}║                                                                 ║${NC}\n"
+  printf "${BLUE}╚═════════════════════════════════════════════════════════════════╝${NC}\n"
   
   echo -e "${YELLOW}✨ 正在初始化部署环境...${NC}"
   sleep 3
@@ -5522,29 +5839,6 @@ main() {
     error "bc安装失败，无法继续部署,请切换到root用户再试..."
     exit 1
   fi
-  # 处理环境状态，如果没有源码，则克隆源码到本地并进入目录
-  handle_environment_status
-  # 处理Dockerfile国内镜像加速
-  if is_china_environment; then
-    info "检测到国内网络环境"
-    echo -n "是否为 Dockerfile 注入国内镜像加速指令？[Y/n]（5 秒后默认 Y）: "
-
-    read -t 5 -n 1 REPLY      # 5 秒超时读取 1 个字符
-    echo                       # 换行
-
-    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
-      info "开始处理 Dockerfile 国内镜像加速..."
-      patch_dockerfile_mirror
-    else
-      info "已跳过 Dockerfile 加速处理"
-    fi
-  fi
-  
-  # 检查是否需要显示帮助
-  if [ "$SHOW_HELP" = true ]; then
-    show_help
-    exit 0
-  fi
   
   # 检查Docker环境
   info "检查Docker环境..."
@@ -5586,9 +5880,9 @@ main() {
       configure_docker_registry
     fi
   fi
-  
+
   # 检查Docker Compose可用性
-  if ! (command -v docker &>/dev/null && docker compose version &>/dev/null) && ! command -v docker-compose &>/dev/null; then
+  if ! (command -v docker &>/dev/null && (docker compose version &>/dev/null || sudo docker compose version &>/dev/null)) && ! (command -v docker-compose &>/dev/null || sudo docker-compose --version &>/dev/null); then
     if grep -q Microsoft /proc/version 2>/dev/null; then
       echo ""
       echo -e "${BLUE}=== 在WSL中使用Docker Compose ===${NC}"
@@ -5603,12 +5897,20 @@ main() {
         error "已取消部署"
         exit 1
       fi
-        warning "将尝试使用docker命令直接管理容器"
-      else
+      warning "将尝试使用docker命令直接管理容器"
+    else
       warning "Docker Compose不可用，请确保安装了完整的Docker Engine"
       info "现代Docker安装通常已包含docker compose插件"
-      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "y" "-n 1 -r"
-      if [[ $REPLY =~ ^[Nn]$ ]]; then
+      auto_confirm "是否尝试下载Docker Compose二进制包进行安装? (y/n) [y=安装, n=跳过]: " "y" "-n 1 -r"
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        install_docker_compose "/usr/local/bin"
+        if sudo docker compose version &>/dev/null; then
+          :
+        else
+          warning "Docker Compose仍然不可使用，如果你认为是个错误，请提交issue"
+          exit 1
+        fi
+      else
         error "已取消部署"
         exit 1
       fi
@@ -5620,6 +5922,24 @@ main() {
   # 设置Docker Compose命令
   setup_docker_compose_command
   
+  # 处理环境状态，如果没有源码，则克隆源码到本地并进入目录
+  handle_environment_status
+  # 处理Dockerfile国内镜像加速
+  if is_china_environment; then
+    info "检测到国内网络环境"
+    echo -n "是否为 Dockerfile 注入国内镜像加速指令？[Y/n]（5 秒后默认 Y）: "
+
+    read -t 5 -n 1 REPLY      # 5 秒超时读取 1 个字符
+    echo                       # 换行
+
+    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+      info "开始处理 Dockerfile 国内镜像加速..."
+      patch_dockerfile_mirror
+    else
+      info "已跳过 Dockerfile 加速处理"
+    fi
+  fi
+
   # 初始化SKIP_BUILD变量，默认为空
   SKIP_BUILD=""
   
@@ -5635,7 +5955,6 @@ main() {
   
   # 检查依赖
   check_dependencies
-  
   
   # 如果没有输入域名，提示用户
   if [ ${#DOMAINS[@]} -eq 0 ]; then
@@ -5695,9 +6014,8 @@ main() {
   # 构建和启动Docker服务
   start_services
   
-  # 等待30秒让服务启动
-  info "等待服务启动..."
-  sleep 30
+  # 智能等待服务启动
+  wait_for_services_ready
   
   # 对于真实域名，检查可访问性（在服务启动后进行）
   if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -5706,11 +6024,11 @@ main() {
   
   # 检查服务状态
   info "检查服务状态..."
-  NGINX_RUNNING=$(docker ps --filter "name=poetize-nginx" --format "{{.Status}}" | grep -c "Up")
-  JAVA_RUNNING=$(docker ps --filter "name=poetize-java" --format "{{.Status}}" | grep -c "Up")
-  PYTHON_RUNNING=$(docker ps --filter "name=poetize-python" --format "{{.Status}}" | grep -c "Up")
-  MYSQL_RUNNING=$(docker ps --filter "name=poetize-mariadb" --format "{{.Status}}" | grep -c "Up")
-  PRERENDER_RUNNING=$(docker ps --filter "name=poetize-prerender" --format "{{.Status}}" | grep -c "Up")
+  NGINX_RUNNING=$(sudo docker ps --filter "name=poetize-nginx" --format "{{.Status}}" | grep -c "Up")
+  JAVA_RUNNING=$(sudo docker ps --filter "name=poetize-java" --format "{{.Status}}" | grep -c "Up")
+  PYTHON_RUNNING=$(sudo docker ps --filter "name=poetize-python" --format "{{.Status}}" | grep -c "Up")
+  MYSQL_RUNNING=$(sudo docker ps --filter "name=poetize-mariadb" --format "{{.Status}}" | grep -c "Up")
+  PRERENDER_RUNNING=$(sudo docker ps --filter "name=poetize-prerender" --format "{{.Status}}" | grep -c "Up")
   
   if [ "$NGINX_RUNNING" -eq 1 ] && [ "$JAVA_RUNNING" -eq 1 ] && [ "$PYTHON_RUNNING" -eq 1 ] && [ "$MYSQL_RUNNING" -eq 1 ] && [ "$PRERENDER_RUNNING" -eq 1 ]; then
     success "所有服务已成功启动！"

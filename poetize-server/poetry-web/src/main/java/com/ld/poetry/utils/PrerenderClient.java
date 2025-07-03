@@ -25,13 +25,13 @@ public class PrerenderClient {
      * prerender-worker 服务基础地址，默认 docker compose 网络内
      * 结尾保持 /render，POST 用于提交渲染，DELETE /render/{id} 用于删除
      */
-    @Value("${prerender.url:http://poetize-prerender:4000/render}")
+    @Value("${PRERENDER_URL:http://poetize-prerender:4000/render}")
     private String prerenderUrl;
 
     /**
      * prerender-worker 页面渲染地址
      */
-    @Value("${prerender.pages.url:http://poetize-prerender:4000/render/pages}")
+    @Value("${PRERENDER_PAGES_URL:http://poetize-prerender:4000/render/pages}")
     private String prerenderPagesUrl;
 
     @Autowired
