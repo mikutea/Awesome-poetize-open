@@ -30,10 +30,10 @@ services:
         condition: service_completed_successfully
       poetize-im-ui:
         condition: service_completed_successfully
-      # java-backend:
-      #   condition: service_healthy
-      # python-backend:
-      #   condition: service_healthy
+      java-backend:
+        condition: service_healthy
+      python-backend:
+        condition: service_healthy
     restart: always
 
   # 主站前端（Vue 2）
@@ -158,6 +158,7 @@ services:
       - OLLAMA_API_URL=http://poetize-translation-model:11434/api
       - OLLAMA_MODEL_NAME=qwen3:0.6b
       - NGINX_URL=http://nginx/flush_seo_cache
+      - PRERENDER_URL=http://poetize-prerender:4000
     volumes:
       - ./py/data:/app/data
     networks:
@@ -223,6 +224,8 @@ services:
       - LOCAL_UPLOADURL=/app/static
       - LOCAL_DOWNLOADURL=/static
       - OLLAMA_MODEL_NAME=qwen3:0.6b
+      - PRERENDER_URL=http://poetize-prerender:4000/render
+      - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
     networks:
       - poetize-network
     depends_on:
