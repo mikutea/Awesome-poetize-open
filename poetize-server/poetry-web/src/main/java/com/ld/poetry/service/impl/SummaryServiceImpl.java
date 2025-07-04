@@ -6,6 +6,7 @@ import com.ld.poetry.service.SummaryService;
 import com.ld.poetry.utils.SmartSummaryGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -25,6 +26,7 @@ import java.util.Map;
 public class SummaryServiceImpl implements SummaryService {
 
     @Autowired
+    @Lazy
     private ArticleService articleService;
     
     @Autowired
@@ -186,4 +188,4 @@ public class SummaryServiceImpl implements SummaryService {
         
         return null;
     }
-} 
+}
