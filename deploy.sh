@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-03
+## 修改时间: 2025-07-04
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.3.0
+## 版本: 1.3.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -821,7 +821,7 @@ configure_docker_registry() {
     
     # 备份原配置文件
     if [ -f "$docker_config_file" ]; then
-        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？" "y"; then
+        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？[Y/n]" "y"; then
             info "跳过更换镜像源，保持原有配置"
             return 0
         else
@@ -4113,67 +4113,6 @@ load_offline_images() {
   return 1
 }
 
-
-# 检查并修复Dockerfile行终止符
-fix_dockerfile_line_endings() {
-  info "检查Dockerfile行终止符..."
-  
-  # 直接修复docker/java/Dockerfile
-  if [ -f "docker/java/Dockerfile" ]; then
-    info "修复Java Dockerfile行终止符..."
-    sed_i 's/\r$//' docker/java/Dockerfile
-  fi
-  
-  # 直接修复docker/python/Dockerfile
-  if [ -f "docker/python/Dockerfile" ]; then
-    info "修复Python Dockerfile行终止符..."
-    sed_i 's/\r$//' docker/python/Dockerfile
-  fi
-  
-  # 检查是否有dos2unix工具
-  if ! command -v dos2unix &>/dev/null; then
-    info "安装dos2unix工具..."
-    if command -v apt-get &>/dev/null; then
-      apt-get update -qq && apt-get install -y -qq dos2unix >/dev/null 2>&1
-    elif command -v yum &>/dev/null; then
-      yum install -y -q dos2unix >/dev/null 2>&1
-    elif command -v dnf &>/dev/null; then
-      dnf install -y -q dos2unix >/dev/null 2>&1
-    else
-      warning "无法安装dos2unix工具，将使用替代方法修复文件"
-      # 使用sed替代dos2unix，修复所有Dockerfile
-      find docker -name "Dockerfile" -type f -exec sed_i 's/\r$//' {} \;
-      
-      # 额外检查Java和Python的Dockerfile
-      for dir in docker/*/; do
-        if [ -f "${dir}Dockerfile" ]; then
-          info "额外修复 ${dir}Dockerfile"
-          sed_i 's/\r$//' "${dir}Dockerfile"
-          # 确保文件每行末尾有换行符
-          if [ "$(tail -c 1 "${dir}Dockerfile" | wc -l)" -eq 0 ]; then
-            echo "" >> "${dir}Dockerfile"
-          fi
-        fi
-      done
-      return
-    fi
-  fi
-  
-  # 使用dos2unix修复所有Dockerfile
-  find docker -name "Dockerfile" -type f -exec dos2unix {} \; 2>/dev/null
-  
-  # 确保文件每行末尾有换行符
-  for dir in docker/*/; do
-    if [ -f "${dir}Dockerfile" ]; then
-      if [ "$(tail -c 1 "${dir}Dockerfile" | wc -l)" -eq 0 ]; then
-        echo "" >> "${dir}Dockerfile"
-      fi
-    fi
-  done
-  
-  success "Dockerfile行终止符已修复"
-}
-
 # 安全地运行Docker Compose命令，确保参数正确传递
 run_docker_compose() {
     # 构建compose命令数组，自动探测版本，并根据需要加sudo
@@ -4223,6 +4162,23 @@ generate_secure_password() {
   tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c ${length}
 }
 
+# 保存数据库凭据（密码）函数
+save_db_file() {
+  if [ ! -d ".config" ]; then
+    mkdir -p .config
+  fi
+  cat > .config/db_credentials.txt <<EOF
+# MariaDB 数据库凭据 - 请妥善保管此文件
+# 生成时间: $(date)
+
+数据库ROOT密码: ${ROOT_PASSWORD}
+数据库poetize用户密码: ${USER_PASSWORD}
+
+# 这些密码已被自动配置到docker-compose.yml中
+# 如需手动连接数据库，请使用以上凭据
+EOF
+}
+
 # 替换数据库密码
 replace_db_passwords() {
   # 检查是否存在现有的数据库凭据文件
@@ -4238,6 +4194,8 @@ replace_db_passwords() {
       warning "警告: 无法从现有凭据文件中读取密码，将生成新的随机密码..."
       ROOT_PASSWORD=$(generate_secure_password 24)
       USER_PASSWORD=$(generate_secure_password 24)
+      # 保存密码到本地安全文件
+      save_db_file
     else
       success "成功读取现有数据库密码"
     fi
@@ -4247,6 +4205,8 @@ replace_db_passwords() {
     # 生成随机密码
     ROOT_PASSWORD=$(generate_secure_password 24)
     USER_PASSWORD=$(generate_secure_password 24)
+    # 保存密码到本地安全文件
+    save_db_file
   fi
   
   # 替换docker-compose.yml中的默认密码
@@ -4266,36 +4226,14 @@ replace_db_passwords() {
   sed_i "s|mariadb-admin ping -h localhost -u poetize -ppoetize123|mariadb-admin ping -h localhost -u poetize -p${USER_PASSWORD}|g" docker-compose.yml
   sed_i "s|mariadb -h localhost -u poetize -ppoetize123|mariadb -h localhost -u poetize -p${USER_PASSWORD}|g" docker-compose.yml
   
-  # 保存密码到本地安全文件
-  mkdir -p .config
-  cat > .config/db_credentials.txt <<EOF
-# MariaDB 数据库凭据 - 请妥善保管此文件
-# 生成时间: $(date)
-
-数据库ROOT密码: ${ROOT_PASSWORD}
-数据库poetize用户密码: ${USER_PASSWORD}
-
-# 这些密码已被自动配置到docker-compose.yml中
-# 如需手动连接数据库，请使用以上凭据
-EOF
-  
   # 设置安全权限
   chmod 600 .config/db_credentials.txt
   
-  echo "====================================================="
   if [ -f ".config/db_credentials.txt" ] && grep -q "数据库ROOT密码:" .config/db_credentials.txt 2>/dev/null; then
     info "【迁移模式】数据库密码配置完成（使用现有密码）"
   else
     info "数据库密码已成功更新为随机强密码"
   fi
-  echo "====================================================="
-  echo ""
-  echo "数据库ROOT密码: ${ROOT_PASSWORD}"
-  echo "数据库poetize用户密码: ${USER_PASSWORD}"
-  echo ""
-  echo "以上密码已保存到 .config/db_credentials.txt"
-  echo "请妥善保管此文件，并在部署完成后备份到安全位置"
-  echo "====================================================="
 }
 
 # 检查和修复MySQL配置文件权限
@@ -4329,30 +4267,30 @@ verify_https_status() {
   
   # 1. 检查Nginx配置是否启用了HTTPS
   info "检查Nginx HTTPS配置..."
-  if docker exec poetize-nginx nginx -T 2>/dev/null | grep -q "listen.*443.*ssl"; then
+  if sudo docker exec poetize-nginx nginx -T 2>/dev/null | grep -q "listen.*443.*ssl"; then
     nginx_https_enabled=true
     success "✓ Nginx已配置HTTPS监听端口"
   else
     warning "✗ Nginx未配置HTTPS监听端口"
     info "当前Nginx配置中的监听端口:"
-    docker exec poetize-nginx nginx -T 2>/dev/null | grep "listen" | head -5 || echo "无法获取监听端口信息"
+    sudo docker exec poetize-nginx nginx -T 2>/dev/null | grep "listen" | head -5 || echo "无法获取监听端口信息"
   fi
   
   # 2. 检查SSL证书文件是否存在
   info "检查SSL证书文件..."
-  if docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
+  if sudo docker exec poetize-nginx test -f "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
     cert_valid=true
     success "✓ SSL证书文件存在: /etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem"
     
     # 检查证书有效期
-    CERT_EXPIRY=$(docker exec poetize-nginx openssl x509 -in "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+    CERT_EXPIRY=$(sudo docker exec poetize-nginx openssl x509 -in "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
     if [ -n "$CERT_EXPIRY" ]; then
       info "证书有效期至: $CERT_EXPIRY"
     fi
   else
     warning "✗ SSL证书文件不存在"
     info "检查Let's Encrypt目录结构:"
-    docker exec poetize-nginx ls -la /etc/letsencrypt/live/ 2>/dev/null || echo "Let's Encrypt目录不存在"
+    sudo docker exec poetize-nginx ls -la /etc/letsencrypt/live/ 2>/dev/null || echo "Let's Encrypt目录不存在"
   fi
   
   # 3. 测试HTTPS连接（如果不是本地域名）
@@ -4397,7 +4335,7 @@ verify_https_status() {
   
   # 4. 检查容器日志中的错误
   info "检查容器日志中的SSL相关错误..."
-  SSL_ERRORS=$(docker logs poetize-nginx 2>&1 | grep -i "ssl\|certificate\|tls" | tail -5 || echo "未发现SSL相关日志")
+  SSL_ERRORS=$(sudo docker logs poetize-nginx 2>&1 | grep -i "ssl\|certificate\|tls" | tail -5 || echo "未发现SSL相关日志")
   if [ "$SSL_ERRORS" != "未发现SSL相关日志" ]; then
     warning "发现SSL相关日志:"
     echo "$SSL_ERRORS"
@@ -5131,7 +5069,13 @@ update_debian_base_source() {
   if [ -f /etc/apt/sources.list ]; then
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
     # debian11选择清华源
-    if [ "$codename" -eq "bullseye" ]; then
+    if [ "$codename" = "bullseye" ]; then
+    cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename main contrib non-free
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-updates main contrib non-free
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-backports main contrib non-free
+deb http://security.debian.org/debian-security $codename-security main contrib non-free
+EOF
       sudo apt-get update;
       sudo apt-get install -y --no-install-recommends ca-certificates;
       cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
