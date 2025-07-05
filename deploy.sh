@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-05
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.3.2
+## 版本: 1.3.3
 
 # 定义颜色
 RED='\033[0;31m'
@@ -2900,7 +2900,7 @@ wait_for_services_ready() {
   info "智能等待服务启动就绪..."
   
   # 定义需要检查的服务及其健康检查超时时间
-  local services=("poetize-mariadb:60" "poetize-java:90" "poetize-python:80" "poetize-prerender:40" "poetize-nginx:30")
+  local services=("poetize-mariadb:60" "poetize-java:90" "poetize-python:80" "poetize-prerender:40")
   # 总超时时间5分钟
   local max_total_wait=300
   # 检查间隔5秒
