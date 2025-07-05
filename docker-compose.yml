@@ -60,7 +60,7 @@ services:
                            rm -rf node_modules/.staging 2>/dev/null || true && \
                            find node_modules -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true && \
                            echo '=== 安装依赖 ===' && \
-                           npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --maxsockets 1 && \
+                           npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --maxsockets 1 --network-timeout 300000 && \
                            echo '=== 安装Brotli压缩工具 ===' && \
                            (npm install -g brotli --no-fund --no-audit --maxsockets 1 || echo '警告: brotli安装失败，将跳过.br文件生成') && \
                            echo '=== 运行构建 ===' && \
@@ -108,12 +108,12 @@ services:
                            echo '=== 安装依赖 ===' && \
                            if [ -f package-lock.json ]; then \
                              echo '使用npm ci安装依赖' && \
-                             npm ci --prefer-offline --no-audit --no-fund --maxsockets 1 || \
+                             npm ci --prefer-offline --no-audit --no-fund --maxsockets 1 --network-timeout 300000 || \
                              (echo '使用npm ci失败，回退到npm install' && \
-                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1); \
+                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1 --network-timeout 300000); \
                            else \
                              echo '无package-lock.json，使用npm install' && \
-                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1; \
+                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1 --network-timeout 300000; \
                            fi && \
                            echo '=== 安装Brotli压缩工具 ===' && \
                            npm install -g brotli --no-fund --no-audit --maxsockets 1 2>/dev/null || echo '警告: brotli安装失败，将跳过.br文件生成' && \
