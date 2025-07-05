@@ -1,137 +1,113 @@
 <template>
   <div class="translation-management">
-    <!-- 页面标题 -->
-    <div style="margin-bottom: 30px;">
-      <el-tag effect="dark" class="my-tag">
-        <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
-          <path
-            d="M767.1296 808.6528c16.8448 0 32.9728 2.816 48.0256 8.0384 20.6848 7.1168 43.52 1.0752 57.1904-15.9744a459.91936 459.91936 0 0 0 70.5024-122.88c7.8336-20.48 1.0752-43.264-15.9744-57.088-49.6128-40.192-65.0752-125.3888-31.3856-185.856a146.8928 146.8928 0 0 1 30.3104-37.9904c16.2304-14.5408 22.1696-37.376 13.9264-57.6a461.27104 461.27104 0 0 0-67.5328-114.9952c-13.6192-16.9984-36.4544-22.9376-57.0368-15.8208a146.3296 146.3296 0 0 1-48.0256 8.0384c-70.144 0-132.352-50.8928-145.2032-118.7328-4.096-21.6064-20.736-38.5536-42.4448-41.8304-22.0672-3.2768-44.6464-5.0176-67.6864-5.0176-21.4528 0-42.5472 1.536-63.232 4.4032-22.3232 3.1232-40.2432 20.48-43.52 42.752-6.912 46.6944-36.0448 118.016-145.7152 118.4256-17.3056 0.0512-33.8944-2.9696-49.3056-8.448-21.0432-7.4752-44.3904-1.4848-58.368 15.9232A462.14656 462.14656 0 0 0 80.4864 348.16c-7.6288 20.0192-2.7648 43.008 13.4656 56.9344 55.5008 47.8208 71.7824 122.88 37.0688 185.1392a146.72896 146.72896 0 0 1-31.6416 39.168c-16.8448 14.7456-23.0912 38.1952-14.5408 58.9312 16.896 41.0112 39.5776 79.0016 66.9696 113.0496 13.9264 17.3056 37.2736 23.1936 58.2144 15.7184 15.4112-5.4784 32-8.4992 49.3056-8.4992 71.2704 0 124.7744 49.408 142.1312 121.2928 4.9664 20.48 21.4016 36.0448 42.24 39.168 22.2208 3.328 44.9536 5.0688 68.096 5.0688 23.3984 0 46.4384-1.792 68.864-5.1712 21.3504-3.2256 38.144-19.456 42.7008-40.5504 14.8992-68.8128 73.1648-119.7568 143.7696-119.7568z"
-            fill="#8C7BFD"></path>
-          <path
-            d="M511.8464 696.3712c-101.3248 0-183.7568-82.432-183.7568-183.7568s82.432-183.7568 183.7568-183.7568 183.7568 82.432 183.7568 183.7568-82.432 183.7568-183.7568 183.7568z m0-265.1648c-44.8512 0-81.3568 36.5056-81.3568 81.3568S466.9952 593.92 511.8464 593.92s81.3568-36.5056 81.3568-81.3568-36.5056-81.3568-81.3568-81.3568z"
-            fill="#FFE37B"></path>
-        </svg>
-        文章AI助手
-      </el-tag>
-    </div>
       
     <!-- 主要配置区域 -->
     <div class="config-container">
       <el-form :model="apiConfig" label-width="120px" class="config-form">
-        
+
         <!-- 翻译模式选择 -->
         <div class="config-section">
-          <div class="section-header">
-            <h2 class="section-title">
-              <i class="el-icon-setting"></i>
+          <!-- 页面标题 -->
+          <div style="margin-bottom: 30px;">
+            <el-tag effect="dark" class="my-tag">
+              <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+                <path
+                  d="M767.1296 808.6528c16.8448 0 32.9728 2.816 48.0256 8.0384 20.6848 7.1168 43.52 1.0752 57.1904-15.9744a459.91936 459.91936 0 0 0 70.5024-122.88c7.8336-20.48 1.0752-43.264-15.9744-57.088-49.6128-40.192-65.0752-125.3888-31.3856-185.856a146.8928 146.8928 0 0 1 30.3104-37.9904c16.2304-14.5408 22.1696-37.376 13.9264-57.6a461.27104 461.27104 0 0 0-67.5328-114.9952c-13.6192-16.9984-36.4544-22.9376-57.0368-15.8208a146.3296 146.3296 0 0 1-48.0256 8.0384c-70.144 0-132.352-50.8928-145.2032-118.7328-4.096-21.6064-20.736-38.5536-42.4448-41.8304-22.0672-3.2768-44.6464-5.0176-67.6864-5.0176-21.4528 0-42.5472 1.536-63.232 4.4032-22.3232 3.1232-40.2432 20.48-43.52 42.752-6.912 46.6944-36.0448 118.016-145.7152 118.4256-17.3056 0.0512-33.8944-2.9696-49.3056-8.448-21.0432-7.4752-44.3904-1.4848-58.368 15.9232A462.14656 462.14656 0 0 0 80.4864 348.16c-7.6288 20.0192-2.7648 43.008 13.4656 56.9344 55.5008 47.8208 71.7824 122.88 37.0688 185.1392a146.72896 146.72896 0 0 1-31.6416 39.168c-16.8448 14.7456-23.0912 38.1952-14.5408 58.9312 16.896 41.0112 39.5776 79.0016 66.9696 113.0496 13.9264 17.3056 37.2736 23.1936 58.2144 15.7184 15.4112-5.4784 32-8.4992 49.3056-8.4992 71.2704 0 124.7744 49.408 142.1312 121.2928 4.9664 20.48 21.4016 36.0448 42.24 39.168 22.2208 3.328 44.9536 5.0688 68.096 5.0688 23.3984 0 46.4384-1.792 68.864-5.1712 21.3504-3.2256 38.144-19.456 42.7008-40.5504 14.8992-68.8128 73.1648-119.7568 143.7696-119.7568z"
+                  fill="#8C7BFD"></path>
+                <path
+                  d="M511.8464 696.3712c-101.3248 0-183.7568-82.432-183.7568-183.7568s82.432-183.7568 183.7568-183.7568 183.7568 82.432 183.7568 183.7568-82.432 183.7568-183.7568 183.7568z m0-265.1648c-44.8512 0-81.3568 36.5056-81.3568 81.3568S466.9952 593.92 511.8464 593.92s81.3568-36.5056 81.3568-81.3568-36.5056-81.3568-81.3568-81.3568z"
+                  fill="#FFE37B"></path>
+              </svg>
               翻译模式配置
-            </h2>
+            </el-tag>
           </div>
           <div class="section-content">
         <el-form-item label="翻译模式">
-              <div class="mode-selector">
-                <div class="mode-options">
-                  <div 
-                    class="mode-option" 
-                    :class="{ 'active': apiConfig.mode === 'api' }"
-                    @click="apiConfig.mode = 'api'">
-                    <div class="mode-icon">
-                      <i class="el-icon-connection"></i>
-                    </div>
-                    <div class="mode-info">
-                      <div class="mode-name">API翻译</div>
-                      <div class="mode-desc">速度快，适合简单翻译</div>
-                    </div>
-                  </div>
-                  <div 
-                    class="mode-option" 
-                    :class="{ 'active': apiConfig.mode === 'llm' }"
-                    @click="apiConfig.mode = 'llm'">
-                    <div class="mode-icon">
-                      <i class="el-icon-chat-round"></i>
-                    </div>
-                    <div class="mode-info">
-                      <div class="mode-name">大模型翻译</div>
-                      <div class="mode-desc">质量高，适合专业翻译</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <el-select v-model="apiConfig.mode" placeholder="请选择翻译模式" style="width: 120px" class="mrb10">
+            <el-option key="api" label="API翻译" :value="'api'">
+              <span class="option-content">
+                <i class="el-icon-connection"></i>
+                API翻译
+              </span>
+            </el-option>
+            <el-option key="llm" label="大模型翻译" :value="'llm'">
+              <span class="option-content">
+                <i class="el-icon-chat-round"></i>
+                大模型翻译
+              </span>
+            </el-option>
+          </el-select>
         </el-form-item>
           </div>
         </div>
 
         <!-- 默认语言配置 -->
         <div class="config-section">
-          <div class="section-header">
-            <h2 class="section-title">
-              <i class="el-icon-s-opportunity"></i>
-              默认语言配置
-            </h2>
-          </div>
+              <!-- 页面标题 -->
+        <div style="margin-bottom: 30px;">
+          <el-tag effect="dark" class="my-tag">
+            <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+              <path
+                d="M767.1296 808.6528c16.8448 0 32.9728 2.816 48.0256 8.0384 20.6848 7.1168 43.52 1.0752 57.1904-15.9744a459.91936 459.91936 0 0 0 70.5024-122.88c7.8336-20.48 1.0752-43.264-15.9744-57.088-49.6128-40.192-65.0752-125.3888-31.3856-185.856a146.8928 146.8928 0 0 1 30.3104-37.9904c16.2304-14.5408 22.1696-37.376 13.9264-57.6a461.27104 461.27104 0 0 0-67.5328-114.9952c-13.6192-16.9984-36.4544-22.9376-57.0368-15.8208a146.3296 146.3296 0 0 1-48.0256 8.0384c-70.144 0-132.352-50.8928-145.2032-118.7328-4.096-21.6064-20.736-38.5536-42.4448-41.8304-22.0672-3.2768-44.6464-5.0176-67.6864-5.0176-21.4528 0-42.5472 1.536-63.232 4.4032-22.3232 3.1232-40.2432 20.48-43.52 42.752-6.912 46.6944-36.0448 118.016-145.7152 118.4256-17.3056 0.0512-33.8944-2.9696-49.3056-8.448-21.0432-7.4752-44.3904-1.4848-58.368 15.9232A462.14656 462.14656 0 0 0 80.4864 348.16c-7.6288 20.0192-2.7648 43.008 13.4656 56.9344 55.5008 47.8208 71.7824 122.88 37.0688 185.1392a146.72896 146.72896 0 0 1-31.6416 39.168c-16.8448 14.7456-23.0912 38.1952-14.5408 58.9312 16.896 41.0112 39.5776 79.0016 66.9696 113.0496 13.9264 17.3056 37.2736 23.1936 58.2144 15.7184 15.4112-5.4784 32-8.4992 49.3056-8.4992 71.2704 0 124.7744 49.408 142.1312 121.2928 4.9664 20.48 21.4016 36.0448 42.24 39.168 22.2208 3.328 44.9536 5.0688 68.096 5.0688 23.3984 0 46.4384-1.792 68.864-5.1712 21.3504-3.2256 38.144-19.456 42.7008-40.5504 14.8992-68.8128 73.1648-119.7568 143.7696-119.7568z"
+                fill="#8C7BFD"></path>
+              <path
+                d="M511.8464 696.3712c-101.3248 0-183.7568-82.432-183.7568-183.7568s82.432-183.7568 183.7568-183.7568 183.7568 82.432 183.7568 183.7568-82.432 183.7568-183.7568 183.7568z m0-265.1648c-44.8512 0-81.3568 36.5056-81.3568 81.3568S466.9952 593.92 511.8464 593.92s81.3568-36.5056 81.3568-81.3568-36.5056-81.3568-81.3568-81.3568z"
+                fill="#FFE37B"></path>
+            </svg>
+            翻译配置
+          </el-tag>
+        </div>
           <div class="section-content">
             <div class="language-config-row">
               <el-form-item label="默认源语言" class="language-item">
                 <el-select v-model="apiConfig.defaultSourceLang" placeholder="请选择默认源语言" class="language-select">
                   <el-option label="自动检测" value="auto">
                     <span class="option-content">
-                      <i class="el-icon-magic-stick"></i>
                       自动检测
                     </span>
                   </el-option>
                   <el-option label="中文" value="zh">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       中文
                     </span>
                   </el-option>
                   <el-option label="英文" value="en">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       英文
                     </span>
                   </el-option>
                   <el-option label="日文" value="ja">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       日文
                     </span>
                   </el-option>
                   <el-option label="韩文" value="ko">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       韩文
                     </span>
                   </el-option>
                   <el-option label="法文" value="fr">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       法文
                     </span>
                   </el-option>
                   <el-option label="德文" value="de">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       德文
                     </span>
                   </el-option>
                   <el-option label="西班牙文" value="es">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       西班牙文
                     </span>
                   </el-option>
                   <el-option label="俄文" value="ru">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       俄文
                     </span>
                   </el-option>
                 </el-select>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  用于文章翻译时的默认源语言
-                </div>
+
               </el-form-item>
               
               <div class="language-arrow">
@@ -142,57 +118,46 @@
                 <el-select v-model="apiConfig.defaultTargetLang" placeholder="请选择默认目标语言" class="language-select">
                   <el-option label="中文" value="zh">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       中文
                     </span>
                   </el-option>
                   <el-option label="英文" value="en">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       英文
                     </span>
                   </el-option>
                   <el-option label="日文" value="ja">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       日文
                     </span>
                   </el-option>
                   <el-option label="韩文" value="ko">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       韩文
                     </span>
                   </el-option>
                   <el-option label="法文" value="fr">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       法文
                     </span>
                   </el-option>
                   <el-option label="德文" value="de">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       德文
                     </span>
                   </el-option>
                   <el-option label="西班牙文" value="es">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       西班牙文
                     </span>
                   </el-option>
                   <el-option label="俄文" value="ru">
                     <span class="option-content">
-                      <i class="el-icon-location-outline"></i>
                       俄文
                     </span>
                   </el-option>
                 </el-select>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  用于文章翻译时的默认目标语言
-                </div>
+
               </el-form-item>
             </div>
           </div>
@@ -200,12 +165,6 @@
 
         <!-- API翻译配置 -->
         <div class="config-section" v-if="apiConfig.mode === 'api'">
-          <div class="section-header">
-            <h2 class="section-title">
-              <i class="el-icon-connection"></i>
-              API翻译配置
-            </h2>
-          </div>
           <div class="section-content">
           <el-form-item label="翻译引擎">
               <el-select v-model="apiConfig.provider" placeholder="请选择翻译引擎" class="full-width">
@@ -300,44 +259,31 @@
         
         <!-- 大模型翻译配置 -->
         <div class="config-section" v-if="apiConfig.mode === 'llm'">
-          <div class="section-header">
-            <h2 class="section-title">
-              <i class="el-icon-chat-round"></i>
-              大模型翻译配置
-            </h2>
-          </div>
           <div class="section-content">
           <el-form-item label="大模型类型">
               <el-select v-model="apiConfig.llmType" placeholder="请选择大模型类型" class="full-width">
                 <el-option label="OpenAI (GPT)" value="openai">
                   <span class="option-content">
-                    <i class="el-icon-cloudy"></i>
                     OpenAI (GPT)
                   </span>
                 </el-option>
                 <el-option label="Anthropic (Claude)" value="anthropic">
                   <span class="option-content">
-                    <i class="el-icon-sunny"></i>
                     Anthropic (Claude)
                   </span>
                 </el-option>
                 <el-option label="Azure OpenAI" value="azure">
                   <span class="option-content">
-                    <i class="el-icon-cloudy-and-sunny"></i>
                     Azure OpenAI
                   </span>
                 </el-option>
                 <el-option label="自定义/其他" value="custom">
                   <span class="option-content">
-                    <i class="el-icon-s-custom"></i>
                     自定义/其他
                   </span>
                 </el-option>
             </el-select>
-              <div class="form-tip">
-                <i class="el-icon-info"></i>
-                选择不同的大模型类型将自动调整请求格式
-              </div>
+
           </el-form-item>
             
           <el-form-item label="模型名称">
@@ -365,41 +311,31 @@
               <el-select v-model="apiConfig.llmInterfaceType" placeholder="请选择接口类型" class="full-width">
                 <el-option label="自动检测" value="auto">
                   <span class="option-content">
-                    <i class="el-icon-magic-stick"></i>
                     自动检测
                   </span>
                 </el-option>
                 <el-option label="OpenAI兼容接口" value="openai">
                   <span class="option-content">
-                    <i class="el-icon-cloudy"></i>
                     OpenAI兼容接口
                   </span>
                 </el-option>
                 <el-option label="Anthropic兼容接口" value="anthropic">
                   <span class="option-content">
-                    <i class="el-icon-sunny"></i>
                     Anthropic兼容接口
                   </span>
                 </el-option>
                 <el-option label="自定义HTTP接口" value="custom">
                   <span class="option-content">
-                    <i class="el-icon-s-custom"></i>
                     自定义HTTP接口
                   </span>
                 </el-option>
               </el-select>
-              <div class="form-tip">
-                <i class="el-icon-info"></i>
-                选择API接口的兼容格式。OpenAI格式适用于大多数模型，Anthropic格式适用于Claude类型模型，自定义适用于特殊格式
-              </div>
+
           </el-form-item>
             
             <el-form-item label="API接口地址">
               <el-input v-model="apiConfig.llmUrl" placeholder="请输入大模型API接口地址" class="input-field"></el-input>
-              <div class="form-tip">
-                <i class="el-icon-info"></i>
-                大模型API接口地址，请确保该接口支持翻译功能
-              </div>
+
             </el-form-item>
             
             <el-form-item label="API密钥" v-if="needsApiKey">
@@ -433,22 +369,27 @@
                   <template slot="append">秒</template>
                 </el-input>
               </div>
-              <div class="form-tip">
-                <i class="el-icon-info"></i>
-                建议设置30-60秒，过短可能导致翻译失败
-              </div>
+
           </el-form-item>
           </div>
         </div>
         
         <!-- 智能摘要配置 -->
         <div class="config-section" v-if="apiConfig.mode === 'llm'">
-          <div class="section-header">
-            <h2 class="section-title">
-              <i class="el-icon-document"></i>
-              智能摘要配置
-            </h2>
-          </div>
+              <!-- 页面标题 -->
+        <div style="margin-bottom: 30px;">
+          <el-tag effect="dark" class="my-tag">
+            <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
+              <path
+                d="M767.1296 808.6528c16.8448 0 32.9728 2.816 48.0256 8.0384 20.6848 7.1168 43.52 1.0752 57.1904-15.9744a459.91936 459.91936 0 0 0 70.5024-122.88c7.8336-20.48 1.0752-43.264-15.9744-57.088-49.6128-40.192-65.0752-125.3888-31.3856-185.856a146.8928 146.8928 0 0 1 30.3104-37.9904c16.2304-14.5408 22.1696-37.376 13.9264-57.6a461.27104 461.27104 0 0 0-67.5328-114.9952c-13.6192-16.9984-36.4544-22.9376-57.0368-15.8208a146.3296 146.3296 0 0 1-48.0256 8.0384c-70.144 0-132.352-50.8928-145.2032-118.7328-4.096-21.6064-20.736-38.5536-42.4448-41.8304-22.0672-3.2768-44.6464-5.0176-67.6864-5.0176-21.4528 0-42.5472 1.536-63.232 4.4032-22.3232 3.1232-40.2432 20.48-43.52 42.752-6.912 46.6944-36.0448 118.016-145.7152 118.4256-17.3056 0.0512-33.8944-2.9696-49.3056-8.448-21.0432-7.4752-44.3904-1.4848-58.368 15.9232A462.14656 462.14656 0 0 0 80.4864 348.16c-7.6288 20.0192-2.7648 43.008 13.4656 56.9344 55.5008 47.8208 71.7824 122.88 37.0688 185.1392a146.72896 146.72896 0 0 1-31.6416 39.168c-16.8448 14.7456-23.0912 38.1952-14.5408 58.9312 16.896 41.0112 39.5776 79.0016 66.9696 113.0496 13.9264 17.3056 37.2736 23.1936 58.2144 15.7184 15.4112-5.4784 32-8.4992 49.3056-8.4992 71.2704 0 124.7744 49.408 142.1312 121.2928 4.9664 20.48 21.4016 36.0448 42.24 39.168 22.2208 3.328 44.9536 5.0688 68.096 5.0688 23.3984 0 46.4384-1.792 68.864-5.1712 21.3504-3.2256 38.144-19.456 42.7008-40.5504 14.8992-68.8128 73.1648-119.7568 143.7696-119.7568z"
+                fill="#8C7BFD"></path>
+              <path
+                d="M511.8464 696.3712c-101.3248 0-183.7568-82.432-183.7568-183.7568s82.432-183.7568 183.7568-183.7568 183.7568 82.432 183.7568 183.7568-82.432 183.7568-183.7568 183.7568z m0-265.1648c-44.8512 0-81.3568 36.5056-81.3568 81.3568S466.9952 593.92 511.8464 593.92s81.3568-36.5056 81.3568-81.3568-36.5056-81.3568-81.3568-81.3568z"
+                fill="#FFE37B"></path>
+            </svg>
+            智能摘要配置
+          </el-tag>
+        </div>
           <div class="section-content">
             <el-form-item label="启用AI摘要">
               <el-switch 
@@ -457,10 +398,7 @@
                 inactive-text="禁用"
                 @change="onSummaryToggle">
               </el-switch>
-              <div class="form-tip">
-                <i class="el-icon-info"></i>
-                启用后，文章保存时将优先使用AI生成摘要；如果AI不可用，会自动回退到TextRank算法
-              </div>
+
             </el-form-item>
             
             <template v-if="apiConfig.summaryAiEnabled">
@@ -485,10 +423,7 @@
                     </span>
                   </el-option>
                 </el-select>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  选择不同的风格会影响AI生成摘要的语言风格和详细程度
-                </div>
+
               </el-form-item>
               
               <el-form-item label="摘要长度">
@@ -498,12 +433,9 @@
                   :max="500" 
                   :step="10"
                   placeholder="请输入摘要最大长度"
-                  class="full-width">
+                  class="number-input">
                 </el-input-number>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  推荐长度：100-200字符，过短可能信息不足，过长影响阅读体验
-                </div>
+
               </el-form-item>
               
               <el-form-item label="摘要提示词">
@@ -522,13 +454,9 @@
               
               <el-form-item label="测试摘要">
                 <el-button type="info" @click="testSummary" class="action-btn" :loading="testSummaryLoading">
-                  <i class="el-icon-magic-stick"></i>
                   测试摘要生成
                 </el-button>
-                <div class="form-tip">
-                  <i class="el-icon-info"></i>
-                  使用示例文本测试当前AI摘要配置是否正常工作
-                </div>
+
               </el-form-item>
             </template>
           </div>
@@ -618,7 +546,6 @@
           <div class="summary-info">
             <div class="summary-display">
               <el-tag type="info" size="medium">
-                <i class="el-icon-magic-stick"></i>
                 {{ apiConfig.summaryStyle === 'concise' ? '简洁明了' : 
                    apiConfig.summaryStyle === 'detailed' ? '详细描述' : '学术风格' }}
               </el-tag>
@@ -1230,52 +1157,17 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   }
   
 .translation-management {
-  padding: 24px;
-  background-color: #fafafa;
   min-height: calc(100vh - 60px);
 }
 
 /* 页面标题区域 */
 .page-header {
-  margin-bottom: 24px;
-}
-
-.title-section {
-  background: #ffffff;
-  padding: 24px;
-  border-radius: 8px;
-  border-left: 4px solid #2d3748;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #2d3748;
-}
-
-.page-title i {
-  font-size: 24px;
-  color: #4a5568;
-}
-
-.page-description {
-  font-size: 14px;
-  margin: 0;
-  color: #718096;
-  line-height: 1.5;
+  margin-bottom: 20px;
 }
 
 /* 配置容器 */
 .config-container {
-  background: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid #e2e8f0;
+  border-radius: 5px;
 }
 
 .config-form {
@@ -1292,100 +1184,31 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 }
 
 .section-header {
-  background: #f7fafc;
+  background: #fafafa;
   padding: 16px 24px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #EBEEF5;
 }
 
 .section-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #2d3748;
+  font-weight: 500;
+  color: #303133;
   margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.section-title i {
-  font-size: 16px;
-  color: #4a5568;
 }
 
 .section-content {
-  padding: 24px;
 }
 
-/* 模式选择器 */
-.mode-selector {
-  width: 100%;
-}
 
-.mode-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-top: 8px;
-}
-
-.mode-option {
-  padding: 20px;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-  background: #ffffff;
-}
-
-.mode-option:hover {
-  border-color: #4a5568;
-  background: #f7fafc;
-}
-
-.mode-option.active {
-  border-color: #2d3748;
-  background: #f7fafc;
-  box-shadow: 0 0 0 1px #2d3748;
-}
-
-.mode-icon {
-  margin-bottom: 12px;
-}
-
-.mode-icon i {
-  font-size: 24px;
-  color: #a0aec0;
-}
-
-.mode-option.active .mode-icon i {
-  color: #2d3748;
-}
-
-.mode-info {
-  text-align: center;
-}
-
-.mode-name {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: #4a5568;
-}
-
-.mode-option.active .mode-name {
-  color: #2d3748;
-}
-
-.mode-desc {
-  font-size: 13px;
-  color: #718096;
-  line-height: 1.4;
-}
 
 /* 表单元素 */
 .full-width {
   width: 100%;
+  max-width: 200px;
+}
+
+.number-input {
+  width: 180px;
 }
 
 .el-form-item {
@@ -1394,14 +1217,14 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .el-form-item__label {
   font-weight: 500;
-  color: #4a5568;
+  color: #606266;
   font-size: 14px;
 }
 
 .input-field .el-input__inner,
 .textarea-field .el-textarea__inner {
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid #DCDFE6;
+  border-radius: 4px;
   padding: 10px 12px;
   font-size: 14px;
   transition: border-color 0.2s ease;
@@ -1410,14 +1233,13 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .input-field .el-input__inner:focus,
 .textarea-field .el-textarea__inner:focus {
-  border-color: #2d3748;
+  border-color: #409EFF;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(45, 55, 72, 0.1);
 }
 
 .input-field .el-input__inner:hover,
 .textarea-field .el-textarea__inner:hover {
-  border-color: #a0aec0;
+  border-color: #C0C4CC;
 }
 
 /* 选择框选项 */
@@ -1434,36 +1256,23 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 /* 表单提示 */
 .form-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
   font-size: 12px;
-  color: #718096;
+  color: #909399;
   margin-top: 6px;
   padding: 8px 12px;
-  background: #f7fafc;
+  background: #F5F7FA;
   border-radius: 4px;
 }
 
-.form-tip i {
-  color: #4a5568;
-  margin-top: 1px;
-  opacity: 0.8;
-}
-
 .custom-model-tip {
-  background: #edf2f7;
-  color: #2d3748;
-}
-
-.custom-model-tip i {
-  color: #4a5568;
+  background: #F5F7FA;
+  color: #303133;
 }
 
 /* 自定义模型选择 */
 .custom-model-select .el-input__inner {
-  border-color: #2d3748 !important;
-  background: #edf2f7 !important;
+  border-color: #409EFF !important;
+  background: #F5F7FA !important;
 }
 
 /* 超时设置组 */
@@ -1474,27 +1283,26 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 }
 
 .timeout-input {
-  width: 150px;
+  width: 120px;
 }
 
 .timeout-input .el-input__inner {
-  border: 1px solid #e2e8f0;
-  border-radius: 6px 0 0 6px;
+  border: 1px solid #DCDFE6;
+  border-radius: 4px 0 0 4px;
   background: #ffffff;
   transition: border-color 0.2s ease;
 }
 
 .timeout-input .el-input__inner:focus {
-  border-color: #2d3748;
-  box-shadow: 0 0 0 3px rgba(45, 55, 72, 0.1);
+  border-color: #409EFF;
 }
 
 .timeout-input .el-input-group__append {
-  background: #f7fafc;
-  border: 1px solid #e2e8f0;
+  background: #F5F7FA;
+  border: 1px solid #DCDFE6;
   border-left: none;
-  border-radius: 0 6px 6px 0;
-  color: #718096;
+  border-radius: 0 4px 4px 0;
+  color: #909399;
   font-weight: 500;
   padding: 0 12px;
 }
@@ -1503,23 +1311,16 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 .info-panel {
   margin-top: 16px;
   padding: 16px;
-  background: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  background: #F5F7FA;
+  border-radius: 4px;
+  border: 1px solid #EBEEF5;
 }
 
 .info-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 14px;
-  font-weight: 600;
-  color: #2d3748;
+  font-weight: 500;
+  color: #303133;
   margin-bottom: 8px;
-}
-
-.info-header i {
-  color: #4a5568;
 }
 
 .info-content {
@@ -1530,80 +1331,21 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .info-item {
   font-size: 13px;
-  color: #718096;
+  color: #606266;
   line-height: 1.4;
 }
 
 /* 操作按钮区域 */
 .action-bar {
   padding: 20px 24px;
-  background: #f7fafc;
-  border-top: 1px solid #e2e8f0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 12px;
-}
-
-.action-btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-weight: 500;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.action-btn i {
-  margin-right: 6px;
-}
-
-.primary-btn {
-  background: #2d3748;
-  border-color: #2d3748;
-  color: white;
-}
-
-.primary-btn:hover {
-  background: #1a202c;
-  border-color: #1a202c;
-}
-
-.success-btn {
-  background: #2f855a;
-  border-color: #2f855a;
-  color: white;
-}
-
-.success-btn:hover {
-  background: #276749;
-  border-color: #276749;
-}
-
-.action-btn:not(.primary-btn):not(.success-btn) {
-  background: white;
-  border-color: #e2e8f0;
-  color: #718096;
-}
-
-.action-btn:not(.primary-btn):not(.success-btn):hover {
-  border-color: #a0aec0;
-  color: #4a5568;
 }
 
 /* 测试对话框 */
 .test-dialog .el-dialog {
-  border-radius: 8px;
-}
-
-.test-dialog .el-dialog__header {
-  background: #2d3748;
-  color: white;
-  padding: 20px 24px;
-}
-
-.test-dialog .el-dialog__title {
-  font-size: 18px;
-  font-weight: 600;
+  border-radius: 4px;
 }
 
 .dialog-content {
@@ -1622,9 +1364,9 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   flex-direction: column;
   gap: 8px;
   padding: 20px;
-  background: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  background: #F5F7FA;
+  border-radius: 4px;
+  border: 1px solid #EBEEF5;
 }
 
 .lang-display {
@@ -1636,12 +1378,12 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .lang-text {
   font-size: 14px;
-  font-weight: 600;
-  color: #2d3748;
+  font-weight: 500;
+  color: #303133;
   background: #ffffff;
   padding: 8px 16px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  border: 1px solid #DCDFE6;
   min-width: 60px;
   text-align: center;
 }
@@ -1652,7 +1394,7 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #4299e1;
+  background: #409EFF;
   border-radius: 50%;
   color: white;
   font-size: 14px;
@@ -1661,17 +1403,9 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .lang-note {
   font-size: 12px;
-  color: #718096;
+  color: #909399;
   line-height: 1.4;
   text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.lang-note i {
-  color: #4299e1;
 }
 
 /* 输入部分 */
@@ -1689,7 +1423,7 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 .result-section label {
   font-size: 14px;
   font-weight: 500;
-  color: #4a5568;
+  color: #606266;
 }
 
 /* 流式模式选择 */
@@ -1706,7 +1440,7 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 /* 翻译按钮 */
 .translate-btn {
-  width: 100%;
+  width: 200px;
   padding: 12px;
   font-size: 14px;
   font-weight: 600;
@@ -1777,11 +1511,6 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
     padding: 20px;
   }
   
-  .mode-options {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  
   .language-info {
     flex-direction: column;
     gap: 12px;
@@ -1797,7 +1526,8 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   }
   
   .action-btn {
-    width: 100%;
+    width: auto;
+    min-width: 120px;
   }
 }
 
@@ -1885,19 +1615,7 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
     padding: 16px;
   }
   
-  .mode-options {
-    flex-direction: column;
-  }
-  
-  .mode-option {
-    flex-direction: column;
-    text-align: center;
-    padding: 16px;
-  }
-  
-  .mode-icon {
-    margin-bottom: 8px;
-  }
+
   
   .form-actions {
     flex-direction: column;
@@ -1928,13 +1646,14 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .language-select {
   width: 100%;
+  max-width: 200px;
 }
 
 .language-arrow {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-top: 30px;
+  padding-top: 10px;
   color: #4299e1;
   font-size: 16px;
   min-width: 30px;
@@ -1959,7 +1678,8 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   }
   
   .language-item {
-    min-width: 100%;
+    min-width: 280px;
+    max-width: 100%;
   }
 }
 
@@ -1975,4 +1695,4 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   font-size: 16px;
   color: var(--black);
 }
-</style> 
+</style>
