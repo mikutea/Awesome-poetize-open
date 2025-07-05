@@ -3029,12 +3029,14 @@ start_services() {
       warning "第 $retry_count 次启动失败（退出码: $START_RESULT）"
       
       if [ $retry_count -lt $max_retries ]; then
-        # 计算下次重试的延迟时间
-        local next_delay=$((base_delay * (2 ** (retry_count - 1))))
-        warning "网络波动或临时问题，将在 ${next_delay} 秒后重试..."
         # 清理可能的残留容器
         info "清理可能的残留容器..."
         run_docker_compose down --remove-orphans >/dev/null 2>&1 || true
+        
+        # 计算重试延迟时间并等待
+        local retry_delay=$((base_delay * (2 ** (retry_count - 1))))
+        warning "网络波动或临时问题，将在 ${retry_delay} 秒后重试..."
+        sleep $retry_delay
       fi
     fi
   done
@@ -4125,7 +4127,7 @@ run_docker_compose() {
       compose_cmd+=(docker-compose)
     else
       error "❌ 未找到 docker compose / docker-compose，可执行文件！请提交issue"
-      exit 1
+      return 1
     fi
 
     # 如当前用户非 root 且 sudo 可用，追加 sudo
