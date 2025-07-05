@@ -51,20 +51,20 @@ services:
     restart: "no"
     working_dir: /app/src
     command: ["sh", "-c", "echo '=== 构建博客前端 (Vue 2) ===' && \
-                           echo '=== 安装pnpm ===' && \
-                           npm install -g pnpm@8.15.6 --registry=https://registry.npmmirror.com && \
-                           echo '=== 配置pnpm镜像源 ===' && \
-                           pnpm config set registry https://registry.npmmirror.com && \
-                           pnpm config set store-dir /tmp/pnpm-store && \
-                           echo '=== 清理缓存和node_modules ===' && \
-                           rm -rf node_modules package-lock.json && \
-                           pnpm store prune && \
+                           npm config set registry https://registry.npmmirror.com && \
+                           echo '=== 清理npm缓存 ===' && \
+                           npm cache clean --force && \
+                           npm cache verify && \
+                           echo '=== 清理node_modules目录以避免ENOTEMPTY错误 ===' && \
+                           rm -rf node_modules/.package-lock.json 2>/dev/null || true && \
+                           rm -rf node_modules/.staging 2>/dev/null || true && \
+                           find node_modules -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true && \
                            echo '=== 安装依赖 ===' && \
-                           pnpm install --frozen-lockfile=false --prefer-offline --no-optional --ignore-scripts && \
+                           npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --maxsockets 1 && \
                            echo '=== 安装Brotli压缩工具 ===' && \
-                           (pnpm add -g brotli || echo '警告: brotli安装失败，将跳过.br文件生成') && \
+                           (npm install -g brotli --no-fund --no-audit --maxsockets 1 || echo '警告: brotli安装失败，将跳过.br文件生成') && \
                            echo '=== 运行构建 ===' && \
-                           pnpm run build && \
+                           npm run build && \
                            echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
                            cp -rf dist/* /app/dist/ && \
                            echo '=== 处理静态资源 ===' && \
@@ -100,20 +100,25 @@ services:
     restart: "no"
     working_dir: /app/src
     command: ["sh", "-c", "echo '=== 构建聊天室前端 (Vue 3) ===' && \
-                           echo '=== 安装pnpm ===' && \
-                           npm install -g pnpm@8.15.6 --registry=https://registry.npmmirror.com && \
-                           echo '=== 配置pnpm镜像源 ===' && \
-                           pnpm config set registry https://registry.npmmirror.com && \
-                           pnpm config set store-dir /tmp/pnpm-store && \
-                           echo '=== 清理缓存和node_modules ===' && \
-                           rm -rf node_modules package-lock.json pnpm-lock.yaml && \
-                           pnpm store prune && \
+                           npm config set registry https://registry.npmmirror.com && \
+                           echo '=== 清理node_modules目录以避免ENOTEMPTY错误 ===' && \
+                           rm -rf node_modules/.package-lock.json 2>/dev/null || true && \
+                           rm -rf node_modules/.staging 2>/dev/null || true && \
+                           find node_modules -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true && \
                            echo '=== 安装依赖 ===' && \
-                           pnpm install --frozen-lockfile=false --prefer-offline --no-optional --ignore-scripts && \
+                           if [ -f package-lock.json ]; then \
+                             echo '使用npm ci安装依赖' && \
+                             npm ci --prefer-offline --no-audit --no-fund --maxsockets 1 || \
+                             (echo '使用npm ci失败，回退到npm install' && \
+                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1); \
+                           else \
+                             echo '无package-lock.json，使用npm install' && \
+                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1; \
+                           fi && \
                            echo '=== 安装Brotli压缩工具 ===' && \
-                           (pnpm add -g brotli || echo '警告: brotli安装失败，将跳过.br文件生成') && \
+                           npm install -g brotli --no-fund --no-audit --maxsockets 1 2>/dev/null || echo '警告: brotli安装失败，将跳过.br文件生成' && \
                            echo '=== 运行构建 ===' && \
-                           pnpm run build && \
+                           npm run build && \
                            echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
                            cp -rf dist/* /app/dist/ && \
                            echo '聊天室构建完成'"]
