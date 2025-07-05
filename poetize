@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-03
 ## 描述: Poetize 博客系统全局管理命令
-## 版本: 1.1.0
+## 版本: 1.2.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -117,6 +117,8 @@ show_help() {
     printf "  -start, -up               启动所有服务\n"
     printf "  -stop, -down              停止所有服务\n"
     printf "  -restart                  重启所有服务\n"
+    printf "  -uninstall                卸载当前项目的Poetize实例\n"
+    printf "  -uninstall-all            完全卸载所有Poetize系统\n"
     printf "  -deploy, -bushu, -bs      执行部署脚本\n"
     printf "\n"
     printf "${BLUE}日志管理:${NC}\n"
@@ -135,6 +137,8 @@ show_help() {
     printf "  poetize -bs               # 快速部署\n"
     printf "  poetize -logs nginx       # 查看nginx日志\n"
     printf "  poetize -restart          # 重启所有服务\n"
+    printf "  poetize -uninstall        # 卸载当前项目实例\n"
+    printf "  poetize -uninstall-all    # 完全卸载所有系统\n"
     printf "\n"
 }
 
@@ -296,6 +300,93 @@ restart_services() {
     fi
 }
 
+# 卸载当前项目服务
+uninstall_services() {
+    find_project_dir
+    warning "此操作将卸载当前项目的poetize实例，包括删除相关容器和数据卷！"
+    printf "${RED}警告: 这将删除当前项目的博客数据，此操作不可逆！${NC}\n"
+    printf "\n"
+    
+    # 确认操作
+    read -rp "请输入 'YES' 确认卸载当前项目: " confirm
+    if [ "$confirm" != "YES" ]; then
+        info "卸载操作已取消"
+        exit 0
+    fi
+    
+    info "正在卸载当前项目的Poetize实例..."
+    
+    # 获取当前项目的容器名称（用于识别相关卷）
+    local project_containers=$($DOCKER_COMPOSE_CMD ps -q 2>/dev/null || true)
+    local project_name=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
+    
+    # 停止并删除当前项目的容器和卷
+    info "停止并删除当前项目容器..."
+    $DOCKER_COMPOSE_CMD down -v --remove-orphans
+    
+    # 额外清理可能遗留的项目相关卷
+    info "检查并清理项目相关数据卷..."
+    local project_volumes=$(sudo docker volume ls --format "{{.Name}}" | grep -E "(${project_name}|$(pwd | sed 's|.*/||' | tr '[:upper:]' '[:lower:]'))" || true)
+    if [ -n "$project_volumes" ]; then
+        info "删除项目相关数据卷..."
+        echo "$project_volumes" | xargs sudo docker volume rm -f 2>/dev/null || true
+    fi
+    
+    success "当前项目的Poetize实例已卸载"
+    warning "如需重新安装，请运行: poetize -deploy"
+}
+
+# 完全卸载所有Poetize系统
+uninstall_all_services() {
+    warning "此操作将完全卸载所有poetize系统，包括删除所有容器、镜像、卷和数据！"
+    printf "${RED}警告: 这将删除所有博客数据，此操作不可逆！${NC}\n"
+    printf "\n"
+    
+    # 确认操作
+    read -rp "请输入 'YES' 确认完全卸载所有Poetize系统: " confirm
+    if [ "$confirm" != "YES" ]; then
+        info "卸载操作已取消"
+        exit 0
+    fi
+    
+    info "正在完全卸载所有Poetize系统..."
+    
+    # 删除所有poetize相关的容器（包括停止的）
+    local containers=$(sudo docker ps -a --format "{{.Names}}" | grep "^poetize-" || true)
+    if [ -n "$containers" ]; then
+        info "删除所有Poetize容器..."
+        echo "$containers" | xargs sudo docker rm -f
+    fi
+    
+    # 删除所有poetize相关的镜像
+    local images=$(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep "poetize" || true)
+    if [ -n "$images" ]; then
+        info "删除所有Poetize镜像..."
+        echo "$images" | xargs sudo docker rmi -f
+    fi
+    
+    # 删除所有poetize相关的卷
+    local volumes=$(sudo docker volume ls --format "{{.Name}}" | grep "poetize" || true)
+    if [ -n "$volumes" ]; then
+        info "删除所有Poetize数据卷..."
+        echo "$volumes" | xargs sudo docker volume rm -f
+    fi
+    
+    # 删除所有poetize相关的网络
+    local networks=$(sudo docker network ls --format "{{.Name}}" | grep "poetize" || true)
+    if [ -n "$networks" ]; then
+        info "删除所有Poetize网络..."
+        echo "$networks" | xargs sudo docker network rm
+    fi
+    
+    # 清理未使用的Docker资源
+    info "清理未使用的Docker资源..."
+    sudo docker system prune -f
+    
+    success "所有Poetize系统已完全卸载"
+    warning "如需重新安装，请运行: poetize -deploy"
+}
+
 # 查看日志
 show_logs() {
     local service="$1"
@@ -452,6 +543,12 @@ main() {
             ;;
         "-restart")
             restart_services
+            ;;
+        "-uninstall")
+            uninstall_services
+            ;;
+        "-uninstall-all")
+            uninstall_all_services
             ;;
         "-deploy"|"-bushu"|"-bs")
             run_deployment
