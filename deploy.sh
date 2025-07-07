@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-07
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.3.4
+## 版本: 1.3.5
 
 # 定义颜色
 RED='\033[0;31m'
@@ -3015,9 +3015,6 @@ start_services() {
     BUILD_ARGS="--no-cache"
   fi
   
-  # 启动所有服务
-  info "启动所有服务中..."
-  
   # 重试配置
   local max_retries=3
   local base_delay=10
@@ -3037,7 +3034,7 @@ start_services() {
     
     if [ -z "$SKIP_BUILD" ] && [ "$DISABLE_DOCKER_CACHE" = true ]; then
       # 如果需要构建且禁用缓存
-      info "启动服务（已禁用Docker构建缓存）..."
+      info "启动所有服务中（已禁用Docker构建缓存）..."
       DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 BUILDKIT_PROGRESS=auto \
       run_docker_compose up -d --build
     else
@@ -3069,7 +3066,7 @@ start_services() {
   
   if [ "$start_success" = false ]; then
     error "服务启动失败，已重试 $max_retries 次，请检查日志"
-    error "可能的原因：网络连接问题、Docker资源不足、配置错误等"
+    error "可能的原因：网络连接问题、Docker资源不足等，可以清理Docker缓存后重试，如有问题，请提交issue。"
     exit 1
   fi
   
@@ -3782,7 +3779,7 @@ EOF
             if validate_compose_file < docker-compose.yml.tmp; then
               # 如果验证通过，应用更改
               cp docker-compose.yml.tmp docker-compose.yml
-              info "成功为服务 $service 添加资源限制"
+              success "成功为服务 $service 添加资源限制"
             else
               # 验证失败，尝试其他格式
               cp docker-compose.yml docker-compose.yml.tmp
@@ -3797,7 +3794,7 @@ EOF
                 # 再次验证
                 if validate_compose_file < docker-compose.yml.tmp; then
                   cp docker-compose.yml.tmp docker-compose.yml
-                  info "成功为服务 $service 添加资源限制(插入方式)"
+                  success "成功为服务 $service 添加资源限制(插入方式)"
                 else
                   warning "无法为服务 $service 添加资源限制，跳过"
                 fi
@@ -4256,12 +4253,8 @@ replace_db_passwords() {
   
   # 设置安全权限
   chmod 600 .config/db_credentials.txt
-  
-  if [ -f ".config/db_credentials.txt" ] && grep -q "数据库ROOT密码:" .config/db_credentials.txt 2>/dev/null; then
-    info "【迁移模式】数据库密码配置完成（使用现有密码）"
-  else
-    info "数据库密码已成功更新为随机强密码"
-  fi
+
+  success "数据库密码已成功更新为随机强密码"
 }
 
 # 检查和修复MySQL配置文件权限
@@ -5686,7 +5679,7 @@ patch_dockerfile_mirror() {
   fi
   if [ -f "docker/java/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
     patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 3
-    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 138
+    patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 139
     patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
     patch_dockerfile_alpine_mirror "docker/java/Dockerfile" 16
 
