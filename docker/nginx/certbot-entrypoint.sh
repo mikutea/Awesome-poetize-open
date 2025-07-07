@@ -43,42 +43,155 @@ mkdir -p "$WEBROOT_PATH/.well-known/acme-challenge"
 chmod -R 777 "$WEBROOT_PATH/.well-known"
 echo "ACME验证目录权限预处理完成"
 
+# 网络连通性检查函数
+check_network() {
+  echo "检查网络连通性..."
+  if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+    echo "网络连通性正常"
+    return 0
+  else
+    echo "网络连通性检查失败"
+    return 1
+  fi
+}
+
+# DNS解析检查函数
+check_dns() {
+  local domain="$1"
+  echo "检查域名 $domain 的DNS解析..."
+  if nslookup "$domain" >/dev/null 2>&1; then
+    echo "域名 $domain DNS解析正常"
+    return 0
+  else
+    echo "域名 $domain DNS解析失败"
+    return 1
+  fi
+}
+
+# 证书申请重试函数
+apply_certificate() {
+  local max_retries=5
+  local retry_count=0
+  local wait_time=30
+  
+  while [ $retry_count -lt $max_retries ]; do
+    retry_count=$((retry_count + 1))
+    echo "第 $retry_count 次尝试申请证书..."
+    
+    # 在重试前进行网络和DNS检查
+    if [ $retry_count -gt 1 ]; then
+      echo "重试前进行网络诊断..."
+      check_network
+      check_dns "example.com"
+      echo "网络诊断完成，继续申请证书..."
+    fi
+    
+    echo "执行: certbot certonly --webroot --webroot-path=$WEBROOT_PATH --email your-email@example.com --agree-tos --no-eff-email --force-renewal --expand -d example.com -d www.example.com"
+    
+    # 执行certbot命令
+    certbot certonly --webroot \
+      --webroot-path=$WEBROOT_PATH \
+      --email your-email@example.com \
+      --agree-tos \
+      --no-eff-email \
+      --force-renewal \
+      --expand \
+      -d example.com -d www.example.com 2>&1
+    
+    # 保存命令执行结果
+    cert_result=$?
+    
+    # 检查证书申请结果
+    if [ $cert_result -eq 0 ]; then
+      echo "证书申请成功!"
+      fix_cert_permissions
+      return 0
+    else
+      echo "第 $retry_count 次证书申请失败 (退出码: $cert_result)"
+      
+      # 只在失败时记录详细的错误日志，避免影响正常的docker logs输出
+      echo "记录详细错误信息到日志文件..."
+      echo "=== Certbot 第 $retry_count 次尝试失败 ($(date)) ===" >> /tmp/certbot-error.log
+      echo "退出码: $cert_result" >> /tmp/certbot-error.log
+      
+      # 重新执行一次带--verbose的命令来获取详细错误信息（仅用于日志记录）
+      echo "获取详细错误信息..." >> /tmp/certbot-error.log
+      certbot certonly --webroot \
+        --webroot-path=$WEBROOT_PATH \
+        --email your-email@example.com \
+        --agree-tos \
+        --no-eff-email \
+        --force-renewal \
+        --expand \
+        -d example.com -d www.example.com \
+        --verbose --dry-run 2>&1 >> /tmp/certbot-error.log
+      echo "" >> /tmp/certbot-error.log
+      
+      if [ $retry_count -lt $max_retries ]; then
+        echo "等待 $wait_time 秒后重试..."
+        sleep $wait_time
+        # 每次重试增加等待时间（指数退避）
+        wait_time=$((wait_time * 2))
+      else
+        echo "已达到最大重试次数 ($max_retries)，证书申请失败"
+        echo "详细错误信息已记录到: /tmp/certbot-error.log"
+        echo "可以通过以下命令查看错误日志:"
+        echo "  docker exec <container_name> cat /tmp/certbot-error.log"
+        return 1
+      fi
+    fi
+  done
+}
+
 # 首次申请证书
 echo "开始申请证书..."
-echo "执行: certbot certonly --webroot --webroot-path=$WEBROOT_PATH --email your-email@example.com --agree-tos --no-eff-email --force-renewal --expand -d example.com -d www.example.com"
-certbot certonly --webroot \
-  --webroot-path=$WEBROOT_PATH \
-  --email your-email@example.com \
-  --agree-tos \
-  --no-eff-email \
-  --force-renewal \
-  --expand \
-  -d example.com -d www.example.com
+apply_certificate
 
-# 检查证书申请结果
-if [ $? -eq 0 ]; then
-  echo "证书申请成功!"
-  fix_cert_permissions
-else
-  echo "证书申请失败，将继续尝试自动续期..."
+if [ $? -ne 0 ]; then
+  echo "证书申请最终失败，将继续尝试自动续期..."
 fi
 
 # 设置自动续期
 echo "设置自动续期..."
 trap exit TERM
 
+# 证书续期重试函数
+renew_certificate() {
+  local max_retries=3
+  local retry_count=0
+  local wait_time=60
+  
+  while [ $retry_count -lt $max_retries ]; do
+    retry_count=$((retry_count + 1))
+    echo "第 $retry_count 次尝试续期证书..."
+    
+    certbot renew --quiet
+    
+    # 检查续期结果
+    if [ $? -eq 0 ]; then
+      echo "续期成功，修复证书文件权限..."
+      fix_cert_permissions
+      return 0
+    else
+      echo "第 $retry_count 次证书续期失败"
+      if [ $retry_count -lt $max_retries ]; then
+        echo "等待 $wait_time 秒后重试..."
+        sleep $wait_time
+        wait_time=$((wait_time * 2))
+      else
+        echo "证书续期达到最大重试次数，本次续期失败"
+        return 1
+      fi
+    fi
+  done
+}
+
 # 自动续期循环
 while :; do
   echo "检查证书续期..."
-  certbot renew --quiet
-  
-  # 续期后修复权限
-  if [ $? -eq 0 ]; then
-    echo "续期成功，修复证书文件权限..."
-    fix_cert_permissions
-  fi
+  renew_certificate
   
   # 休眠12小时
   echo "证书检查完成，12小时后再次检查..."
   sleep 12h
-done 
+done
