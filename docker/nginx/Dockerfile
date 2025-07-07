@@ -75,28 +75,11 @@ RUN set -e; \
         exit 1; \
     fi
 
-# 最终镜像
-FROM openresty/openresty:1.25.3.1-alpine
-
-RUN apk update
-
-# 安装运行时依赖
-RUN apk add --no-cache \
-    ca-certificates \
-    brotli \
-    pcre \
-    zlib \
-    git \
-    openssl \
-    openssl-dev \
-    build-base \
-    curl \
-    wget \
-    busybox-extras
+# 在构建阶段安装lua模块
+WORKDIR /usr/src
 
 # 安装lua-resty-openssl
 RUN set -e; \
-    cd /tmp; \
     echo "🔧 尝试安装lua-resty-openssl..."; \
     # 首先尝试GitHub
     if timeout -s TERM 240 \
@@ -114,8 +97,8 @@ RUN set -e; \
         echo "❌ lua-resty-openssl下载失败"; \
         exit 1; \
     fi; \
-    cd lua-resty-openssl && \
     mkdir -p /usr/local/openresty/lualib/resty/openssl && \
+    cd lua-resty-openssl && \
     cp -r lib/resty/openssl/* /usr/local/openresty/lualib/resty/openssl/ 2>/dev/null || true && \
     cp lib/resty/openssl.lua /usr/local/openresty/lualib/resty/ 2>/dev/null || true; \
     echo "✅ lua-resty-openssl安装完成"
@@ -123,7 +106,6 @@ RUN set -e; \
 # 安装lua-resty-http模块
 RUN set -e; \
     mkdir -p /usr/local/openresty/lualib/resty; \
-    cd /tmp; \
     echo "🔧 尝试安装lua-resty-http..."; \
     # 首先尝试GitHub
     if timeout -s TERM 240 \
@@ -148,6 +130,19 @@ RUN set -e; \
     cp -r lib/ngx /usr/local/openresty/lualib/ 2>/dev/null || true; \
     echo "✅ lua-resty-http安装完成"
 
+# 最终镜像
+FROM openresty/openresty:1.25.3.1-alpine
+
+RUN apk update
+
+# 只安装运行时必需的依赖
+RUN apk add --no-cache \
+    ca-certificates \
+    brotli \
+    pcre \
+    zlib \
+    openssl
+
 # 创建nginx用户和组
 RUN addgroup -g 101 -S nginx && \
     adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx
@@ -158,8 +153,9 @@ RUN mkdir -p /var/log/nginx /var/cache/nginx /var/run /tmp && \
     chmod -R 755 /var/log/nginx /var/cache/nginx /var/run && \
     chmod 777 /tmp
 
-# 从builder中复制Brotli模块
+# 从builder中复制Brotli模块和lua模块
 COPY --from=builder /usr/local/openresty/nginx/modules/ /usr/local/openresty/nginx/modules/
+COPY --from=builder /usr/local/openresty/lualib/ /usr/local/openresty/lualib/
 
 # 创建配置目录
 RUN mkdir -p /usr/local/openresty/nginx/conf/conf.d
@@ -208,4 +204,4 @@ EXPOSE 80 443/tcp 443/udp
 USER nginx
 
 # 启动命令
-CMD ["openresty", "-g", "daemon off;"] 
+CMD ["openresty", "-g", "daemon off;"]
