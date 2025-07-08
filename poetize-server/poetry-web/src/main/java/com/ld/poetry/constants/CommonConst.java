@@ -127,7 +127,7 @@ public class CommonConst {
     /**
      * 密钥
      */
-    public static final String CRYPOTJS_KEY = "sarasarasarasara";
+    public static final String CRYPOTJS_KEY = System.getenv("POETIZE_AES_KEY") != null ? System.getenv("POETIZE_AES_KEY") : "sarasarasarasara";
 
     /**
      * 根据用户ID获取用户信息

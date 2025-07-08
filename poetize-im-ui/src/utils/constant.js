@@ -26,7 +26,7 @@ export default {
   dog: "https://api.oick.cn/dog/api.php",
 
   //前后端定义的密钥，AES使用16位
-  cryptojs_key: "sarasarasarasara",
+  cryptojs_key: process.env.VUE_APP_POETIZE_AES_KEY || "sarasarasarasara",
 
   before_color_1: "black",
   after_color_1: "linear-gradient(45deg, #f43f3b, #ec008c)",

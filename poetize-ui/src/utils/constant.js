@@ -25,7 +25,7 @@ export default {
   // 今日诗词API
   jinrishici: "https://v1.jinrishici.com/all.json",
   //前后端定义的密钥，AES使用16位
-  cryptojs_key: "sarasarasarasara",
+  cryptojs_key: process.env.VUE_APP_POETIZE_AES_KEY || "sarasarasarasara",
 
   friendWebName: "POETIZE",
   friendUrl: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),

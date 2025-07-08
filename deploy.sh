@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-07
+## 修改时间: 2025-07-08
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.3.5
+## 版本: 1.3.6
 
 # 定义颜色
 RED='\033[0;31m'
@@ -2754,6 +2754,9 @@ init_deploy() {
   # 替换默认数据库密码为随机强密码
   replace_db_passwords
   
+  # 配置Docker Compose AES密钥
+  replace_docker_compose_aes_key
+
   # 设置域名
   info "更新Nginx配置中的域名..."
   if [ -n "$PRIMARY_DOMAIN" ]; then
@@ -4183,8 +4186,9 @@ clean_docker_build_cache() {
 # 生成随机强密码函数
 generate_secure_password() {
   length=${1:-24}  # 默认长度增加到24以补偿移除特殊字符带来的熵损失
+  local charset=${2:-'a-zA-Z0-9'}
   # 仅使用字母和数字，完全避免任何特殊字符
-  tr -dc 'a-zA-Z0-9' < /dev/urandom | head -c ${length}
+  tr -dc "$charset" < /dev/urandom | head -c ${length}
 }
 
 # 保存数据库凭据（密码）函数
@@ -4255,6 +4259,18 @@ replace_db_passwords() {
   chmod 600 .config/db_credentials.txt
 
   success "数据库密码已成功更新为随机强密码"
+}
+# 替换docker-compose.yml中的AES密钥函数
+replace_docker_compose_aes_key() {
+  # 生成随机AES密钥
+  local AES_KEY=$(generate_secure_password 16 'a-zA-Z0-9!@#%^_+')
+  info "生成的AES密钥: $AES_KEY"
+  
+  # 替换docker-compose.yml中的AES密钥
+  sed_i "s|VUE_APP_POETIZE_AES_KEY=.*|VUE_APP_POETIZE_AES_KEY=$AES_KEY|g" docker-compose.yml
+  sed_i "s|POETIZE_AES_KEY=.*|POETIZE_AES_KEY=$AES_KEY|g" docker-compose.yml
+
+  success "docker-compose.yml中的AES密钥已成功替换"
 }
 
 # 检查和修复MySQL配置文件权限
@@ -5564,9 +5580,8 @@ update_base_source() {
 
 patch_dockerfile_slim_mirror() {
   local df=$1
+  local insert_line=$2
   [ ! -f "$df" ] && return
-  # 在第 4 行之前插入（即在第 3 行之后读取）
-  local insert_line=3
   command -v mktemp >/dev/null 2>&1 || {
     echo "未找到 mktemp，尝试使用 BusyBox…" >&2
     if command -v busybox >/dev/null 2>&1; then
@@ -5673,15 +5688,16 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 patch_dockerfile_mirror() {
   if [ -f "docker/python/Dockerfile" ]; then
-    patch_dockerfile_slim_mirror "docker/python/Dockerfile"
-    patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile"
-    patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile"
+    patch_dockerfile_slim_mirror "docker/python/Dockerfile" 3
+    patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile" 4
+    patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile" 4
   fi
   if [ -f "docker/java/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
     patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 3
     patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 139
     patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
     patch_dockerfile_alpine_mirror "docker/java/Dockerfile" 16
+    patch_dockerfile_alpine_mirror "docker/prerender/Dockerfile" 5
 
   fi
   if [ -f "docker/mysql/Dockerfile" ]; then

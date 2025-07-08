@@ -41,6 +41,8 @@ services:
     build:
       context: .
       dockerfile: docker/poetize-ui/Dockerfile
+      args:
+        - VUE_APP_POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
     container_name: poetize-ui
     volumes:
       - ./poetize-ui:/app/src
@@ -87,6 +89,8 @@ services:
     build:
       context: .
       dockerfile: docker/poetize-im-ui/Dockerfile
+      args:
+        - VUE_APP_POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
     container_name: poetize-im-ui
     volumes:
       - ./poetize-im-ui:/app/src
@@ -226,6 +230,7 @@ services:
       - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.mariadb.jdbc.Driver
       - SERVER_PORT=8081
       - PYTHON_SERVICE_URL=http://poetize-python:5000
+      - POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
       - TRANSLATION_LOCAL_URL=http://poetize-python:5000/api/translate
       - TRANSLATION_LOCAL_ENABLED=true
       - LOCAL_ENABLE=true
