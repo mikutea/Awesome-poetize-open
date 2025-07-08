@@ -1,17 +1,19 @@
 <template>
   <div class="myFooter-wrap" v-show="showFooter">
     <div class="myFooter" :class="{ 'has-bg-image': hasBgImage, 'minimal': isMinimalFooter }" :style="footerStyle">
-      <div class="footer-title font" :style="textStyle" v-if="!isMinimalFooter">{{$store.state.webInfo.footer}}</div>
+      <div class="footer-title font" :style="textStyle" v-if="!isMinimalFooter && $store.state.webInfo.footer">{{$store.state.webInfo.footer}}</div>
       <div class="icp font" :style="textStyle" v-if="$store.state.sysConfig.beian || $store.state.sysConfig.policeBeian">
         <a href="http://beian.miit.gov.cn/" target="_blank" v-if="$store.state.sysConfig.beian">{{ $store.state.sysConfig.beian }}</a>
-        <span v-if="$store.state.sysConfig.beian && $store.state.sysConfig.policeBeian">&nbsp;</span>
         <a href="http://www.beian.gov.cn/portal/registerSystemInfo" target="_blank" v-if="$store.state.sysConfig.policeBeian">
-          <img src="/static/assets/gonganbei.svg" alt="公安备案" style="vertical-align: middle; margin-right: 4px; width: 14px; height: 14px;">
+          <img src="/static/assets/gonganbei.svg" alt="公安备案" style="margin-left: 10px; width: 14px; height: 14px;">
           {{ $store.state.sysConfig.policeBeian }}
         </a>
       </div>
-      <div class="copyright font" :style="textStyle">© 2025 {{ $store.state.webInfo.webTitle }} &nbsp; 保留所有权利 &nbsp; <a href="/privacy" class="policy-link">隐私政策</a></div>
-      <div class="extra-info font" :style="textStyle" v-if="!isMinimalFooter">用心创作，用爱传递，让文字的力量激发心灵共鸣</div>
+      <div class="copyright font" :style="textStyle">
+        <span class="copyright-left">© 2025 {{ $store.state.webInfo.webName }}</span>
+        <span class="copyright-center">保留所有权利</span>
+        <span class="copyright-right"><a href="/privacy" class="policy-link">隐私政策</a></span>
+      </div>
       <div class="contact font" :style="textStyle" v-if="!isMinimalFooter">本站内容均为原创或合法转载，如有侵权请通过邮箱：{{ $store.state.webInfo.email || 'admin@poetize.cn' }} 与我们联系，确认后将立即删除</div>
     </div>
   </div>
@@ -56,10 +58,30 @@
           // 根据设备宽度动态调整高度：移动端更紧凑
           minHeight: (() => {
             const isMobile = this.viewportWidth <= 768;
+            const hasFooterTitle = this.$store.state.webInfo && this.$store.state.webInfo.footer;
+            const hasBeianInfo = this.$store.state.sysConfig && (this.$store.state.sysConfig.beian || this.$store.state.sysConfig.policeBeian);
+            
             if (this.isMinimalFooter) {
-              return isMobile ? '70px' : '90px';
+              if (hasBeianInfo) {
+                return isMobile ? '70px' : '90px';
+              }
+              return isMobile ? '50px' : '70px';
             }
-            return isMobile ? '120px' : '160px';
+            
+            let baseHeight;
+            // 根据是否有 footer 标题来调整基础高度
+            if (hasFooterTitle) {
+              baseHeight = isMobile ? 120 : 150;
+            } else {
+              baseHeight = isMobile ? 105 : 135;
+            }
+            
+            // 如果没有备案信息，再减少20px
+            if (!hasBeianInfo) {
+              baseHeight -= 20;
+            }
+            
+            return `${baseHeight}px`;
           })()
         };
 
@@ -301,7 +323,32 @@
     color: var(--themeBackground);
   }
 
-  .copyright, .contact, .extra-info {
+  .copyright {
+    font-size: 14px;
+    position: relative;
+    z-index: 10;
+    font-weight: 400;
+    padding-top: 5px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .copyright-left {
+    justify-self: end;
+  }
+
+  .copyright-center {
+    justify-self: center;
+    white-space: nowrap;
+  }
+
+  .copyright-right {
+    justify-self: start;
+  }
+
+  .contact, .extra-info {
     font-size: 14px;
     position: relative;
     z-index: 10;
@@ -334,10 +381,23 @@
       padding-top: 8px;
     }
     
-    .icp, .copyright, .contact, .extra-info {
+    .icp, .contact, .extra-info {
       font-size: 14px;
       padding-top: 8px;
       padding-bottom: 8px;
+    }
+    
+    .copyright {
+      font-size: 14px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+      gap: 4px;
+    }
+    
+    .copyright-left,
+    .copyright-center,
+    .copyright-right {
+      font-size: 14px;
     }
   }
 

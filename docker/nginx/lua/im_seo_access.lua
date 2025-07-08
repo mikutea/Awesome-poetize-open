@@ -275,18 +275,39 @@ if data then
 else
     ngx.log(ngx.WARN, "未能获取任何SEO数据")
     -- 使用默认的SEO元数据，而非空字符串
-    ngx.ctx.seo_data = '<meta name="description" content="Poetize IM聊天室 - 实时交流平台">'
-        .. '<meta name="keywords" content="poetize,im,chat,聊天室,即时通讯">'
-        .. '<meta property="og:title" content="Poetize IM聊天室">'
-        .. '<meta property="og:description" content="一个优雅的实时聊天平台">'
+    -- 尝试从SEO配置中获取site_name来构建默认元数据
+    local default_site_name = "聊天室"
+    local default_og_title = "聊天室"
+    
+    -- 如果有SEO配置数据，尝试获取site_name
+    if seo_config_data then
+        local ok, seo_config = pcall(cjson.decode, seo_config_data)
+        if ok and seo_config and seo_config.site_name and seo_config.site_name ~= "" then
+            default_site_name = seo_config.site_name .. "聊天室"
+            default_og_title = seo_config.site_name .. "聊天室"
+        end
+    end
+    
+    ngx.ctx.seo_data = '<meta name="description" content="' .. default_site_name .. ' - 实时交流平台">'
+        .. '<meta name="keywords" content="im,chat,聊天室,即时通讯">'
+        .. '<meta property="og:title" content="' .. default_og_title .. '">'
+        .. '<meta property="og:description" content="一个的实时聊天博客平台">'
         .. '<meta property="og:type" content="website">'
     -- ngx.log(ngx.INFO, "使用IM默认硬编码的SEO数据")
 end
 
 -- 确保有默认值 - IM专用标题
 if not ngx.ctx.title or ngx.ctx.title == "" then
-    ngx.ctx.title = "POETIZE IM聊天室"
-    -- ngx.log(ngx.INFO, "使用默认IM标题: POETIZE IM聊天室")
+    -- 尝试从SEO配置中获取site_name
+    local default_title = "聊天室"
+    if seo_config_data then
+        local ok, seo_config = pcall(cjson.decode, seo_config_data)
+        if ok and seo_config and seo_config.site_name and seo_config.site_name ~= "" then
+            default_title = seo_config.site_name .. "聊天室"
+        end
+    end
+    ngx.ctx.title = default_title
+    -- ngx.log(ngx.INFO, "使用默认IM标题: " .. default_title)
 end
 
 -- 获取SEO配置用于生成图标 - 使用优化缓存

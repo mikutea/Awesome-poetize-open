@@ -681,18 +681,45 @@
         root.style.setProperty("--commentURL", "url(" + webStaticResourcePrefix + "assets/commentURL.jpg)");
         root.style.setProperty("--imBackground", "url(" + webStaticResourcePrefix + "assets/backgroundPicture.jpg)");
         
-        const font = new FontFace("MyAwesomeFont", "url(" + webStaticResourcePrefix + "assets/font_chunks/font.base.woff2)");
-        const font2 = new FontFace("MyAwesomeFont", "url(" + webStaticResourcePrefix + "assets/font_chunks/font.level1.woff2)");
-        const font3 = new FontFace("MyAwesomeFont", "url(" + webStaticResourcePrefix + "assets/font_chunks/font.level2.woff2)");
-        const font4 = new FontFace("MyAwesomeFont", "url(" + webStaticResourcePrefix + "assets/font_chunks/font.other.woff2)");
-        font.load();
-        font2.load();
-        font3.load();
-        font4.load();
-        document.fonts.add(font);
-        document.fonts.add(font2);
-        document.fonts.add(font3);
-        document.fonts.add(font4);
+        // 字体分块按需加载，避免重复加载
+        const fontChunks = [
+          { name: 'base', url: webStaticResourcePrefix + "assets/font_chunks/font.base.woff2", priority: 1 },
+          { name: 'level1', url: webStaticResourcePrefix + "assets/font_chunks/font.level1.woff2", priority: 2 },
+          { name: 'level2', url: webStaticResourcePrefix + "assets/font_chunks/font.level2.woff2", priority: 3 },
+          { name: 'other', url: webStaticResourcePrefix + "assets/font_chunks/font.other.woff2", priority: 4 }
+        ];
+        
+        // 检查字体是否已加载，避免重复加载
+        const loadedFonts = new Set();
+        
+        // 按优先级顺序加载字体
+        fontChunks.sort((a, b) => a.priority - b.priority).forEach(async (chunk, index) => {
+          if (!loadedFonts.has(chunk.name)) {
+            try {
+              const font = new FontFace("MyAwesomeFont", `url(${chunk.url})`);
+              
+              // 基础字体立即加载，其他字体延迟加载以优化性能
+              if (chunk.priority === 1) {
+                await font.load();
+                document.fonts.add(font);
+                loadedFonts.add(chunk.name);
+              } else {
+                // 延迟加载非关键字体
+                setTimeout(async () => {
+                  try {
+                    await font.load();
+                    document.fonts.add(font);
+                    loadedFonts.add(chunk.name);
+                  } catch (error) {
+                    console.warn(`字体块 ${chunk.name} 加载失败:`, error);
+                  }
+                }, index * 100); // 错开加载时间
+              }
+            } catch (error) {
+              console.warn(`字体块 ${chunk.name} 初始化失败:`, error);
+            }
+          }
+        });
       }
 
       function getIm() {
