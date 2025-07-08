@@ -18,7 +18,8 @@ if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
 # 配置文件路径
-EMAIL_CONFIG_FILE = os.path.join(DATA_DIR, 'email_configs.json')
+# 修改为与Java端一致的配置文件名
+EMAIL_CONFIG_FILE = os.path.join(DATA_DIR, 'mail_configs.json')
 THIRD_LOGIN_CONFIG_PATH = os.path.join(DATA_DIR, "third_login_config.json")
 
 # Java API基础URL，用于获取和更新数据库中的配置
@@ -369,7 +370,7 @@ def save_third_login_config(config):
 def get_email_configs():
     """获取邮箱配置"""
     try:
-        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'email_configs.json')
+        config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'mail_configs.json')
         if not os.path.exists(config_file):
             return {"configs": [], "defaultIndex": -1}
         
@@ -391,7 +392,8 @@ def save_email_configs(configs, default_index=None):
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
         
-        config_file = os.path.join(config_dir, 'email_configs.json')
+        # 修改为与Java端一致的配置文件名
+        config_file = os.path.join(config_dir, 'mail_configs.json')
         
         # 读取现有配置以获取当前的默认索引
         current_config = {"configs": [], "defaultIndex": -1}
@@ -431,8 +433,8 @@ def save_email_configs(configs, default_index=None):
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
         
-        # 同步到Java后端
-        sync_config('mail_configs', configs)
+        # 同步到Java后端 - 传递完整的配置数据结构
+        sync_config('mail_configs', config_data)
         
         return True
     except Exception as e:
@@ -789,8 +791,11 @@ async def sync_config(config_type, config_data):
             print("未配置Java后端URL，跳过同步配置")
             return True
         
-        # 构造请求URL
-        sync_url = f"{JAVA_CONFIG_URL}/api/config/sync/{config_type}"
+        # 根据配置类型构造正确的请求URL
+        if config_type == 'mail_configs':
+            sync_url = f"{JAVA_CONFIG_URL}/api/mail/syncConfig"
+        else:
+            sync_url = f"{JAVA_CONFIG_URL}/api/config/sync/{config_type}"
         print(f"同步配置到Java后端: {sync_url}")
         
         # 发送请求
@@ -849,4 +854,4 @@ async def get_admin_web_info_from_java(auth_token: str = None):
             print(f"Admin WebInfo HTTP错误: {response.status_code}")
     except Exception as e:
         print(f"调用 Admin WebInfo 接口异常: {e}")
-    return None 
+    return None

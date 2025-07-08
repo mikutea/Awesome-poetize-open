@@ -12,8 +12,8 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from config import BASE_BACKEND_URL, JAVA_CONFIG_URL
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 
-# 邮箱配置文件路径
-EMAIL_CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'py', 'data', 'email_configs.json')
+# 邮箱配置文件路径 - 修改为与Java端一致的配置文件名
+EMAIL_CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'py', 'data', 'mail_configs.json')
 
 def get_email_configs():
     """获取所有邮箱配置"""
@@ -504,4 +504,4 @@ def register_email_api(app: FastAPI):
                 "code": 500,
                 "message": f"设置失败: {str(e)}",
                 "data": None
-            }) 
+            })
