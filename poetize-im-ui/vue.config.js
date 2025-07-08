@@ -12,6 +12,10 @@ module.exports = {
   publicPath: '/im/',
   lintOnSave: false,
   productionSourceMap: false,
+  transpileDependencies: [
+    'naive-ui',
+    'date-fns'
+  ],
   chainWebpack: config => {
     config
       .plugin('html')

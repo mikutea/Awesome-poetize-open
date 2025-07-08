@@ -783,7 +783,6 @@ DOCKER_REGISTRY_MIRRORS=(
     "阿里云(北京)@registry.cn-beijing.aliyuncs.com"
     "腾讯云@mirror.ccs.tencentyun.com"
     "官方 Docker Hub@registry.hub.docker.com"
-    "Docker Hub@hub.docker.com"
 )
 
 # 选择Docker Registry镜像仓库
