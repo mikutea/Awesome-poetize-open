@@ -45,7 +45,7 @@
     "@vue/eslint-config-standard": "^6.1.0",
     "@babel/eslint-parser": "^7.22.20",
     "babel-plugin-component": "^1.1.1",
-    "compression-webpack-plugin": "4.0.0",
+    "compression-webpack-plugin": "^4.0.0",
     "webpack-manifest-plugin": "^4.0.2",
     "html-minifier-terser": "^7.2.0",
     "eslint": "^7.32.0",
