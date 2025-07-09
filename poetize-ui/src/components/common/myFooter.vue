@@ -76,9 +76,9 @@
               baseHeight = isMobile ? 105 : 135;
             }
             
-            // 如果没有备案信息，再减少20px
+            // 如果没有备案信息，再减少30px
             if (!hasBeianInfo) {
-              baseHeight -= 20;
+              baseHeight -= 30;
             }
             
             return `${baseHeight}px`;
