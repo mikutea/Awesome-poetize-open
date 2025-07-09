@@ -15,13 +15,7 @@ public interface MailService {
      */
     List<MailConfigDTO> getMailConfigs();
     
-    /**
-     * 保存邮箱配置
-     * @param configs 邮箱配置列表
-     * @param defaultIndex 默认邮箱索引
-     * @return 是否保存成功
-     */
-    boolean saveMailConfigs(List<MailConfigDTO> configs, int defaultIndex);
+
     
     /**
      * 获取默认邮箱配置索引
@@ -67,4 +61,4 @@ public interface MailService {
      * @return 是否发送成功
      */
     boolean sendMail(List<String> to, String subject, String content, boolean html, MailConfigDTO config);
-} 
+}

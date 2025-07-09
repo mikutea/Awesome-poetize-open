@@ -17,6 +17,7 @@ import com.ld.poetry.enums.CommentTypeEnum;
 import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.UserService;
+import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.utils.mail.MailUtil;
@@ -94,8 +95,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Autowired
     private SeoService seoService;
 
-    @Value("${user.subscribe.format}")
-    private String subscribeFormat;
+    @Autowired
+    private SysConfigService sysConfigService;
 
     @Override
     public PoetryResult saveArticle(ArticleVO articleVO) {
@@ -534,11 +535,20 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private String getSubscribeMail(String labelName, String articleTitle) {
         WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
         String webName = (webInfo == null ? "POETIZE" : webInfo.getWebName());
+        
+        // 从数据库获取订阅模板
+        String subscribeTemplate = sysConfigService.getConfigValueByKey("user.subscribe.format");
+        if (subscribeTemplate == null || subscribeTemplate.trim().isEmpty()) {
+            // 如果数据库中没有配置，使用默认模板
+            subscribeTemplate = "【POETIZE】您订阅的专栏【%s】新增一篇文章：%s。";
+            log.warn("数据库中未找到订阅模板配置，使用默认模板");
+        }
+        
         return String.format(mailUtil.getMailText(),
                 webName,
                 String.format(MailUtil.notificationMail, PoetryUtil.getAdminUser().getUsername()),
                 PoetryUtil.getAdminUser().getUsername(),
-                String.format(subscribeFormat, labelName, articleTitle),
+                String.format(subscribeTemplate, labelName, articleTitle),
                 "",
                 webName);
     }

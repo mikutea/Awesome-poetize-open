@@ -46,12 +46,12 @@ public class MailConfigDTO implements Serializable {
     /**
      * 是否启用SSL
      */
-    private Boolean ssl;
+    private Boolean useSsl;
     
     /**
      * 是否启用STARTTLS
      */
-    private Boolean starttls;
+    private Boolean useStarttls;
     
     /**
      * 是否需要认证

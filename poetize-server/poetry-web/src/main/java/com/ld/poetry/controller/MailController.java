@@ -6,13 +6,10 @@ import com.ld.poetry.utils.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import com.alibaba.fastjson.JSON;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.LinkedHashMap;
 
 /**
  * 邮件管理控制器
@@ -54,198 +51,7 @@ public class MailController {
         }
     }
     
-    /**
-     * 保存邮箱配置
-     */
-    @PostMapping("/saveConfigs")
-    public Result<Void> saveMailConfigs(@RequestBody List<MailConfigDTO> configs, 
-                                       @RequestParam(value = "defaultIndex", defaultValue = "-1") int defaultIndex) {
-        try {
-            log.info("保存邮箱配置: 配置数量: {}, 默认索引: {}", configs.size(), defaultIndex);
-            boolean success = mailService.saveMailConfigs(configs, defaultIndex);
-            
-            if (success) {
-                return Result.success();
-            } else {
-                return Result.fail("保存邮箱配置失败");
-            }
-        } catch (Exception e) {
-            log.error("保存邮箱配置失败", e);
-            return Result.fail("保存邮箱配置失败: " + e.getMessage());
-        }
-    }
-    
-    /**
-     * 同步邮箱配置（供Python服务调用）
-     */
-    @PostMapping("/syncConfig")
-    public Result<Void> syncMailConfig(@RequestBody Map<String, Object> syncData) {
-        try {
-            if (syncData == null) {
-                return Result.fail("请求数据不能为空");
-            }
-            
-            // 获取默认索引
-            Integer defaultIndex = null;
-            if (syncData.containsKey("defaultIndex")) {
-                Object indexObj = syncData.get("defaultIndex");
-                if (indexObj instanceof Number) {
-                    defaultIndex = ((Number) indexObj).intValue();
-                } else if (indexObj != null) {
-                    try {
-                        defaultIndex = Integer.parseInt(indexObj.toString());
-                    } catch (NumberFormatException e) {
-                        log.warn("默认索引格式错误: {}", indexObj);
-                        defaultIndex = -1;
-                    }
-                }
-            }
-            
-            if (defaultIndex == null) {
-                defaultIndex = -1;
-            }
-            
-            // 获取配置列表
-            List<MailConfigDTO> configs = new ArrayList<>();
-            if (syncData.containsKey("configs")) {
-                Object configsObj = syncData.get("configs");
-                if (configsObj instanceof List) {
-                    List<?> configList = (List<?>) configsObj;
-                    
-                    for (Object configItem : configList) {
-                        if (configItem instanceof Map) {
-                            Map<String, Object> configMap = (Map<String, Object>) configItem;
-                            MailConfigDTO config = new MailConfigDTO();
-                            
-                            // 处理字符串字段
-                            if (configMap.containsKey("host")) {
-                                config.setHost(String.valueOf(configMap.get("host")));
-                            }
-                            if (configMap.containsKey("username")) {
-                                config.setUsername(String.valueOf(configMap.get("username")));
-                            }
-                            if (configMap.containsKey("password")) {
-                                config.setPassword(String.valueOf(configMap.get("password")));
-                            }
-                            if (configMap.containsKey("senderName")) {
-                                config.setSenderName(String.valueOf(configMap.get("senderName")));
-                            }
-                            if (configMap.containsKey("jndiName")) {
-                                config.setJndiName(String.valueOf(configMap.get("jndiName")));
-                            }
-                            
-                            // 处理数值字段
-                            if (configMap.containsKey("port")) {
-                                try {
-                                    Object portObj = configMap.get("port");
-                                    if (portObj instanceof Number) {
-                                        config.setPort(((Number) portObj).intValue());
-                                    } else if (portObj != null) {
-                                        config.setPort(Integer.parseInt(portObj.toString()));
-                                    }
-                                } catch (NumberFormatException e) {
-                                    log.warn("端口格式错误: {}", configMap.get("port"));
-                                    config.setPort(25); // 默认端口
-                                }
-                            }
-                            
-                            if (configMap.containsKey("connectionTimeout")) {
-                                try {
-                                    Object timeoutObj = configMap.get("connectionTimeout");
-                                    if (timeoutObj instanceof Number) {
-                                        config.setConnectionTimeout(((Number) timeoutObj).intValue());
-                                    } else if (timeoutObj != null) {
-                                        config.setConnectionTimeout(Integer.parseInt(timeoutObj.toString()));
-                                    }
-                                } catch (NumberFormatException e) {
-                                    log.warn("连接超时格式错误: {}", configMap.get("connectionTimeout"));
-                                }
-                            }
-                            
-                            if (configMap.containsKey("timeout")) {
-                                try {
-                                    Object timeoutObj = configMap.get("timeout");
-                                    if (timeoutObj instanceof Number) {
-                                        config.setTimeout(((Number) timeoutObj).intValue());
-                                    } else if (timeoutObj != null) {
-                                        config.setTimeout(Integer.parseInt(timeoutObj.toString()));
-                                    }
-                                } catch (NumberFormatException e) {
-                                    log.warn("读取超时格式错误: {}", configMap.get("timeout"));
-                                }
-                            }
-                            
-                            // 处理布尔字段
-                            if (configMap.containsKey("ssl")) {
-                                Object sslObj = configMap.get("ssl");
-                                if (sslObj instanceof Boolean) {
-                                    config.setSsl((Boolean) sslObj);
-                                } else if (sslObj != null) {
-                                    String sslStr = sslObj.toString().toLowerCase();
-                                    config.setSsl("true".equals(sslStr) || "1".equals(sslStr) || "yes".equals(sslStr));
-                                }
-                            }
-                            
-                            if (configMap.containsKey("starttls")) {
-                                Object starttlsObj = configMap.get("starttls");
-                                if (starttlsObj instanceof Boolean) {
-                                    config.setStarttls((Boolean) starttlsObj);
-                                } else if (starttlsObj != null) {
-                                    String starttlsStr = starttlsObj.toString().toLowerCase();
-                                    config.setStarttls("true".equals(starttlsStr) || "1".equals(starttlsStr) || "yes".equals(starttlsStr));
-                                }
-                            }
-                            
-                            if (configMap.containsKey("auth")) {
-                                Object authObj = configMap.get("auth");
-                                if (authObj instanceof Boolean) {
-                                    config.setAuth((Boolean) authObj);
-                                } else if (authObj != null) {
-                                    String authStr = authObj.toString().toLowerCase();
-                                    config.setAuth("true".equals(authStr) || "1".equals(authStr) || "yes".equals(authStr));
-                                }
-                            }
-                            
-                            if (configMap.containsKey("enabled")) {
-                                Object enabledObj = configMap.get("enabled");
-                                if (enabledObj instanceof Boolean) {
-                                    config.setEnabled((Boolean) enabledObj);
-                                } else if (enabledObj != null) {
-                                    String enabledStr = enabledObj.toString().toLowerCase();
-                                    config.setEnabled("true".equals(enabledStr) || "1".equals(enabledStr) || "yes".equals(enabledStr));
-                                }
-                            }
-                            
-                            if (configMap.containsKey("trustAllCerts")) {
-                                Object trustObj = configMap.get("trustAllCerts");
-                                if (trustObj instanceof Boolean) {
-                                    config.setTrustAllCerts((Boolean) trustObj);
-                                } else if (trustObj != null) {
-                                    String trustStr = trustObj.toString().toLowerCase();
-                                    config.setTrustAllCerts("true".equals(trustStr) || "1".equals(trustStr) || "yes".equals(trustStr));
-                                }
-                            }
-                            
-                            configs.add(config);
-                        }
-                    }
-                }
-            }
-            
-            log.info("同步邮箱配置: 配置数量: {}, 默认索引: {}", configs.size(), defaultIndex);
-            boolean success = mailService.saveMailConfigs(configs, defaultIndex);
-            
-            if (success) {
-                return Result.success();
-            } else {
-                return Result.fail("同步邮箱配置失败");
-            }
-        } catch (Exception e) {
-            log.error("同步邮箱配置失败", e);
-            return Result.fail("同步邮箱配置失败: " + e.getMessage());
-        }
-    }
-    
+
     /**
      * 测试邮箱配置
      */
@@ -341,23 +147,23 @@ public class MailController {
                 }
                 
                 // 处理布尔字段
-                if (configMap.containsKey("ssl")) {
-                    Object sslObj = configMap.get("ssl");
+                if (configMap.containsKey("useSsl")) {
+                    Object sslObj = configMap.get("useSsl");
                     if (sslObj instanceof Boolean) {
-                        config.setSsl((Boolean) sslObj);
+                        config.setUseSsl((Boolean) sslObj);
                     } else if (sslObj != null) {
                         String sslStr = sslObj.toString().toLowerCase();
-                        config.setSsl("true".equals(sslStr) || "1".equals(sslStr) || "yes".equals(sslStr));
+                        config.setUseSsl("true".equals(sslStr) || "1".equals(sslStr) || "yes".equals(sslStr));
                     }
                 }
                 
-                if (configMap.containsKey("starttls")) {
-                    Object starttlsObj = configMap.get("starttls");
+                if (configMap.containsKey("useStarttls")) {
+                    Object starttlsObj = configMap.get("useStarttls");
                     if (starttlsObj instanceof Boolean) {
-                        config.setStarttls((Boolean) starttlsObj);
+                        config.setUseStarttls((Boolean) starttlsObj);
                     } else if (starttlsObj != null) {
                         String starttlsStr = starttlsObj.toString().toLowerCase();
-                        config.setStarttls("true".equals(starttlsStr) || "1".equals(starttlsStr) || "yes".equals(starttlsStr));
+                        config.setUseStarttls("true".equals(starttlsStr) || "1".equals(starttlsStr) || "yes".equals(starttlsStr));
                     }
                 }
                 
@@ -552,23 +358,23 @@ public class MailController {
                     }
                     
                     // 处理布尔字段
-                    if (configMap.containsKey("ssl")) {
-                        Object sslObj = configMap.get("ssl");
+                    if (configMap.containsKey("useSsl")) {
+                        Object sslObj = configMap.get("useSsl");
                         if (sslObj instanceof Boolean) {
-                            config.setSsl((Boolean) sslObj);
+                            config.setUseSsl((Boolean) sslObj);
                         } else if (sslObj != null) {
                             String sslStr = sslObj.toString().toLowerCase();
-                            config.setSsl("true".equals(sslStr) || "1".equals(sslStr) || "yes".equals(sslStr));
+                            config.setUseSsl("true".equals(sslStr) || "1".equals(sslStr) || "yes".equals(sslStr));
                         }
                     }
                     
-                    if (configMap.containsKey("starttls")) {
-                        Object starttlsObj = configMap.get("starttls");
+                    if (configMap.containsKey("useStarttls")) {
+                        Object starttlsObj = configMap.get("useStarttls");
                         if (starttlsObj instanceof Boolean) {
-                            config.setStarttls((Boolean) starttlsObj);
+                            config.setUseStarttls((Boolean) starttlsObj);
                         } else if (starttlsObj != null) {
                             String starttlsStr = starttlsObj.toString().toLowerCase();
-                            config.setStarttls("true".equals(starttlsStr) || "1".equals(starttlsStr) || "yes".equals(starttlsStr));
+                            config.setUseStarttls("true".equals(starttlsStr) || "1".equals(starttlsStr) || "yes".equals(starttlsStr));
                         }
                     }
                     
@@ -617,4 +423,4 @@ public class MailController {
             return Result.fail("邮件发送失败: " + e.getMessage());
         }
     }
-} 
+}

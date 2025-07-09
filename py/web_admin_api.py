@@ -433,9 +433,6 @@ def save_email_configs(configs, default_index=None):
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, ensure_ascii=False, indent=2)
         
-        # 同步到Java后端 - 传递完整的配置数据结构
-        sync_config('mail_configs', config_data)
-        
         return True
     except Exception as e:
         print(f"保存邮箱配置出错: {e}")
@@ -597,7 +594,7 @@ def register_web_admin_api(app: FastAPI):
                 config['port'] = config.get('port', 25)
                 config['username'] = config.get('username', '')
                 config['password'] = config.get('password', '')
-                config['nickname'] = config.get('nickname', '诗词站')
+                config['nickname'] = config.get('nickname', '')
                 config['ssl'] = config.get('ssl', False)
                 
                 # 高级配置参数
@@ -774,52 +771,6 @@ def register_web_admin_api(app: FastAPI):
                 "message": f"更新导航栏配置失败: {str(e)}",
                 "data": None
             })
-
-# 同步配置到Java后端
-async def sync_config(config_type, config_data):
-    """将配置同步到Java后端
-    
-    Args:
-        config_type: 配置类型，如'mail_configs'
-        config_data: 配置数据
-    
-    Returns:
-        成功返回True，失败返回False
-    """
-    try:
-        if not JAVA_CONFIG_URL:
-            print("未配置Java后端URL，跳过同步配置")
-            return True
-        
-        # 根据配置类型构造正确的请求URL
-        if config_type == 'mail_configs':
-            sync_url = f"{JAVA_CONFIG_URL}/api/mail/syncConfig"
-        else:
-            sync_url = f"{JAVA_CONFIG_URL}/api/config/sync/{config_type}"
-        print(f"同步配置到Java后端: {sync_url}")
-        
-        # 发送请求
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                sync_url, 
-                json=config_data, 
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Internal-Service": "poetize-python",
-                    "User-Agent": "poetize-python/1.0.0"
-                },
-                timeout=10
-            )
-        
-        if response.status_code == 200:
-            print(f"配置同步成功: {config_type}")
-            return True
-        else:
-            print(f"配置同步失败: {response.status_code}, {response.text}")
-            return False
-    except Exception as e:
-        print(f"配置同步出错: {str(e)}")
-        return False
 
 # 如果直接运行此文件，启动一个测试服务器
 if __name__ == '__main__':

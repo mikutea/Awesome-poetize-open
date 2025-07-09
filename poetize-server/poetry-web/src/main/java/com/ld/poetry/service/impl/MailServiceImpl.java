@@ -3,20 +3,20 @@ package com.ld.poetry.service.impl;
 import com.alibaba.fastjson.JSON;
 import com.ld.poetry.entity.dto.MailConfigDTO;
 import com.ld.poetry.service.MailService;
+import com.ld.poetry.service.SysConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.time.LocalDateTime;
@@ -31,8 +31,16 @@ public class MailServiceImpl implements MailService {
     @Autowired
     private ApplicationContext applicationContext;
     
-    // 邮箱配置文件路径
-    private static final String CONFIG_FILE_PATH = "data/mail_configs.json";
+    @Value("${PYTHON_SERVICE_URL:http://localhost:5000}")
+    private String pythonServiceUrl;
+    
+    @Autowired
+    private RestTemplate restTemplate;
+    
+    @Autowired
+    private SysConfigService sysConfigService;
+    
+    // 邮箱配置现在只从Python服务获取
     
     /**
      * 获取所有邮箱配置
@@ -40,47 +48,21 @@ public class MailServiceImpl implements MailService {
     @Override
     public List<MailConfigDTO> getMailConfigs() {
         try {
-            Map<String, Object> configMap = readConfigFromFile();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> configList = (List<Map<String, Object>>) configMap.getOrDefault("configs", new ArrayList<>());
+            // 从Python API获取配置
+            List<MailConfigDTO> configs = getMailConfigsFromPython();
+            if (configs != null) {
+                return configs;
+            }
             
-            return configList.stream()
-                    .map(this::mapToMailConfigDTO)
-                    .collect(Collectors.toList());
+            log.warn("从Python API获取邮箱配置失败，返回空配置列表");
+            return new ArrayList<>();
         } catch (Exception e) {
             log.error("获取邮箱配置失败", e);
             return new ArrayList<>();
         }
     }
     
-    /**
-     * 保存邮箱配置
-     */
-    @Override
-    public boolean saveMailConfigs(List<MailConfigDTO> configs, int defaultIndex) {
-        try {
-            Map<String, Object> configMap = new HashMap<>();
-            configMap.put("configs", configs);
-            configMap.put("defaultIndex", defaultIndex);
-            
-            String jsonContent = JSON.toJSONString(configMap);
-            Path path = Paths.get(CONFIG_FILE_PATH);
-            
-            // 确保目录存在
-            Path parentDir = path.getParent();
-            if (parentDir != null && !Files.exists(parentDir)) {
-                Files.createDirectories(parentDir);
-            }
-            
-            // 使用Java 8兼容的写入方法
-            Files.write(path, jsonContent.getBytes(StandardCharsets.UTF_8));
-            log.info("邮箱配置保存成功，默认索引: {}", defaultIndex);
-            return true;
-        } catch (Exception e) {
-            log.error("保存邮箱配置失败", e);
-            return false;
-        }
-    }
+
     
     /**
      * 获取默认邮箱配置索引
@@ -88,8 +70,14 @@ public class MailServiceImpl implements MailService {
     @Override
     public int getDefaultMailConfigIndex() {
         try {
-            Map<String, Object> configMap = readConfigFromFile();
-            return (int) configMap.getOrDefault("defaultIndex", -1);
+            // 从Python API获取默认索引
+            Integer defaultIndex = getDefaultMailConfigIndexFromPython();
+            if (defaultIndex != null) {
+                return defaultIndex;
+            }
+            
+            log.warn("从Python API获取默认邮箱索引失败，返回默认索引-1");
+            return -1;
         } catch (Exception e) {
             log.error("获取默认邮箱索引失败", e);
             return -1;
@@ -192,8 +180,8 @@ public class MailServiceImpl implements MailService {
             content.append("<li>📮 <strong>端口:</strong> ").append(config.getPort()).append("</li>");
             content.append("<li>👤 <strong>账号:</strong> ").append(config.getUsername()).append("</li>");
             content.append("<li>👔 <strong>发件人名称:</strong> ").append(config.getSenderName()).append("</li>");
-            content.append("<li>🔒 <strong>SSL:</strong> ").append(config.getSsl() ? "启用" : "禁用").append("</li>");
-            content.append("<li>🔄 <strong>STARTTLS:</strong> ").append(config.getStarttls() ? "启用" : "禁用").append("</li>");
+            content.append("<li>🔒 <strong>SSL:</strong> ").append(config.getUseSsl() ? "启用" : "禁用").append("</li>");
+            content.append("<li>🔄 <strong>STARTTLS:</strong> ").append(config.getUseStarttls() ? "启用" : "禁用").append("</li>");
             content.append("<li>📝 <strong>认证:</strong> ").append(config.getAuth() ? "启用" : "禁用").append("</li>");
             content.append("<li>⏱️ <strong>测试时间:</strong> ").append(currentTime).append("</li>");
             content.append("</ul></p>");
@@ -297,8 +285,23 @@ public class MailServiceImpl implements MailService {
             }
             
             // 构建验证码邮件内容
-            String subject = "Poetize验证码";
-            String content = String.format("【Poetize】%s为本次验证的验证码，请在5分钟内完成验证。为保证账号安全，请勿泄漏此验证码。", code);
+            // 从数据库获取验证码邮件主题
+            String subject = sysConfigService.getConfigValueByKey("user.code.subject");
+            if (subject == null || subject.trim().isEmpty()) {
+                // 如果数据库中没有配置，使用默认主题
+                subject = "Poetize验证码";
+                log.warn("数据库中未找到验证码邮件主题配置，使用默认主题");
+            }
+            
+            // 从数据库获取验证码模板
+            String template = sysConfigService.getConfigValueByKey("user.code.format");
+            if (template == null || template.trim().isEmpty()) {
+                // 如果数据库中没有配置，使用默认模板
+                template = "【POETIZE】%s为本次验证的验证码，请在5分钟内完成验证。为保证账号安全，请勿泄漏此验证码。";
+                log.warn("数据库中未找到验证码模板配置，使用默认模板");
+            }
+            
+            String content = String.format(template, code);
             
             // 发送邮件
             List<String> toList = Collections.singletonList(email);
@@ -395,13 +398,13 @@ public class MailServiceImpl implements MailService {
         
         // 处理布尔类型属性，避免NPE
         boolean auth = config.getAuth() != null ? config.getAuth() : false;
-        boolean starttls = config.getStarttls() != null ? config.getStarttls() : false;
-        boolean ssl = config.getSsl() != null ? config.getSsl() : false;
+        boolean useStarttls = config.getUseStarttls() != null ? config.getUseStarttls() : false;
+        boolean useSsl = config.getUseSsl() != null ? config.getUseSsl() : false;
         boolean trustAllCerts = config.getTrustAllCerts() != null ? config.getTrustAllCerts() : false;
         
         props.put("mail.smtp.auth", auth);
-        props.put("mail.smtp.starttls.enable", starttls);
-        props.put("mail.smtp.ssl.enable", ssl);
+        props.put("mail.smtp.starttls.enable", useStarttls);
+        props.put("mail.smtp.ssl.enable", useSsl);
         
         // 超时设置
         if (config.getConnectionTimeout() != null) {
@@ -427,140 +430,72 @@ public class MailServiceImpl implements MailService {
         }
         
         log.info("创建邮件发送器: 服务器={}, 端口={}, 用户={}, 认证={}, SSL={}, TLS={}",
-                config.getHost(), port, config.getUsername(), auth, ssl, starttls);
+                config.getHost(), port, config.getUsername(), auth, useSsl, useStarttls);
         
         sender.setJavaMailProperties(props);
         return sender;
     }
     
     /**
-     * 从文件读取配置
+     * 从Python API获取邮箱配置
      */
-    private Map<String, Object> readConfigFromFile() throws IOException {
-        Path path = Paths.get(CONFIG_FILE_PATH);
-        if (!Files.exists(path)) {
-            return new HashMap<String, Object>() {{
-                put("configs", new ArrayList<>());
-                put("defaultIndex", -1);
-            }};
-        }
-        
-        // 使用Java 8兼容的读取方法
-        byte[] bytes = Files.readAllBytes(path);
-        String content = new String(bytes, StandardCharsets.UTF_8);
-        return JSON.parseObject(content);
-    }
-    
-    /**
-     * 将Map转换为MailConfigDTO
-     */
-    private MailConfigDTO mapToMailConfigDTO(Map<String, Object> map) {
-        return MailConfigDTO.builder()
-                .host(getStringValue(map, "host"))
-                .port(getIntegerValue(map, "port"))
-                .username(getStringValue(map, "username"))
-                .password(getStringValue(map, "password"))
-                .senderName(getStringValue(map, "senderName"))
-                .ssl(getBooleanValue(map, "ssl"))
-                .starttls(getBooleanValue(map, "starttls"))
-                .auth(getBooleanValue(map, "auth"))
-                .enabled(getBooleanValue(map, "enabled"))
-                .connectionTimeout(getIntegerValue(map, "connectionTimeout"))
-                .timeout(getIntegerValue(map, "timeout"))
-                .jndiName(getStringValue(map, "jndiName"))
-                .trustAllCerts(getBooleanValue(map, "trustAllCerts"))
-                .protocol(getStringValue(map, "protocol"))
-                .authMechanism(getStringValue(map, "authMechanism"))
-                .debug(getBooleanValue(map, "debug"))
-                .useProxy(getBooleanValue(map, "useProxy"))
-                .proxyHost(getStringValue(map, "proxyHost"))
-                .proxyPort(getIntegerValue(map, "proxyPort"))
-                .proxyUser(getStringValue(map, "proxyUser"))
-                .proxyPassword(getStringValue(map, "proxyPassword"))
-                .customProperties(getMapValue(map, "customProperties"))
-                .build();
-    }
-    
-    /**
-     * 安全获取字符串值
-     */
-    private String getStringValue(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        return value.toString();
-    }
-    
-    /**
-     * 安全获取整数值
-     */
-    private Integer getIntegerValue(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Integer) {
-            return (Integer) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
-        }
+    private List<MailConfigDTO> getMailConfigsFromPython() {
         try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException e) {
-            log.warn("无法将值转换为整数: {} = {}", key, value);
-            return null;
-        }
-    }
-    
-    /**
-     * 安全获取布尔值
-     */
-    private Boolean getBooleanValue(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        }
-        if (value instanceof Number) {
-            return ((Number) value).intValue() != 0;
-        }
-        String strValue = value.toString().toLowerCase();
-        return "true".equals(strValue) || "yes".equals(strValue) || "1".equals(strValue);
-    }
-    
-    /**
-     * 安全获取Map值
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, String> getMapValue(Map<String, Object> map, String key) {
-        Object value = map.get(key);
-        if (value == null) {
-            return null;
-        }
-        
-        if (value instanceof Map) {
-            try {
-                Map<?, ?> rawMap = (Map<?, ?>) value;
-                Map<String, String> result = new HashMap<>();
+            String url = pythonServiceUrl + "/webInfo/getEmailConfigs";
+            log.info("从Python API获取邮箱配置: {}", url);
+            
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                Integer code = (Integer) responseBody.get("code");
                 
-                // 转换为String键值对的Map
-                for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
-                    if (entry.getKey() != null && entry.getValue() != null) {
-                        result.put(entry.getKey().toString(), entry.getValue().toString());
+                if (code != null && code == 200) {
+                    Object data = responseBody.get("data");
+                    
+                    if (data != null) {
+                        // 将data转换为JSON字符串，然后反序列化为MailConfigDTO列表
+                        String jsonData = JSON.toJSONString(data);
+                        return JSON.parseArray(jsonData, MailConfigDTO.class);
                     }
                 }
-                return result;
-            } catch (Exception e) {
-                log.warn("无法将值转换为Map: {} = {}", key, value);
-                return null;
             }
+            
+            log.warn("Python API返回的邮箱配置格式不正确");
+            return null;
+        } catch (Exception e) {
+            log.error("从Python API获取邮箱配置失败", e);
+            return null;
         }
-        
-        log.warn("值不是Map类型: {} = {}", key, value);
-        return null;
     }
-} 
+    
+    /**
+     * 从Python API获取默认邮箱配置索引
+     */
+    private Integer getDefaultMailConfigIndexFromPython() {
+        try {
+            String url = pythonServiceUrl + "/webInfo/getDefaultMailConfig";
+            log.info("从Python API获取默认邮箱配置索引: {}", url);
+            
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                Integer code = (Integer) responseBody.get("code");
+                
+                if (code != null && code == 200) {
+                    Object data = responseBody.get("data");
+                    if (data instanceof Integer) {
+                        return (Integer) data;
+                    }
+                }
+            }
+            
+            log.warn("Python API返回的默认邮箱配置索引格式不正确");
+            return null;
+        } catch (Exception e) {
+            log.error("从Python API获取默认邮箱配置索引失败", e);
+            return null;
+        }
+    }
+}
