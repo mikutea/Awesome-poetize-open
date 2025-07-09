@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-08
+## 修改时间: 2025-07-09
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.3.6
+## 版本: 1.4.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -748,6 +748,117 @@ check_and_install_curl() {
       ;;
   esac
   fi
+}
+
+# 检查并安装ipcalc
+check_and_install_ipcalc() {
+  if ! command -v ipcalc &>/dev/null; then
+    info "ipcalc未安装，正在安装..."
+    
+    # 检测系统类型
+    local os_type=$(detect_os_type)
+    # 根据操作系统类型安装ipcalc
+    case "$os_type" in
+    "debian"|"ubuntu"|"deepin"|"kylin")
+      # Ubuntu/Debian/Deepin/麒麟系统
+      info "使用apt-get安装ipcalc..."
+      if sudo apt-get update && sudo apt-get install -y ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+      "centos7")
+      # CentOS/RHEL/Anolis系统
+      info "使用yum安装ipcalc..."
+      if sudo yum install -y ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+    "fedora"|"centos8"|"centos-stream"|"rhel"|"rocky"|"almalinux"|"oracle"|"anolis"|"openeuler")
+      # Fedora/CentOS8/CentOS Stream/RHEL/Rocky/AlmaLinux/Oracle/Anolis/openEuler系统
+      info "使用dnf安装ipcalc..."
+      if sudo dnf install -y ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+    "amazon"|"alinux")
+      # Amazon Linux/阿里云Linux系统
+      info "使用yum/dnf安装ipcalc..."
+      if command -v dnf &>/dev/null; then
+        if sudo dnf install -y ipcalc; then
+          success "ipcalc安装成功"
+        else
+          warning "ipcalc安装失败，将跳过网络冲突检测"
+          return 1
+        fi
+      else
+        if sudo yum install -y ipcalc; then
+          success "ipcalc安装成功"
+        else
+          warning "ipcalc安装失败，将跳过网络冲突检测"
+          return 1
+        fi
+      fi
+      ;;
+    "arch")
+      # Arch Linux系统
+      info "使用pacman安装ipcalc..."
+      if sudo pacman -S --noconfirm ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+    "alpine")
+      # Alpine Linux系统
+      info "使用apk安装ipcalc..."
+      if sudo apk add ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+    "opensuse")
+      # openSUSE系统
+      info "使用zypper安装ipcalc..."
+      if sudo zypper install -y ipcalc; then
+        success "ipcalc安装成功"
+      else
+        warning "ipcalc安装失败，将跳过网络冲突检测"
+        return 1
+      fi
+      ;;
+    *)
+      warning "不支持的操作系统类型: $os_type，无法自动安装ipcalc"
+      warning "将跳过网络冲突检测，您可以手动安装ipcalc工具"
+      echo "常见安装命令："
+      echo "  Ubuntu/Debian: sudo apt-get install ipcalc"
+      echo "  CentOS 7:      sudo yum install ipcalc"
+      echo "  CentOS 8+/RHEL/Rocky/AlmaLinux: sudo dnf install ipcalc"
+      echo "  Fedora:        sudo dnf install ipcalc"
+      echo "  openEuler:     sudo dnf install ipcalc"
+      echo "  Amazon Linux:  sudo yum install ipcalc 或 sudo dnf install ipcalc"
+      echo "  阿里云Linux:   sudo yum install ipcalc 或 sudo dnf install ipcalc"
+      echo "  Arch Linux:    sudo pacman -S ipcalc"
+      echo "  Alpine Linux:  sudo apk add ipcalc"
+      return 1
+      ;;
+    esac
+  else
+    info "ipcalc已安装，跳过安装"
+  fi
+  
+  return 0
 }
 
 # Docker CE 软件源列表 (格式："软件源名称@软件源地址")
@@ -2986,9 +3097,120 @@ wait_for_services_ready() {
   fi
 }
 
+# 检测网络冲突并自动修改配置
+check_and_fix_network_conflict() {
+  local TARGET_SUBNET="172.28.147.0/28"
+  local conflict_detected=false
+  
+  info "检测网络冲突: $TARGET_SUBNET"
+  
+  # 检查是否安装了ipcalc工具，如果未安装则尝试安装
+  if ! command -v ipcalc >/dev/null 2>&1; then
+    warning "ipcalc工具未安装，尝试自动安装..."
+    if ! check_and_install_ipcalc; then
+      warning "无法安装ipcalc工具，跳过网络冲突检测"
+      return 0
+    fi
+  fi
+  
+  # 获取本机所有IP和子网
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then
+      local addr=$(echo "$line" | awk '{print $4}')
+      if [ -n "$addr" ] && [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
+        # 使用ipcalc检查网络重叠
+        if ipcalc -c "$addr" "$TARGET_SUBNET" 2>/dev/null | grep -q "overlap"; then
+          warning "❌ 检测到网络冲突: $addr 与 $TARGET_SUBNET 重叠"
+          conflict_detected=true
+          break
+        fi
+      fi
+    fi
+  done < <(ip -o -f inet addr show 2>/dev/null || true)
+  
+  if [ "$conflict_detected" = true ]; then
+    warning "检测到网络冲突，正在自动生成新的网段..."
+    
+    # 生成随机网段
+    local new_subnet
+    local attempts=0
+    local max_attempts=10
+    
+    while [ $attempts -lt $max_attempts ]; do
+      # 生成172.x.y.0/28格式的随机网段
+      local second_octet=$((RANDOM % 32 + 16))  # 16-47范围
+      local third_octet=$((RANDOM % 256))       # 0-255范围
+      new_subnet="172.$second_octet.$third_octet.0/28"
+      
+      # 检查新网段是否冲突
+      local new_conflict=false
+      while IFS= read -r line; do
+        if [ -n "$line" ]; then
+          local addr=$(echo "$line" | awk '{print $4}')
+          if [ -n "$addr" ] && [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then
+            if ipcalc -c "$addr" "$new_subnet" 2>/dev/null | grep -q "overlap"; then
+              new_conflict=true
+              break
+            fi
+          fi
+        fi
+      done < <(ip -o -f inet addr show 2>/dev/null || true)
+      
+      if [ "$new_conflict" = false ]; then
+        break
+      fi
+      
+      attempts=$((attempts + 1))
+    done
+    
+    if [ $attempts -ge $max_attempts ]; then
+      error "无法找到合适的网段，请手动修改docker-compose.yml中的网络配置"
+      return 1
+    fi
+    
+    info "使用新网段: $new_subnet"
+    
+    # 计算新的网关和IP地址
+    local base_ip="172.$second_octet.$third_octet"
+    local new_gateway="$base_ip.1"
+    
+    # 修改docker-compose.yml中的网络配置
+    info "正在更新docker-compose.yml中的网络配置..."
+    
+    # 更新网络配置
+    sed_i "s|subnet: 172\.28\.147\.0/28|subnet: $new_subnet|g" docker-compose.yml
+    sed_i "s|gateway: 172\.28\.147\.1|gateway: $new_gateway|g" docker-compose.yml
+    sed_i "s|ip_range: 172\.28\.147\.0/28|ip_range: $new_subnet|g" docker-compose.yml
+    
+    # 更新所有服务的固定IP地址
+    sed_i "s|ipv4_address: 172\.28\.147\.2|ipv4_address: $base_ip.2|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.3|ipv4_address: $base_ip.3|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.4|ipv4_address: $base_ip.4|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.5|ipv4_address: $base_ip.5|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.6|ipv4_address: $base_ip.6|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.7|ipv4_address: $base_ip.7|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.8|ipv4_address: $base_ip.8|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.9|ipv4_address: $base_ip.9|g" docker-compose.yml
+    
+    # 更新Python服务的DOCKER_SUBNET环境变量
+    sed_i "s|DOCKER_SUBNET=172\.28\.147\.0/28|DOCKER_SUBNET=$new_subnet|g" docker-compose.yml
+    
+    success "✅ 网络配置已更新为: $new_subnet"
+    success "✅ 网关地址: $new_gateway"
+    success "✅ 服务IP范围: $base_ip.2 - $base_ip.9"
+  else
+    success "✅ 未检测到网络冲突: $TARGET_SUBNET"
+  fi
+  
+  return 0
+}
+
 # 构建和启动Docker服务
 start_services() {
   info "启动Docker服务..."
+  
+  # 检测并修复网络冲突
+  check_and_fix_network_conflict
   
   # 使用定义的docker-compose命令
   if [ -z "$DOCKER_COMPOSE_CMD" ]; then
@@ -4577,7 +4799,7 @@ stop_existing_poetize_containers() {
   info "正在停止已运行的Poetize容器..."
   
   # 停止所有Poetize相关容器
-  local containers=$(docker ps --filter "name=poetize-" --format "{{.Names}}" 2>/dev/null)
+  local containers=$(sudo docker ps --filter "name=poetize-" --format "{{.Names}}" 2>/dev/null)
   
   if [ -n "$containers" ]; then
     echo "$containers" | xargs docker stop 2>/dev/null || true
@@ -5792,6 +6014,9 @@ main() {
 
   # 检查并安装curl
   check_and_install_curl
+
+  # 检查并安装ipcalc（用于网络冲突检测）
+  check_and_install_ipcalc
 
   # 检查并安装sed
   install_sed

@@ -3,6 +3,7 @@ import httpx
 import logging
 import time
 import os
+import ipaddress
 from fastapi import Request, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -42,7 +43,59 @@ class RateLimiter:
 # 初始化限流器 - 管理员API限制更严格
 admin_rate_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
-# 从环境变量获取内部服务IP列表
+# Docker内部网络配置
+DOCKER_INTERNAL_NETWORKS = [
+    '127.0.0.0/8',      # 本地回环
+]
+
+# 从环境变量或配置文件动态获取当前Docker网络配置
+def get_current_docker_network():
+    """
+    获取当前Docker网络配置，支持动态网段
+    """
+    # 尝试从环境变量获取
+    docker_subnet = os.environ.get('DOCKER_SUBNET', '172.28.147.0/28')
+    
+    return docker_subnet
+
+# 检查IP是否在内部网络范围内
+def is_internal_network_ip(client_ip):
+    """
+    检查客户端IP是否在Docker内部网络范围内
+    """
+    try:
+        client_addr = ipaddress.ip_address(client_ip)
+        
+        # 获取当前Docker网络配置
+        current_subnet = get_current_docker_network()
+        
+        # 检查是否在当前Docker网段内
+        try:
+            current_network = ipaddress.ip_network(current_subnet, strict=False)
+            if client_addr in current_network:
+                logger.info(f"✅ IP {client_ip} 在当前Docker网段 {current_subnet} 内，识别为内部服务")
+                return True
+        except Exception as e:
+            logger.warning(f"解析当前Docker网段失败: {e}")
+        
+        # 检查是否在预定义的内部网络范围内
+        for network_str in DOCKER_INTERNAL_NETWORKS:
+            try:
+                network = ipaddress.ip_network(network_str, strict=False)
+                if client_addr in network:
+                    logger.info(f"✅ IP {client_ip} 在内部网段 {network_str} 内，识别为内部服务")
+                    return True
+            except Exception as e:
+                logger.warning(f"解析网段 {network_str} 失败: {e}")
+        
+        logger.info(f"❌ IP {client_ip} 不在任何内部网段内，识别为外部请求")
+        return False
+        
+    except Exception as e:
+        logger.warning(f"解析IP地址 {client_ip} 失败: {e}")
+        return False
+
+# 从环境变量获取内部服务IP列表（作为辅助验证）
 def get_trusted_internal_ips():
     # 默认的受信任IP
     trusted_ips = [
@@ -84,7 +137,7 @@ def get_trusted_internal_ips():
     except Exception as e:
         logger.warning(f"动态解析容器IP时出错: {e}")
     
-    logger.info(f"初始化受信任的内部IP列表: {trusted_ips}")
+    logger.info(f"初始化受信任的内部IP列表（辅助验证）: {trusted_ips}")
     return trusted_ips
 
 # 实时获取受信任的内部服务IP列表
@@ -157,35 +210,38 @@ async def admin_required(
     logger.info(f"收到API请求: {request.url.path}, IP: {client_ip}")
     logger.info(f"所有请求头: {all_headers}")
     
-    # 实时获取受信任的IP列表
+    # 主要验证：检查是否来自Docker内部网络
+    if is_internal_network_ip(client_ip):
+        # 内部网络IP，进行辅助验证以增强安全性
+        internal_service = request.headers.get('X-Internal-Service')
+        user_agent = request.headers.get('User-Agent', '')
+        admin_flag = request.headers.get('X-Admin-Request')
+        
+        # 辅助验证：检查内部服务标识头
+        if internal_service in ['poetize-java', 'poetize-prerender', 'poetize-nginx']:
+            logger.info(f"✅ 内部网段+服务标识验证通过: {client_ip} ({internal_service})")
+            return True
+        
+        # 辅助验证：检查User-Agent
+        elif 'node-fetch' in user_agent or 'axios' in user_agent or 'python-requests' in user_agent or 'poetize-prerender' in user_agent:
+            logger.info(f"✅ 内部网段+User-Agent验证通过: {client_ip} (UA: {user_agent})")
+            return True
+        
+        # 辅助验证：检查管理员标志
+        elif admin_flag == 'true':
+            logger.info(f"✅ 内部网段+管理员标志验证通过: {client_ip}")
+            return True
+        
+        # 内部网段但缺少辅助验证，记录警告但仍然通过（向后兼容）
+        else:
+            logger.warning(f"⚠️ 内部网段IP但缺少辅助验证标识: {client_ip}, 请求: {request.url.path}")
+            logger.warning(f"建议在请求头中添加 X-Internal-Service 标识以增强安全性")
+            return True
+    
+    # 备用验证：检查是否在受信任IP列表中（向后兼容）
     current_trusted_ips = get_current_trusted_ips()
-    logger.info(f"当前受信任的IP列表: {current_trusted_ips}")
-    
-    # 检查是否来自内部服务的请求 - 使用实时IP列表
     if client_ip in current_trusted_ips:
-        logger.info(f"✅ 内部IP匹配成功，直接信任: {client_ip}, 请求: {request.url.path}")
-        return True
-    
-    # 检查是否是通过User-Agent识别的内部服务
-    user_agent = request.headers.get('User-Agent', '')
-    logger.info(f"检查User-Agent: {user_agent}")
-    if 'node-fetch' in user_agent or 'axios' in user_agent or 'python-requests' in user_agent or 'poetize-prerender' in user_agent:
-        # 内部服务通常使用这些HTTP客户端
-        logger.info(f"✅ User-Agent匹配成功，直接信任: {client_ip}, UA: {user_agent}")
-        return True
-    
-    # 检查是否有Java服务传来的管理员标志
-    admin_flag = request.headers.get('X-Admin-Request')
-    logger.info(f"检查X-Admin-Request头: {admin_flag}")
-    if admin_flag == 'true':
-        logger.info(f"✅ Java服务管理员标志匹配，直接通过: {request.url.path}")
-        return True
-    
-    # 检查是否有内部服务标识头
-    internal_service = request.headers.get('X-Internal-Service')
-    logger.info(f"检查X-Internal-Service头: {internal_service}")
-    if internal_service in ['poetize-java', 'poetize-prerender', 'poetize-nginx']:
-        logger.info(f"✅ 内部服务标识匹配成功，直接通过: {internal_service}, IP: {client_ip}")
+        logger.info(f"✅ 受信任IP列表验证通过: {client_ip}, 请求: {request.url.path}")
         return True
     
     # 检查限流
@@ -314,4 +370,4 @@ async def admin_required(
                 'message': f'验证权限时发生错误: {str(e)}',
                 'data': None
             }
-        ) 
+        )

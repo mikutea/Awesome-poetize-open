@@ -24,7 +24,8 @@ services:
       - "443:443/tcp"
       - "443:443/udp"
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.2
     depends_on:
       poetize-ui:
         condition: service_completed_successfully
@@ -49,7 +50,8 @@ services:
       - poetize_node_modules:/app/src/node_modules
       - poetize_ui_dist:/app/dist
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.3
     restart: "no"
     working_dir: /app/src
     command: ["sh", "-c", "echo '=== 构建博客前端 (Vue 2) ===' && \
@@ -97,7 +99,8 @@ services:
       - im_node_modules:/app/src/node_modules
       - poetize_im_dist:/app/dist
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.4
     # depends_on:
     #   poetize-ui:
     #     condition: service_completed_successfully
@@ -136,6 +139,9 @@ services:
       - web-root:/usr/share/nginx/html
       - ./docker/nginx/certbot-logs:/var/log/letsencrypt
       - ./docker/nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
+    networks:
+      poetize-network:
+        ipv4_address: 172.28.147.5
     depends_on:
       - nginx
     restart: "no"
@@ -171,10 +177,12 @@ services:
       - OLLAMA_MODEL_NAME=qwen3:0.6b
       - NGINX_URL=http://nginx/flush_seo_cache
       - PRERENDER_URL=http://poetize-prerender:4000
+      - DOCKER_SUBNET=172.28.147.0/28
     volumes:
       - ./py/data:/app/data
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.6
     depends_on:
       java-backend:
         condition: service_healthy
@@ -240,7 +248,8 @@ services:
       - PRERENDER_URL=http://poetize-prerender:4000/render
       - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.7
     depends_on:
       mysql:
         condition: service_healthy
@@ -273,7 +282,8 @@ services:
       - MARIADB_USER=poetize
       - MARIADB_PASSWORD=poetize123
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.8
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h localhost -u poetize -ppoetize123 && echo 'SHOW ENGINES' | mariadb -h localhost -u poetize -ppoetize123 | grep -q 'ROCKSDB'"]
@@ -304,7 +314,8 @@ services:
       - poetize_ui_dist:/app/dist
       - ./poetize-ui:/app/poetize-ui
     networks:
-      - poetize-network
+      poetize-network:
+        ipv4_address: 172.28.147.9
     depends_on:
       nginx:
         condition: service_started
@@ -319,6 +330,12 @@ services:
 networks:
   poetize-network:
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.147.0/28
+          gateway: 172.28.147.1
+          ip_range: 172.28.147.0/28
 
 volumes:
   mysql_data:
