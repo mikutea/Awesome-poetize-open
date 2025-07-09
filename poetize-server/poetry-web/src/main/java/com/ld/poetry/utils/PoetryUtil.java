@@ -1,24 +1,50 @@
 package com.ld.poetry.utils;
 
 import com.alibaba.fastjson.JSON;
+import com.ld.poetry.config.AsyncUserContext;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.utils.cache.PoetryCache;
+import com.ld.poetry.utils.cache.UserCacheManager;
+import com.ld.poetry.utils.IpUtil;
+import com.ld.poetry.utils.RetryUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.annotation.PostConstruct;
 import java.net.InetAddress;
 import java.util.List;
 
+@Component
+@Slf4j
 public class PoetryUtil {
 
+    @Autowired
+    private UserCacheManager userCacheManager;
+
+    private static UserCacheManager staticUserCacheManager;
+
+    @PostConstruct
+    public void init() {
+        staticUserCacheManager = userCacheManager;
+    }
+
     public static HttpServletRequest getRequest() {
-        return ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        try {
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            return attributes != null ? attributes.getRequest() : null;
+        } catch (IllegalStateException e) {
+            // 在异步线程中RequestContextHolder可能不可用
+            return null;
+        }
     }
 
     public static void checkEmail() {
@@ -29,8 +55,20 @@ public class PoetryUtil {
     }
 
     public static String getToken() {
-        String token = PoetryUtil.getRequest().getHeader(CommonConst.TOKEN_HEADER);
-        return "null".equals(token) ? null : token;
+        // 首先尝试从异步上下文获取Token
+        String asyncToken = AsyncUserContext.getToken();
+        if (StringUtils.hasText(asyncToken)) {
+            return asyncToken;
+        }
+        
+        // 如果异步上下文中没有，尝试从请求中获取
+        HttpServletRequest request = getRequest();
+        if (request != null) {
+            String token = request.getHeader(CommonConst.TOKEN_HEADER);
+            return "null".equals(token) ? null : token;
+        }
+        
+        return null;
     }
 
     public static String getTokenWithoutBearer() {
@@ -40,9 +78,62 @@ public class PoetryUtil {
         }
         return token;
     }
+    
+    /**
+     * 获取当前用户Token，如果获取不到则抛出异常
+     * 适用于必须要求用户登录的场景
+     * @return 当前用户Token
+     * @throws PoetryRuntimeException 如果用户未登录或获取Token失败
+     */
+    public static String getTokenRequired() {
+        String token = getToken();
+        if (!StringUtils.hasText(token)) {
+            throw new PoetryRuntimeException("用户未登录或Token获取失败，请重新登录");
+        }
+        return token;
+    }
 
     public static User getCurrentUser() {
-        User user = (User) PoetryCache.get(PoetryUtil.getTokenWithoutBearer());
+        return RetryUtil.executeWithRetry(() -> {
+            // 首先尝试从异步上下文获取用户
+            User asyncUser = AsyncUserContext.getUser();
+            if (asyncUser != null) {
+                return asyncUser;
+            }
+            
+            // 如果异步上下文中没有，尝试通过Token从缓存获取
+            String token = getTokenWithoutBearer();
+            if (StringUtils.hasText(token)) {
+                // 使用用户缓存管理器获取用户信息
+                if (staticUserCacheManager != null) {
+                    User user = staticUserCacheManager.getUserByToken(token);
+                    if (user != null) {
+                        return user;
+                    }
+                }
+                
+                // 降级到直接从PoetryCache获取
+                User user = (User) PoetryCache.get(token);
+                if (user != null) {
+                    return user;
+                }
+            }
+            
+            return null;
+        }, 2, 50, "获取当前用户");
+    }
+    
+    /**
+     * 获取当前用户，如果获取不到则抛出异常
+     * 适用于必须要求用户登录的场景
+     * @return 当前用户
+     * @throws PoetryRuntimeException 如果用户未登录或获取用户信息失败
+     */
+    public static User getCurrentUserRequired() {
+        User user = getCurrentUser();
+        if (user == null) {
+            throw new PoetryRuntimeException("用户未登录或用户信息获取失败，请重新登录");
+        }
         return user;
     }
 
@@ -64,49 +155,110 @@ public class PoetryUtil {
     }
 
     public static Integer getUserId() {
-        try {
-            // 尝试获取token（不带Bearer前缀）
-            String tokenWithoutBearer = getTokenWithoutBearer();
-            if (StringUtils.hasText(tokenWithoutBearer)) {
-                User user = (User) PoetryCache.get(tokenWithoutBearer);
-                if (user != null) {
-                    return user.getId();
+        return RetryUtil.executeWithRetry(() -> {
+            try {
+                // 首先尝试从异步上下文获取用户ID
+                Integer asyncUserId = AsyncUserContext.getCurrentUserId();
+                if (asyncUserId != null) {
+                    return asyncUserId;
                 }
                 
-                // 如果直接获取失败，检查是否为管理员token
-                if (tokenWithoutBearer.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-                    User adminUser = getAdminUser();
-                    if (adminUser != null) {
-                        return adminUser.getId();
+                // 尝试获取token（不带Bearer前缀）
+                String tokenWithoutBearer = getTokenWithoutBearer();
+                if (StringUtils.hasText(tokenWithoutBearer)) {
+                    // 使用用户缓存管理器获取用户信息
+                    if (staticUserCacheManager != null) {
+                        User user = staticUserCacheManager.getUserByToken(tokenWithoutBearer);
+                        if (user != null) {
+                            return user.getId();
+                        }
+                    }
+                    
+                    // 降级到直接从PoetryCache获取
+                    User user = (User) PoetryCache.get(tokenWithoutBearer);
+                    if (user != null) {
+                        return user.getId();
+                    }
+                    
+                    // 如果直接获取失败，检查是否为管理员token
+                    if (tokenWithoutBearer.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+                        User adminUser = getAdminUser();
+                        if (adminUser != null) {
+                            return adminUser.getId();
+                        }
                     }
                 }
-            }
-            
-            // 如果获取不到，尝试从请求属性获取
-            HttpServletRequest request = getRequest();
-            if (request != null) {
-                // 从请求属性中获取用户ID
-                Object userIdAttr = request.getAttribute("userId");
-                if (userIdAttr != null) {
-                    try {
-                        return Integer.parseInt(userIdAttr.toString());
-                    } catch (NumberFormatException e) {
-                        // 忽略转换异常
+                
+                // 如果获取不到，尝试从请求属性获取
+                HttpServletRequest request = getRequest();
+                if (request != null) {
+                    // 从请求属性中获取用户ID
+                    Object userIdAttr = request.getAttribute("userId");
+                    if (userIdAttr != null) {
+                        try {
+                            return Integer.parseInt(userIdAttr.toString());
+                        } catch (NumberFormatException e) {
+                            // 忽略转换异常
+                        }
                     }
                 }
+                
+                return null;
+                
+            } catch (PoetryRuntimeException e) {
+                // 重新抛出业务异常
+                throw e;
+            } catch (Exception e) {
+                // 捕获所有其他异常，避免认证失败导致整个请求失败
+                System.err.println("获取用户ID时发生异常: " + e.getMessage());
+                e.printStackTrace();
+                return null;
             }
-        } catch (Exception e) {
-            // 捕获所有异常，避免认证失败导致整个请求失败
-            System.err.println("获取用户ID时发生异常: " + e.getMessage());
-            e.printStackTrace();
+        }, 2, 50, "获取用户ID");
+    }
+    
+    /**
+     * 获取当前用户ID，如果获取不到则抛出异常
+     * 适用于必须要求用户登录的场景
+     * @return 当前用户ID
+     * @throws PoetryRuntimeException 如果用户未登录或获取用户ID失败
+     */
+    public static Integer getUserIdRequired() {
+        Integer userId = getUserId();
+        if (userId == null) {
+            throw new PoetryRuntimeException("用户未登录或用户ID获取失败，请重新登录");
         }
-        
-        return null;
+        return userId;
     }
 
     public static String getUsername() {
-        User user = (User) PoetryCache.get(PoetryUtil.getToken());
-        return user == null ? null : user.getUsername();
+        return RetryUtil.executeWithRetry(() -> {
+            // 首先尝试从异步上下文获取用户名
+            String asyncUsername = AsyncUserContext.getCurrentUsername();
+            if (StringUtils.hasText(asyncUsername)) {
+                return asyncUsername;
+            }
+            
+            // 如果异步上下文中没有，尝试通过Token从缓存获取
+            String token = getTokenWithoutBearer();
+            if (StringUtils.hasText(token)) {
+                // 使用用户缓存管理器获取用户信息
+                if (staticUserCacheManager != null) {
+                    User user = staticUserCacheManager.getUserByToken(token);
+                    if (user != null && StringUtils.hasText(user.getUsername())) {
+                        return user.getUsername();
+                    }
+                }
+                
+                // 降级到直接从PoetryCache获取
+                User user = (User) PoetryCache.get(token);
+                if (user != null && StringUtils.hasText(user.getUsername())) {
+                    return user.getUsername();
+                }
+            }
+            
+            return null;
+        }, 2, 50, "获取用户名");
     }
 
     public static String getRandomAvatar(String key) {
@@ -172,57 +324,50 @@ public class PoetryUtil {
         return null;
     }
 
+    /**
+     * 获取客户端IP地址
+     * 使用增强的IP获取工具，提供更好的容错和监控能力
+     */
     public static String getIpAddr(HttpServletRequest request) {
-        String ipAddress = null;
-        try {
-            // 优先获取X-Real-IP头部
-            ipAddress = request.getHeader("X-Real-IP");
-            if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
-                ipAddress = request.getHeader("x-forwarded-for");
-            }
-            if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
-                ipAddress = request.getHeader("Proxy-Client-IP");
-            }
-            if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
-                ipAddress = request.getHeader("WL-Proxy-Client-IP");
-            }
-            if (ipAddress == null || ipAddress.length() == 0 || "unknown".equalsIgnoreCase(ipAddress)) {
-                ipAddress = request.getRemoteAddr();
-            }
-            
-            // 对于通过多个代理的情况，第一个IP为客户端真实IP,多个IP按照','分割
-            if (ipAddress != null && ipAddress.indexOf(",") > 0) {
-                ipAddress = ipAddress.substring(0, ipAddress.indexOf(",")).trim();
-            }
-            
-            // 过滤Docker内部IP和本地IP
-            if (ipAddress != null) {
-                // 如果是本地回环地址，尝试使用X-Forwarded-For中的真实IP
-                if (ipAddress.equals("127.0.0.1") || ipAddress.equals("0:0:0:0:0:0:0:1") || ipAddress.equals("::1")) {
-                    String forwardedFor = request.getHeader("x-forwarded-for");
-                    if (forwardedFor != null && !forwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(forwardedFor)) {
-                        String[] ips = forwardedFor.split(",");
-                        for (String ip : ips) {
-                            ip = ip.trim();
-                            if (!isInternalIP(ip)) {
-                                ipAddress = ip;
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                // 如果仍然是内部IP，标记为未知
-                if (isInternalIP(ipAddress)) {
-                    ipAddress = "unknown";
-                }
-            }
-        } catch (Exception e) {
-            // 异常时设置为unknown而不是null
-            ipAddress = "unknown";
-        }
-        
-        return ipAddress != null ? ipAddress : "unknown";
+        return IpUtil.getClientRealIp(request);
+    }
+    
+    /**
+     * 获取客户端IP地址（兼容旧版本方法名）
+     * @deprecated 建议使用 getIpAddr(HttpServletRequest request)
+     */
+    @Deprecated
+    public static String getClientIp(HttpServletRequest request) {
+        return getIpAddr(request);
+    }
+    
+    /**
+     * 获取当前请求的客户端IP地址
+     */
+    public static String getCurrentClientIp() {
+        HttpServletRequest request = getRequest();
+        return getIpAddr(request);
+    }
+    
+    /**
+     * 验证IP地址格式是否正确
+     */
+    public static boolean isValidIp(String ip) {
+        return IpUtil.isValidIpFormat(ip);
+    }
+    
+    /**
+     * 判断是否为内网IP
+     */
+    public static boolean isInternalIp(String ip) {
+        return IpUtil.isInternalIp(ip);
+    }
+    
+    /**
+     * 获取IP获取统计信息
+     */
+    public static String getIpStatistics() {
+        return IpUtil.getIpStatistics();
     }
     
     /**

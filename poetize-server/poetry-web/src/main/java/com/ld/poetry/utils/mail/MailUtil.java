@@ -3,6 +3,7 @@ package com.ld.poetry.utils.mail;
 import com.alibaba.fastjson.JSON;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.service.MailService;
+import com.ld.poetry.utils.AsyncTaskUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -105,22 +106,41 @@ public class MailUtil {
      */
     @org.springframework.scheduling.annotation.Async
     public void sendMailMessage(List<String> to, String subject, String text) {
-        log.info("发送邮件===================");
-        log.info("to：{}", JSON.toJSONString(to));
-        log.info("subject：{}", subject);
-        log.info("text：{}", text);
+        // 记录异步任务开始
+        AsyncTaskUtil.logUserOperation("邮件发送", String.format("收件人: %s, 主题: %s", 
+                JSON.toJSONString(to), subject));
+        
+        log.info("异步邮件发送开始 - 用户: {}, 收件人: {}, 主题: {}", 
+                AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to), subject);
         
         try {
+            // 验证用户上下文（邮件发送通常不强制要求用户上下文）
+            if (AsyncTaskUtil.hasUserContext()) {
+                log.debug("邮件发送任务 - 当前用户: {} (ID: {})", 
+                        AsyncTaskUtil.getCurrentUsername(), AsyncTaskUtil.getCurrentUserId());
+            } else {
+                log.debug("邮件发送任务 - 无用户上下文（系统邮件）");
+            }
+            
             // 使用MailService发送邮件，这样会根据配置的邮箱信息发送
             boolean success = mailService.sendMail(to, subject, text, true, null);
             
             if (success) {
-                log.info("发送成功==================");
+                AsyncTaskUtil.logUserOperation("邮件发送成功", String.format("收件人: %s", JSON.toJSONString(to)));
+                log.info("异步邮件发送成功 - 用户: {}, 收件人: {}", 
+                        AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to));
             } else {
-                log.error("邮件发送失败");
+                AsyncTaskUtil.logUserOperation("邮件发送失败", "邮件服务返回失败");
+                log.error("异步邮件发送失败 - 用户: {}, 收件人: {}, 原因: 邮件服务返回失败", 
+                        AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to));
             }
         } catch (Exception e) {
-            log.error("邮件发送失败：", e);
+            AsyncTaskUtil.logUserOperation("邮件发送异常", e.getMessage());
+            log.error("异步邮件发送异常 - 用户: {}, 收件人: {}, 异常: {}", 
+                    AsyncTaskUtil.getCurrentUsername(), JSON.toJSONString(to), e.getMessage(), e);
+        } finally {
+            // 记录任务执行时间
+            AsyncTaskUtil.logTaskExecutionTime("邮件发送");
         }
     }
 }

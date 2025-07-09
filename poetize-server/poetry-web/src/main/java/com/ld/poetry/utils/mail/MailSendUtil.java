@@ -11,7 +11,10 @@ import com.ld.poetry.service.CommentService;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.cache.PoetryCache;
+import com.ld.poetry.utils.cache.UserCacheManager;
+import com.ld.poetry.utils.RetryUtil;
 import com.ld.poetry.vo.CommentVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -23,6 +26,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
+@Slf4j
 public class MailSendUtil {
 
     @Autowired
@@ -31,25 +35,50 @@ public class MailSendUtil {
     @Autowired
     private MailUtil mailUtil;
 
+    @Autowired
+    private UserCacheManager userCacheManager;
+
     public void sendCommentMail(CommentVO commentVO, Article one, CommentService commentService) {
+        RetryUtil.executeWithRetryVoid(() -> {
+            try {
+                Integer currentUserId = PoetryUtil.getUserId();
+                User adminUser = PoetryUtil.getAdminUser();
+                sendCommentMailAsync(commentVO, one, commentService, currentUserId, adminUser);
+            } catch (Exception e) {
+                log.warn("获取用户信息失败，使用异步安全模式发送邮件: {}", e.getMessage());
+                sendCommentMailAsync(commentVO, one, commentService, null, null);
+            }
+        });
+    }
+
+    /**
+     * 异步安全的评论邮件发送方法
+     * @param commentVO 评论信息
+     * @param one 文章信息
+     * @param commentService 评论服务
+     * @param currentUserId 当前用户ID（可为null）
+     * @param adminUser 管理员用户（可为null）
+     */
+    public void sendCommentMailAsync(CommentVO commentVO, Article one, CommentService commentService, Integer currentUserId, User adminUser) {
         List<String> mail = new ArrayList<>();
         String toName = "";
         if (commentVO.getParentUserId() != null) {
             User user = commonQuery.getUser(commentVO.getParentUserId());
-            if (user != null && !user.getId().equals(PoetryUtil.getUserId()) && StringUtils.hasText(user.getEmail())) {
+            if (user != null && (currentUserId == null || !user.getId().equals(currentUserId)) && StringUtils.hasText(user.getEmail())) {
                 toName = user.getUsername();
                 mail.add(user.getEmail());
             }
         } else {
             if (CommentTypeEnum.COMMENT_TYPE_MESSAGE.getCode().equals(commentVO.getType()) ||
                     CommentTypeEnum.COMMENT_TYPE_LOVE.getCode().equals(commentVO.getType())) {
-                User adminUser = PoetryUtil.getAdminUser();
-                if (StringUtils.hasText(adminUser.getEmail()) && !Objects.equals(PoetryUtil.getUserId(), adminUser.getId())) {
+                if (adminUser != null && StringUtils.hasText(adminUser.getEmail()) && 
+                    (currentUserId == null || !Objects.equals(currentUserId, adminUser.getId()))) {
                     mail.add(adminUser.getEmail());
                 }
             } else if (CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode().equals(commentVO.getType())) {
                 User user = commonQuery.getUser(one.getUserId());
-                if (user != null && StringUtils.hasText(user.getEmail()) && !user.getId().equals(PoetryUtil.getUserId())) {
+                if (user != null && StringUtils.hasText(user.getEmail()) && 
+                    (currentUserId == null || !user.getId().equals(currentUserId))) {
                     mail.add(user.getEmail());
                 }
             }
@@ -60,8 +89,17 @@ public class MailSendUtil {
             if (CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode().equals(commentVO.getType())) {
                 sourceName = one.getArticleTitle();
             }
+            
+            // 安全获取用户名
+            String currentUsername = "匿名用户";
+            try {
+                currentUsername = PoetryUtil.getUsername();
+            } catch (Exception e) {
+                log.debug("无法获取当前用户名，使用默认值");
+            }
+            
             String commentMail = getCommentMail(commentVO.getType(), sourceName,
-                    PoetryUtil.getUsername(),
+                    currentUsername,
                     commentVO.getCommentContent(),
                     toName,
                     commentVO.getParentCommentId(), commentService);
@@ -116,6 +154,17 @@ public class MailSendUtil {
     }
 
     public void sendImMail(ImChatUserMessage message) {
+        // 使用重试机制发送IM邮件
+        RetryUtil.executeWithRetryVoid(() -> {
+            sendImMailAsync(message);
+        });
+    }
+
+    /**
+     * 异步安全的IM邮件发送方法
+     * @param message IM消息
+     */
+    public void sendImMailAsync(ImChatUserMessage message) {
         if (!message.getMessageStatus()) {
             List<String> mail = new ArrayList<>();
             String username = "";

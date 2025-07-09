@@ -14,7 +14,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -33,41 +35,62 @@ public class ThreadContextConfig implements AsyncConfigurer {
     @Bean
     public TaskDecorator contextPropagatingTaskDecorator() {
         return task -> {
-            // 获取主线程的请求上下文
-            RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
-            
-            // 获取主线程的用户Token
-            String token = PoetryUtil.getToken();
+            // 获取主线程的用户Token（如果需要的话）
+            String token = null;
             User currentUser = null;
-            if (StringUtils.hasText(token)) {
-                currentUser = (User) PoetryCache.get(token);
+            
+            try {
+                // 安全地获取Token，避免RequestAttributes异常
+                RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+                if (requestAttributes != null) {
+                    HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+                    if (request != null) {
+                        token = request.getHeader(CommonConst.TOKEN_HEADER);
+                        if ("null".equals(token)) {
+                            token = null;
+                        }
+                        if (StringUtils.hasText(token)) {
+                            currentUser = (User) PoetryCache.get(token);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // 如果获取Token失败，记录日志但不影响异步任务执行
+                log.debug("异步任务中获取用户Token失败: {}", e.getMessage());
             }
             
             // 保存最终用户对象，供内部类使用
             final User finalUser = currentUser;
+            final String finalToken = token;
             
             return () -> {
                 try {
-                    // 在新线程设置请求上下文
-                    if (requestAttributes != null) {
-                        RequestContextHolder.setRequestAttributes(requestAttributes);
+                    // 设置异步任务生命周期管理
+                    AsyncUserContext.setStartTime();
+                    
+                    // 设置用户上下文到异步线程
+                    if (finalUser != null) {
+                        AsyncUserContext.setUser(finalUser);
+                    }
+                    if (finalToken != null) {
+                        AsyncUserContext.setToken(finalToken);
                     }
                     
-                    // 模拟将用户信息存入线程本地变量
-                    if (finalUser != null && StringUtils.hasText(token)) {
-                        // 这样在新线程中PoetryUtil.getUserId()就能正常工作
-                        // 通过在请求上下文中添加Token信息
-                        if (requestAttributes != null) {
-                            requestAttributes.setAttribute(CommonConst.TOKEN_HEADER, token, RequestAttributes.SCOPE_REQUEST);
-                        }
-                        log.debug("线程上下文传递 - Token: {}, 用户ID: {}", token, finalUser.getId());
-                    }
+                    log.debug("异步任务开始 - 用户: {}, Token: {}", 
+                            finalUser != null ? finalUser.getUsername() : "匿名",
+                            finalToken != null ? finalToken.substring(0, Math.min(finalToken.length(), 10)) + "..." : "无");
                     
-                    // 执行原始任务
+                    // 执行异步任务
                     task.run();
+                    
+                    log.debug("异步任务执行成功");
+                } catch (Exception e) {
+                    log.error("异步任务执行失败 - 用户: {}, 异常: {}", 
+                            AsyncUserContext.getCurrentUsername(), e.getMessage(), e);
+                    throw e;
                 } finally {
-                    // 清理线程上下文
-                    RequestContextHolder.resetRequestAttributes();
+                    // 清理异步任务上下文
+                    AsyncUserContext.clear();
                 }
             };
         };
@@ -114,4 +137,4 @@ public class ThreadContextConfig implements AsyncConfigurer {
                     ex);
         };
     }
-} 
+}

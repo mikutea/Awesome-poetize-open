@@ -74,6 +74,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Autowired
     private MailUtil mailUtil;
 
+    @Autowired
+    private com.ld.poetry.utils.cache.UserCacheManager userCacheManager;
+
     @Value("${user.code.format}")
     private String codeFormat;
 
@@ -224,12 +227,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             log.info("生成新的管理员token - 用户: {}, token: {}", account, adminToken);
             PoetryCache.put(adminToken, one, CommonConst.TOKEN_EXPIRE);
             PoetryCache.put(CommonConst.ADMIN_TOKEN + one.getId(), adminToken, CommonConst.TOKEN_EXPIRE);
+            // 缓存用户信息到UserCacheManager
+            userCacheManager.cacheUserByToken(adminToken, one);
+            userCacheManager.cacheUserById(one.getId(), one);
         } else if (!isAdmin && !StringUtils.hasText(userToken)) {
             String uuid = UUID.randomUUID().toString().replaceAll("-", "");
             userToken = CommonConst.USER_ACCESS_TOKEN + uuid;
             log.info("生成新的用户token - 用户: {}, token: {}", account, userToken);
             PoetryCache.put(userToken, one, CommonConst.TOKEN_EXPIRE);
             PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), userToken, CommonConst.TOKEN_EXPIRE);
+            // 缓存用户信息到UserCacheManager
+            userCacheManager.cacheUserByToken(userToken, one);
+            userCacheManager.cacheUserById(one.getId(), one);
         }
 
         // 构建返回数据
@@ -265,6 +274,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             PoetryCache.remove(CommonConst.ADMIN_TOKEN + userId);
         }
         PoetryCache.remove(token);
+        
+        // 清除UserCacheManager中的用户缓存
+        userCacheManager.removeUserByToken(token);
+        userCacheManager.removeUserById(userId);
+        
         return PoetryResult.success();
     }
 
@@ -331,6 +345,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         String userToken = CommonConst.USER_ACCESS_TOKEN + UUID.randomUUID().toString().replaceAll("-", "");
         PoetryCache.put(userToken, one, CommonConst.TOKEN_EXPIRE);
         PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), userToken, CommonConst.TOKEN_EXPIRE);
+        
+        // 缓存用户信息到UserCacheManager
+        userCacheManager.cacheUserByToken(userToken, one);
+        userCacheManager.cacheUserById(one.getId(), one);
 
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(one, userVO);
@@ -394,6 +412,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         User one = lambdaQuery().eq(User::getId, u.getId()).one();
         PoetryCache.put(PoetryUtil.getToken(), one, CommonConst.TOKEN_EXPIRE);
         PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), PoetryUtil.getToken(), CommonConst.TOKEN_EXPIRE);
+        
+        // 更新UserCacheManager中的用户缓存
+        userCacheManager.cacheUserByToken(PoetryUtil.getToken(), one);
+        userCacheManager.cacheUserById(one.getId(), one);
 
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(one, userVO);

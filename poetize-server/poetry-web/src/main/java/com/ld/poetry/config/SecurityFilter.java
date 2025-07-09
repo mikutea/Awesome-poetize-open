@@ -1,5 +1,6 @@
 package com.ld.poetry.config;
 
+import com.ld.poetry.utils.IpUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -214,112 +215,26 @@ public class SecurityFilter extends OncePerRequestFilter {
     
     /**
      * 获取客户端真实IP地址
+     * 使用增强的IP获取工具，提供更好的容错和监控能力
      */
     private String getClientIpAddress(HttpServletRequest request) {
-        try {
-            // 尝试从X-Forwarded-For获取（反向代理场景）
-            String xForwardedFor = request.getHeader("X-Forwarded-For");
-            if (isValidIP(xForwardedFor)) {
-                // 取第一个IP（客户端真实IP）
-                String ip = xForwardedFor.split(",")[0].trim();
-                if (isValidIP(ip)) {
-                    return ip;
-                }
-            }
-            
-            // 尝试从X-Real-IP获取（Nginx代理场景）
-            String xRealIp = request.getHeader("X-Real-IP");
-            if (isValidIP(xRealIp)) {
-                return xRealIp;
-            }
-            
-            // 尝试从Proxy-Client-IP获取
-            String proxyClientIp = request.getHeader("Proxy-Client-IP");
-            if (isValidIP(proxyClientIp)) {
-                return proxyClientIp;
-            }
-            
-            // 尝试从WL-Proxy-Client-IP获取（WebLogic）
-            String wlProxyClientIp = request.getHeader("WL-Proxy-Client-IP");
-            if (isValidIP(wlProxyClientIp)) {
-                return wlProxyClientIp;
-            }
-            
-            // 最后尝试从RemoteAddr获取
-            String remoteAddr = request.getRemoteAddr();
-            if (isValidIP(remoteAddr)) {
-                return remoteAddr;
-            }
-            
-            // 如果所有方法都获取不到有效IP，返回默认值
+        String ip = IpUtil.getClientRealIp(request);
+        
+        // 如果获取到的是unknown，在安全过滤器中使用unknown_ip以区分
+        if ("unknown".equals(ip)) {
             log.warn("无法获取客户端真实IP地址，请求URI: {}, User-Agent: {}", 
                     request.getRequestURI(), request.getHeader("User-Agent"));
             return "unknown_ip";
-            
-        } catch (Exception e) {
-            log.error("获取客户端IP地址时发生异常: {}", e.getMessage(), e);
-            return "unknown_ip";
         }
+        
+        return ip;
     }
     
     /**
-     * 验证IP地址是否有效
+     * 验证IP地址是否有效（简化版本，主要逻辑已移至IpUtil）
      */
     private boolean isValidIP(String ip) {
-        if (ip == null || ip.trim().isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            return false;
-        }
-        
-        ip = ip.trim();
-        
-        // 过滤掉明显无效的IP值
-        if ("::1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || "localhost".equals(ip)) {
-            return false;
-        }
-        
-        // 127.0.0.1本地回环地址在生产环境通常不是真实客户端IP
-        // 但在开发环境可能是有效的，所以保留但会在日志中标记
-        if ("127.0.0.1".equals(ip)) {
-            log.debug("检测到本地回环IP: {}，可能在开发环境或本地测试", ip);
-            return true;
-        }
-        
-        // 检查是否为内网IP（保留，因为可能是企业内网环境）
-        if (isPrivateIP(ip)) {
-            log.debug("检测到内网IP: {}，可能在企业内网或代理环境", ip);
-            return true;
-        }
-        
-        return true;
-    }
-    
-    /**
-     * 判断是否为内网IP
-     */
-    private boolean isPrivateIP(String ip) {
-        if (ip == null) return false;
-        
-        // 常见内网IP段
-        return ip.startsWith("192.168.") || 
-               ip.startsWith("10.") || 
-               (ip.startsWith("172.") && isInRange172(ip)) ||
-               ip.startsWith("169.254."); // 链路本地地址
-    }
-    
-    /**
-     * 检查是否在172.16.0.0-172.31.255.255范围内
-     */
-    private boolean isInRange172(String ip) {
-        try {
-            String[] parts = ip.split("\\.");
-            if (parts.length >= 2) {
-                int second = Integer.parseInt(parts[1]);
-                return second >= 16 && second <= 31;
-            }
-        } catch (NumberFormatException e) {
-            // 忽略解析错误
-        }
-        return false;
+        return IpUtil.isValidIpFormat(ip) && !"unknown".equalsIgnoreCase(ip);
     }
     
     /**
@@ -423,4 +338,4 @@ public class SecurityFilter extends OncePerRequestFilter {
         }
         return removed;
     }
-} 
+}
