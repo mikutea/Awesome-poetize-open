@@ -282,19 +282,74 @@
       }
       window.addEventListener("scroll", this.onScrollPage);
       
-      // 优先从localStorage恢复用户保存的主题
+      // 优先从localStorage恢复用户保存的主题（支持过期机制）
       try {
-        const savedTheme = localStorage.getItem('poetize-theme');
-        if (savedTheme) {
-          console.log('恢复保存的主题:', savedTheme);
-          if (savedTheme === 'dark') {
-            this.isDark = true;
-            this.applyDarkTheme();
-          } else {
-            this.isDark = false;
-            this.applyLightTheme();
+        const savedData = localStorage.getItem('poetize-theme');
+        if (savedData) {
+          // 尝试解析新格式（带时间戳）
+          try {
+            const themeData = JSON.parse(savedData);
+            
+            // 检查是否是新格式
+            if (themeData && themeData.timestamp && themeData.theme) {
+              const now = Date.now();
+              const elapsed = now - themeData.timestamp;
+              
+              // 检查是否过期（1天 = 24 * 60 * 60 * 1000 毫秒）
+              if (elapsed > themeData.expiry) {
+                console.log('主题设置已过期，清除并使用默认逻辑');
+                localStorage.removeItem('poetize-theme');
+                // 使用默认的白天夜晚逻辑
+                if (this.isDaylight()) {
+                  this.isDark = true;
+                  this.applyDarkTheme();
+                }
+              } else {
+                console.log(`恢复保存的主题: ${themeData.theme}，剩余有效时间: ${Math.round((themeData.expiry - elapsed) / (60 * 60 * 1000))}小时`);
+                if (themeData.theme === 'dark') {
+                  this.isDark = true;
+                  this.applyDarkTheme();
+                } else {
+                  this.isDark = false;
+                  this.applyLightTheme();
+                }
+                console.log('主题已从localStorage恢复');
+              }
+            } else {
+              // 旧格式，直接使用并升级为新格式
+              console.log('检测到旧格式主题数据，将升级为新格式');
+              if (savedData === 'dark') {
+                this.isDark = true;
+                this.applyDarkTheme();
+                // 升级为新格式
+                const themeData = {
+                  theme: 'dark',
+                  timestamp: Date.now(),
+                  expiry: 24 * 60 * 60 * 1000
+                };
+                localStorage.setItem('poetize-theme', JSON.stringify(themeData));
+              } else {
+                this.isDark = false;
+                this.applyLightTheme();
+                // 升级为新格式
+                const themeData = {
+                  theme: 'light',
+                  timestamp: Date.now(),
+                  expiry: 24 * 60 * 60 * 1000
+                };
+                localStorage.setItem('poetize-theme', JSON.stringify(themeData));
+              }
+              console.log('主题已从localStorage恢复并升级为新格式');
+            }
+          } catch (parseError) {
+            console.error('解析主题数据失败:', parseError);
+            localStorage.removeItem('poetize-theme');
+            // 使用默认逻辑
+            if (this.isDaylight()) {
+              this.isDark = true;
+              this.applyDarkTheme();
+            }
           }
-          console.log('主题已从localStorage恢复');
         } else {
           console.log('未找到保存的主题，使用默认逻辑');
           // 如果没有保存的主题，则使用原来的白天夜晚逻辑
@@ -571,24 +626,33 @@
       },
       changeColor() {
         this.isDark = !this.isDark;
-        
         if (this.isDark) {
           this.applyDarkTheme();
           
-          // 保存深色主题到localStorage
+          // 保存深色主题到localStorage（带过期时间）
           try {
-            localStorage.setItem('poetize-theme', 'dark');
-            console.log('主题已保存到localStorage: dark');
+            const themeData = {
+              theme: 'dark',
+              timestamp: Date.now(),
+              expiry: 24 * 60 * 60 * 1000 // 1天过期时间（毫秒）
+            };
+            localStorage.setItem('poetize-theme', JSON.stringify(themeData));
+            console.log('主题已保存到localStorage: dark，将在1天后过期');
           } catch (error) {
             console.error('保存主题到localStorage失败:', error);
           }
         } else {
           this.applyLightTheme();
           
-          // 保存浅色主题到localStorage
+          // 保存浅色主题到localStorage（带过期时间）
           try {
-            localStorage.setItem('poetize-theme', 'light');
-            console.log('主题已保存到localStorage: light');
+            const themeData = {
+              theme: 'light',
+              timestamp: Date.now(),
+              expiry: 24 * 60 * 60 * 1000 // 1天过期时间（毫秒）
+            };
+            localStorage.setItem('poetize-theme', JSON.stringify(themeData));
+            console.log('主题已保存到localStorage: light，将在1天后过期');
           } catch (error) {
             console.error('保存主题到localStorage失败:', error);
           }
@@ -607,6 +671,9 @@
         root.style.setProperty("--favoriteBg", "#1e1e1e");
         root.style.setProperty("--whiteMask", "#383838");
         root.style.setProperty("--inputBackground", "#383838");
+        root.style.setProperty("--secondaryText", "#B0B0B0");
+        // 设置卡片背景RGB值用于半透明背景
+        root.style.setProperty("--card-bg-rgb", "39, 39, 39");
       },
       
       applyLightTheme() {
@@ -620,6 +687,9 @@
         root.style.setProperty("--commentContent", "#F7F9FE");
         root.style.setProperty("--favoriteBg", "#f7f9fe");
         root.style.setProperty("--inputBackground", "#f5f5f5");
+        root.style.setProperty("--secondaryText", "#666666");
+        // 设置卡片背景RGB值用于半透明背景
+        root.style.setProperty("--card-bg-rgb", "255, 255, 255");
       },
       toTop() {
         window.scrollTo({
@@ -667,8 +737,29 @@
       // 根据后台配置重新判断并自动应用夜间主题（仅当用户未手动设置主题时调用）
       maybeApplyAutoNight() {
         try {
-          const saved = localStorage.getItem('poetize-theme');
-          if (saved) return; // 用户已手动选择主题，尊重用户
+          const savedData = localStorage.getItem('poetize-theme');
+          if (savedData) {
+            // 检查是否有有效的主题设置
+            try {
+              const themeData = JSON.parse(savedData);
+              if (themeData && themeData.timestamp && themeData.theme) {
+                const now = Date.now();
+                const elapsed = now - themeData.timestamp;
+                
+                // 如果主题未过期，则尊重用户选择
+                if (elapsed <= themeData.expiry) {
+                  return; // 用户已手动选择主题且未过期，尊重用户
+                } else {
+                  // 主题已过期，清除并继续自动逻辑
+                  console.log('主题设置已过期，将使用自动夜间模式逻辑');
+                  localStorage.removeItem('poetize-theme');
+                }
+              }
+            } catch (parseError) {
+              // 旧格式或解析失败，认为用户有手动设置
+              return;
+            }
+          }
 
           if (this.isDaylight()) {
             this.isDark = true;

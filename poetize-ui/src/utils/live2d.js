@@ -4020,8 +4020,13 @@ ${formInfo.map(form => `- 表单 (${form.method} ${form.action}): ${form.fields.
   // 主题保存和恢复功能
   function saveThemeToStorage(theme) {
     try {
-      localStorage.setItem('poetize-theme', theme);
-      console.log(`主题已保存到localStorage: ${theme}`);
+      const themeData = {
+        theme: theme,
+        timestamp: Date.now(),
+        expiry: 24 * 60 * 60 * 1000 // 1天过期时间（毫秒）
+      };
+      localStorage.setItem('poetize-theme', JSON.stringify(themeData));
+      console.log(`主题已保存到localStorage: ${theme}，将在1天后过期`);
     } catch (error) {
       console.error('保存主题到localStorage失败:', error);
     }
@@ -4029,11 +4034,36 @@ ${formInfo.map(form => `- 表单 (${form.method} ${form.action}): ${form.fields.
 
   function loadThemeFromStorage() {
     try {
-      const savedTheme = localStorage.getItem('poetize-theme');
-      if (savedTheme) {
-        console.log(`从localStorage加载主题: ${savedTheme}`);
-        applyTheme(savedTheme);
-        return savedTheme;
+      const savedData = localStorage.getItem('poetize-theme');
+      if (savedData) {
+        // 尝试解析新格式（带时间戳）
+        try {
+          const themeData = JSON.parse(savedData);
+          
+          // 检查是否是新格式
+          if (themeData && themeData.timestamp && themeData.theme) {
+            const now = Date.now();
+            const elapsed = now - themeData.timestamp;
+            
+            // 检查是否过期（1天 = 24 * 60 * 60 * 1000 毫秒）
+            if (elapsed > themeData.expiry) {
+              console.log('主题设置已过期，清除并使用默认主题');
+              localStorage.removeItem('poetize-theme');
+              return null;
+            }
+            
+            console.log(`从localStorage加载主题: ${themeData.theme}，剩余有效时间: ${Math.round((themeData.expiry - elapsed) / (60 * 60 * 1000))}小时`);
+            applyTheme(themeData.theme);
+            return themeData.theme;
+          }
+        } catch (parseError) {
+          // 如果解析失败，可能是旧格式，直接使用
+          console.log('检测到旧格式主题数据，将升级为新格式');
+          applyTheme(savedData);
+          // 升级为新格式
+          saveThemeToStorage(savedData);
+          return savedData;
+        }
       }
     } catch (error) {
       console.error('从localStorage加载主题失败:', error);
@@ -4054,6 +4084,9 @@ ${formInfo.map(form => `- 表单 (${form.method} ${form.action}): ${form.fields.
       root.style.setProperty("--articleGreyFontColor", "#D4D4D4");
       root.style.setProperty("--commentContent", "#D4D4D4");
       root.style.setProperty("--favoriteBg", "#1e1e1e");
+      root.style.setProperty("--secondaryText", "#B0B0B0");
+      // 设置卡片背景RGB值用于半透明背景
+      root.style.setProperty("--card-bg-rgb", "39, 39, 39");
     } else {
       // 应用浅色主题
       root.style.setProperty("--background", "white");
@@ -4064,6 +4097,9 @@ ${formInfo.map(form => `- 表单 (${form.method} ${form.action}): ${form.fields.
       root.style.setProperty("--articleGreyFontColor", "#616161");
       root.style.setProperty("--commentContent", "#F7F9FE");
       root.style.setProperty("--favoriteBg", "#f7f9fe");
+      root.style.setProperty("--secondaryText", "#666666");
+      // 设置卡片背景RGB值用于半透明背景
+      root.style.setProperty("--card-bg-rgb", "255, 255, 255");
     }
   }
 
