@@ -2,7 +2,7 @@
 ## 作者: LeapYa
 ## 修改时间: 2025-07-10
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.4.1
+## 版本: 1.4.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -3279,9 +3279,22 @@ start_services() {
       warning "第 $retry_count 次启动失败（退出码: $START_RESULT）"
       
       if [ $retry_count -lt $max_retries ]; then
-        # 清理可能的残留容器
-        info "清理可能的残留容器..."
+        # 清理可能的残留容器和资源
+        info "清理可能的残留容器和资源..."
         run_docker_compose down --remove-orphans >/dev/null 2>&1 || true
+        
+        # 清理Docker缓存和无用资源
+        info "清理Docker缓存和无用资源..."
+        sudo docker system prune -f >/dev/null 2>&1 || true
+        sudo docker image prune -f >/dev/null 2>&1 || true
+        sudo docker network prune -f >/dev/null 2>&1 || true
+        sudo docker volume prune -f >/dev/null 2>&1 || true
+        
+        # 如果是构建失败，清理构建缓存
+        if [ -z "$SKIP_BUILD" ]; then
+          info "清理Docker构建缓存..."
+          sudo docker builder prune -f >/dev/null 2>&1 || true
+        fi
         
         # 计算重试延迟时间并等待
         local retry_delay=$((base_delay * (2 ** (retry_count - 1))))
@@ -3293,7 +3306,14 @@ start_services() {
   
   if [ "$start_success" = false ]; then
     error "服务启动失败，已重试 $max_retries 次，请检查日志"
-    error "可能的原因：网络连接问题、Docker资源不足等，可以清理Docker缓存后重试，如有问题，请提交issue。"
+    error "可能的原因：网络连接问题、Docker资源不足、镜像拉取失败等"
+    info "重试过程中已自动清理了Docker缓存、无用镜像、网络和卷"
+    info "建议检查以下内容："
+    info "  1. 网络连接是否正常"
+    info "  2. Docker守护进程是否正常运行"
+    info "  3. 磁盘空间是否充足"
+    info "  4. 查看详细错误日志: docker compose logs"
+    info "如问题持续存在，请提交issue并附上错误日志"
     exit 1
   fi
   
