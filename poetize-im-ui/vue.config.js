@@ -11,7 +11,8 @@ module.exports = {
   },
   publicPath: '/im/',
   lintOnSave: false,
-  productionSourceMap: false,
+  // 生产环境保留source map以便调试
+  productionSourceMap: true,
   transpileDependencies: [
     'naive-ui',
     'date-fns'

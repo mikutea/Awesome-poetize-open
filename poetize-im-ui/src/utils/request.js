@@ -22,6 +22,17 @@ axios.interceptors.request.use(function (config) {
 // 添加响应拦截器
 axios.interceptors.response.use(function (response) {
   if (response.data !== null && response.data.hasOwnProperty("code") && response.data.code !== 200) {
+    // 详细错误日志记录
+    console.group('🚨 HTTP响应错误');
+    console.error('错误码:', response.data.code);
+    console.error('错误信息:', response.data.message);
+    console.error('请求URL:', response.config.url);
+    console.error('请求方法:', response.config.method);
+    console.error('请求参数:', response.config.data || response.config.params);
+    console.error('响应数据:', response.data);
+    console.error('发生时间:', new Date().toLocaleString());
+    console.groupEnd();
+    
     if (response.data.code === 300) {
       store.commit("loadCurrentUser", {});
       localStorage.removeItem("userToken");
@@ -32,7 +43,24 @@ axios.interceptors.response.use(function (response) {
     return response;
   }
 }, function (error) {
-  // 对响应错误做点什么
+  // 网络错误详细日志
+  console.group('🚨 HTTP网络错误');
+  console.error('错误类型:', error.name);
+  console.error('错误信息:', error.message);
+  if (error.response) {
+    console.error('响应状态:', error.response.status);
+    console.error('响应头:', error.response.headers);
+    console.error('响应数据:', error.response.data);
+    console.error('请求URL:', error.response.config.url);
+    console.error('请求方法:', error.response.config.method);
+  } else if (error.request) {
+    console.error('请求对象:', error.request);
+    console.error('网络连接失败或超时');
+  }
+  console.error('错误堆栈:', error.stack);
+  console.error('发生时间:', new Date().toLocaleString());
+  console.groupEnd();
+  
   return Promise.reject(error);
 });
 
