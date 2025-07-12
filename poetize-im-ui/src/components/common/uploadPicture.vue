@@ -84,6 +84,9 @@
         } else if (this.storeType === "qiniu") {
           url = this.$store.state.sysConfig['qiniu.downloadUrl'] + response.key;
           this.$common.saveResource(this, this.prefix, url, file.size, file.raw.type, file.name, "qiniu");
+        } else if (this.storeType === "lsky") {
+          url = response.data;
+          this.$common.saveResource(this, this.prefix, url, file.size, file.raw.type, file.name, "lsky");
         }
         this.$emit("addPicture", url);
       },
@@ -127,6 +130,14 @@
           } catch (e) {
             return Promise.reject(e.message);
           }
+        } else if (this.storeType === "lsky") {
+          data.relativePath = key;
+          data.type = this.prefix;
+          data.storeType = this.storeType;
+          data.originalName = options.file.name;
+          data.file = options.file;
+
+          return this.$http.upload(this.$constant.baseURL + "/resource/upload", data, options);
         }
       },
 
