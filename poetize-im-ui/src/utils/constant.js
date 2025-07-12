@@ -1,19 +1,19 @@
 export default {
   // 测试环境
-  baseURL: "http://localhost:8081",
-  webBaseURL: "http://localhost",
-  imURL: "http://localhost:81/im",
-  imBaseURL: "localhost",
-  wsProtocol: "ws",
-  wsPort: "9324",
+  // baseURL: "http://localhost:8081",
+  // webBaseURL: "http://localhost",
+  // imURL: "http://localhost:81/im",
+  // imBaseURL: "localhost",
+  // wsProtocol: "ws",
+  // wsPort: "9324",
 
   // 生产环境
-  // baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
-  // webBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
-  // imURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
-  // imBaseURL: location.hostname + (location.port ? ':' + location.port : ''),
-  // wsProtocol: location.protocol === "http:" ? "ws" : "wss",
-  // wsPort: "",
+  baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
+  webBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
+  imURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
+  imBaseURL: location.hostname + (location.port ? ':' + location.port : ''),
+  wsProtocol: location.protocol === "http:" ? "ws" : "wss",
+  wsPort: "",
 
   webHistory: "/im/",
   hitokoto: "https://v1.hitokoto.cn",
@@ -24,8 +24,7 @@ export default {
   dog: "https://api.oick.cn/dog/api.php",
 
   //前后端定义的密钥，AES使用16位
-  cryptojs_key: "sarasarasarasara",
-
+  cryptojs_key: process.env.VUE_APP_POETIZE_AES_KEY || "sarasarasarasara",
   before_color_1: "black",
   after_color_1: "linear-gradient(45deg, #f43f3b, #ec008c)",
 
