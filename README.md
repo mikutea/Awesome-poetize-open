@@ -31,7 +31,6 @@
 - [🎨 项目预览](#-项目预览)
 - [🚀 快速开始](#-快速开始)
 - [📋 部署文档](#-部署文档)
-- [✨ 功能特性](#-功能特性)
 - [📝 配置指南](#-配置指南)
 - [🤝 贡献与许可](#-贡献与许可)
 - [🛠️ 开发指南](#️-开发指南)
@@ -43,24 +42,35 @@
 
 本项目基于原作者Sara的开源项目 [POETIZE最美博客](https://gitee.com/littledokey/poetize) 进行功能扩展和定制化开发。感谢原作者提供的优秀博客系统基础框架。
 
-⚠️ 本项目为非官方 fork，不代表原作者立场。
+**本分支新增/优化功能**
+
+1. 一键部署脚本 —— 一行命令自动完成环境配置、HTTPS配置和服务启动
+2. 后台权限管理 —— 支持多角色分级管理，提升安全性
+3. 多邮箱服务支持 —— 可配置多邮箱，提升邮件送达率
+4. 第三方登录集成 —— 支持GitHub、Google等主流平台登录
+5. 机器人验证功能 —— 集成滑动验证码，防止恶意注册
+6. SEO优化与预渲染 —— 本分支独有，自动生成sitemap、robots.txt及页面预渲染，极大提升搜索引擎收录与SEO效果
+7. 看板娘优化 —— Live2D看板娘可自定义、支持AI互动
+8. 导航栏优化 —— 支持自定义导航栏，布局更美观
+9. 评论体验优化 —— 评论内容自动保存，未登录也不丢失
+10. 增加兰空图床、简单图床的存储支持 —— 支持多种图片上传方式
+11. AI翻译 —— 支持中英互译，可用本地或API模型
+12. 页脚优化 —— 页脚信息更丰富、可自定义
+13. 图片压缩和转换WebP格式 —— 自动压缩图片，提升网站加载速度
+14. 智能摘要 —— 自动生成文章摘要，提升阅读体验
+15. 暗色模式优化、定时暗色模式 —— 支持夜间自动切换暗色主题，优化暗色模式
+16. 灰色模式 —— 支持全站灰色纪念模式
+17. 自定义错误页面 —— 提供友好的404、403等错误页面
 
 ## 📖 项目简介
 
-Poetize是一个将博客系统与即时通讯巧妙融合的内容平台，为用户提供一站式内容创作与社交交流体验。
+Poetize 优化版是一个以博客为核心的全栈平台，融合即时通讯和AI工具，支持一键部署，帮助创作者轻松发布内容并与读者互动。
 
 **适用人群**
 
 * **创作者/博主** – 拥有文章、图片墙、留言等全面功能，与读者直接互动
 * **开发学习者** – 基于Java+Vue全栈技术，集成前后端、数据库、即时通讯的学习项目
 * **小型社群** – 内容发布与成员交流（好友、群聊、朋友圈）一体化平台
-
-**特色功能**
-
-* **极简部署** – 得益于Docker容器化技术，只需一行命令即可完成从环境配置到服务启动的全流程
-* **安全增强** – 精细的权限管理，滑动拼图验证保障，限制请求，防止Dos攻击等
-* **功能扩展** – 支持多邮箱配置、支持主流第三方登录（GitHub/Google/Twitter等）
-* **体验优化** – 现代UI设计、可控Live2D看板娘、Python驱动SEO自动化、有更明显的错误提示等
 
 无论您是创建个人站点还是学习全栈开发，Poetize 优化版都是理想选择。
 
@@ -119,17 +129,21 @@ bash <(curl -sL install.leapya.com)
 
 ##### 系统兼容性测试结果
 
-| 操作系统类型          | CPU | 内存 | 存储 | 测试结果      | 备注                          |
-| --------------------- | --- | ---- | ---- | ------------- | ----------------------------- |
-| Ubuntu 18.04 x64      | 1核 | 4GB  | 30GB | ✅ 推荐       | 稳定性好，兼容性强            |
-| Debian 10.3.3 x64     | 1核 | 4GB  | 30GB | ✅ 推荐       | 轻量级选择，性能优            |
-| Ubuntu 18.04 x64      | 1核 | 2GB  | 30GB | ⚠️ 勉强可用 | 需启用2GB交换空间             |
-| Debian 10.3.3 x64     | 1核 | 2GB  | 30GB | ⚠️ 勉强可用 | 需启用2GB交换空间             |
-| CentOS 7.6 x64        | 2核 | 4GB  | 30GB | ✅ 可用       | 需最新版deploy脚本            |
-| AlmaLinux 8.5 x64     | 2核 | 4GB  | 30GB | ✅ 可用       | 需最新版deploy脚本            |
-| Alibaba Cloud Linux 2 | 2核 | 4GB  | 30GB | ✅ 可用       | 需特定配置调整                |
-| Windows Server        | -   | -    | -    | ❌ 不支持     | Docker兼容性问题，未做bat脚本 |
-| CentOS 6.x            | -   | -    | -    | ❌ 不支持     | 仓库已失效                    |
+| 操作系统类型           | CPU  | 内存 | 存储 | 测试结果    |
+| ---------------------- | ---- | ---- | ---- | ----------- |
+| Ubuntu 18.04+ x64      | 1核+ | 1G+  | 30GB | ✅ 推荐     |
+| Debian 10+ x64         | 1核+ | 1G+  | 30GB | ✅ 推荐     |
+| CentOS 7/8+ x64        | 1核+ | 1G+  | 30GB | ✅ 推荐     |
+| RHEL/Rocky/AlmaLinux   | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| Fedora/Oracle Linux    | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| Amazon Linux           | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| 阿里云/腾讯云 Linux    | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| 麒麟/统信UOS/Deepin    | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| openEuler/EulerOS      | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| Alpine/Arch Linux      | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| openSUSE               | 1核+ | 1G+  | 30GB | ✅ 支持     |
+| Windows Server/桌面版  | -    | -    | -    | ❌ 不支持   |
+| CentOS 6.x 及更早系统  | -    | -    | -    | ❌ 不支持   |
 
 #### 2. 环境准备
 
@@ -139,27 +153,21 @@ bash <(curl -sL install.leapya.com)
 
 #### 3. 部署步骤
 
-1. **拉取仓库**
+##### **快速部署方式**
 
 ```bash
-# 主源：
+# 以下方式任选其一即可
+# 方式一：交互模式：
 bash <(curl -sL install.leapya.com)
 
-# 如因一些网络问题，请使用备用源：
-bash <(curl -sL install.leapya.online)
+# 方式二：非交互模式(替换成自己的域名，每个域名使用-d隔开):
+bash <(curl -sL install.leapya.com) -d 域名.com -d www.域名.com
+
+# 方式三：或克隆本仓库使用deploy.sh脚本部署
+git clone https://github.com/LeapYa/Awesome-poetize-open.git && sudo chmod +x deploy.sh && sudo ./deploy.sh
 ```
 
-1. **启动脚本**
-
-```bash
-chmod +x ./deploy.sh && sudo ./deploy.sh
-```
-
-3. **配置设置**
-
-* 主域名与管理员邮箱
-
-3. **启动顺序**
+##### **启动顺序**
 
 * MySQL服务 → 数据初始化 → 后端服务 → 前端构建 → Nginx → 证书申请
 
@@ -167,8 +175,8 @@ chmod +x ./deploy.sh && sudo ./deploy.sh
 
 * 主站：`http(s)://域名/`
 * 聊天室：`http(s)://域名/im`
-* 管理后台：`http(s)://域名/login`
-* 默认账号：`Sara / aaa`
+* 管理后台：`http(s)://域名/admin`
+* 默认账号密码：`Sara / aaa`
 
 #### Ollama翻译模型配置（可选）
 
@@ -291,7 +299,7 @@ docker exec poetize-nginx /enable-https.sh
 ./deploy.sh
 
 # 参数部署
-./deploy.sh --domain example.com --email admin@example.com --enable-https
+./deploy.sh -d example.com -d www.example.com
 
 # 配置文件部署
 ./deploy.sh --config .poetize-config
@@ -303,11 +311,11 @@ docker exec poetize-nginx /enable-https.sh
 #### 参数说明
 
 * `-d, --domain` - 域名设置
-* `-e, --email` - 管理员邮箱
+* `-e, --email` - 管理员邮箱（非必须）
 * `--enable-https` - 启用HTTPS
 * `--config` - 从文件加载配置
 * `--save-config` - 保存配置
-* `-b, --background` - 后台(暂不推荐使用)
+* `-b, --background` - 后台运行脚本
 
 #### 部署流程
 
@@ -347,48 +355,6 @@ docker exec poetize-nginx /enable-https.sh
    chmod +x ./deploy.sh && sudo ./deploy.sh
    ```
 通过这些步骤，您可以在中国国内环境中顺利部署项目，避免网络限制带来的问题。
-
-## ✨ 功能特性
-
-### 1. 一键部署脚本
-
-提供完整的自动化部署解决方案，零门槛快速搭建，支持离线部署。
-
-### 2. 后台权限管理
-
-实现站长、管理员后台访问控制，支持细粒度权限分配，保障系统安全。
-
-### 3. 多邮箱服务支持
-
-支持配置多种邮箱服务提供商，支持自建邮箱，随机选择发送，提高邮件送达率和系统稳定性。
-
-### 4. 第三方登录集成
-
-集成GitHub、Google、Twitter、Yandex等主流平台登录，降低用户注册门槛。
-
-### 5. 登录界面设计
-
-美观的登录界面和优化了用户体验。
-
-### 6. 机器人验证功能
-
-集成滑动拼图验证码，有效防止机器人攻击，提升系统安全性。
-
-### 7. SEO优化
-
-自动生成sitemap.xml和robots.txt，优化搜索引擎收录，提升网站可见性。
-
-### 8. 看板娘功能
-
-提供Live2D看板娘开关控制，支持拖拽移动、衣服记忆、智能降级等增强功能。
-
-### 9. 导航栏优化
-
-美化导航栏布局，支持后台自定义配置，提升用户体验和管理灵活性。
-
-### 10. 评论体验优化
-
-未登录用户评论时自动保存内容，登录后无缝恢复，避免内容丢失。
 
 ## 📝 配置指南
 
@@ -441,7 +407,7 @@ docker exec poetize-nginx /enable-https.sh
 
 ### 环境要求
 
-* **Node.js 14** - 前端开发（其他版本可能不兼容）
+* **Node.js 14+** - 前端开发
 * **JDK 21** - Java后端开发
 * **Maven/Gradle** - Java项目构建
 * **Python 3.9+** - Python后端开发
@@ -524,7 +490,7 @@ docker exec poetize-nginx /enable-https.sh
 
    ```bash
    cd poetize-ui
-   npm install
+   npm install --legacy-peer-deps
    ```
 2. **开发服务**
 
@@ -582,7 +548,7 @@ Python服务提供以下关键功能：
 4. **启动服务** - 运行主入口脚本
 
    ```bash
-   python main.py
+   uvicorn main:app --port 5000 --reload
    ```
 5. **翻译服务** - 位于translation_model目录，可单独运行
 
