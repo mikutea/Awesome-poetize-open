@@ -1666,7 +1666,7 @@ export default {
     saveSeoConfig() {
       this.loading = true;
       console.log('正在保存SEO配置...');
-      this.$http.post(this.$constant.pythonBaseURL + '/python/seo/updateSeoConfig', this.seoConfig, true)
+      this.$http.post(this.$constant.baseURL +'/admin/updateSeoConfig', this.seoConfig, true)
         .then((res) => {
           this.loading = false;
           console.log('保存SEO配置响应:', res);

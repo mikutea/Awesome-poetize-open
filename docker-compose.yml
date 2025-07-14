@@ -248,6 +248,7 @@ services:
       - PRERENDER_URL=http://poetize-prerender:4000/render
       - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
       - SITE_URL=http://example.com
+      - DOCKER_SUBNET=172.28.147.0/28
     networks:
       poetize-network:
         ipv4_address: 172.28.147.7

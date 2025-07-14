@@ -117,7 +117,9 @@ def get_auth_headers():
     # 例如，可能需要从配置或环境变量中读取API密钥
     headers = {
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'X-Admin-Request': 'true',
+        'X-Internal-Service': 'poetize-python'
     }
     
     # 如果有API密钥，添加到头信息中
@@ -1612,6 +1614,7 @@ def register_seo_api(app: FastAPI):
                             headers = get_auth_headers()
                             headers.update({
                                 'X-Internal-Service': 'poetize-python',
+                                'X-Admin-Request': 'true',
                                 'User-Agent': 'poetize-python/1.0.0'
                             })
                             web_info_response = await client.get(
@@ -1632,6 +1635,7 @@ def register_seo_api(app: FastAPI):
                                     headers = get_auth_headers()
                                     headers.update({
                                         'X-Internal-Service': 'poetize-python',
+                                        'X-Admin-Request': 'true',
                                         'User-Agent': 'poetize-python/1.0.0'
                                     })
                                     update_response = await client.post(

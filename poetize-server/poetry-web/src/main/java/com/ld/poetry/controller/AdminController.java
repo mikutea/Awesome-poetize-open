@@ -13,6 +13,16 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.logging.Logger;
+
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestTemplate;
+import com.ld.poetry.enums.PoetryEnum;
+import org.springframework.core.env.Environment;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * <p>
@@ -24,6 +34,7 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/admin")
+@Slf4j
 public class AdminController {
 
     @Autowired
@@ -31,6 +42,12 @@ public class AdminController {
 
     @Autowired
     private TreeHoleMapper treeHoleMapper;
+
+    @Autowired
+    private Environment env;
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     /**
      * 获取网站信息
@@ -57,5 +74,49 @@ public class AdminController {
         Page<TreeHole> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
         Page<TreeHole> resultPage = wrapper.orderByDesc(TreeHole::getCreateTime).page(page);
         return PoetryResult.success(resultPage);
+    }
+
+    @PostMapping("/updateSeoConfig")
+    @LoginCheck(1)
+    public PoetryResult updateSeoConfig(@RequestBody Map<String, Object> seoConfig) {
+        log.info("收到SEO配置更新请求: {}", seoConfig);
+        try {
+            String pythonServerUrl = env.getProperty("PYTHON_SERVICE_URL", "http://localhost:5000");
+            String seoApiUrl = pythonServerUrl + "/python/seo/updateSeoConfig";
+            
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.add("X-Internal-Service", "poetize-java");
+            headers.add("X-Admin-Request", "true");
+            
+            // 创建请求实体
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(seoConfig, headers);
+            
+            log.info("转发SEO配置更新请求到Python服务: {}", seoApiUrl);
+            
+            // 发送请求到Python服务
+            Map<String, Object> response = restTemplate.postForObject(
+                seoApiUrl,
+                requestEntity,
+                Map.class
+            );
+            
+            log.info("Python服务SEO配置更新响应: {}", response);
+            
+            if (response != null && response.containsKey("code")) {
+                int code = Integer.parseInt(response.get("code").toString());
+                if (code == 200) {
+                    return PoetryResult.success(response.get("data"));
+                } else {
+                    return PoetryResult.fail(response.get("message") != null ? response.get("message").toString() : "SEO配置更新失败");
+                }
+            } else {
+                return PoetryResult.fail("Python服务响应格式错误");
+            }
+        } catch (Exception e) {
+            log.error("SEO配置更新失败", e);
+            return PoetryResult.fail("SEO配置更新失败: " + e.getMessage());
+        }
     }
 }

@@ -31,11 +31,14 @@ public class LoginCheckAspect {
         HttpServletRequest request = PoetryUtil.getRequest();
         String adminFlag = request.getHeader("X-Admin-Request");
         String internalService = request.getHeader("X-Internal-Service");
+        String clientIp = PoetryUtil.getIpAddr(request);
         
-        // 如果是内部服务请求，直接通过
-        if ("true".equals(adminFlag) && StringUtils.hasText(internalService)) {
-            log.info("内部服务请求通过认证检查 - 服务: {}, IP: {}", 
-                     internalService, PoetryUtil.getIpAddr(request));
+        // 检查是否来自Docker内部网络
+        boolean isInternalNetwork = DockerNetworkUtil.isInDockerNetwork(clientIp);
+        
+        // 如果是内部网络请求且带有正确的标识头，直接通过
+        if (isInternalNetwork && "true".equals(adminFlag) && StringUtils.hasText(internalService)) {
+            log.info("内部服务请求通过认证检查 - 服务: {}, IP: {}", internalService, clientIp);
             return joinPoint.proceed();
         }
         
@@ -58,7 +61,7 @@ public class LoginCheckAspect {
                 return PoetryResult.fail("请输入管理员账号！");
             }
         } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-            log.info("管理员请求 - IP: {}, 用户: {}", PoetryUtil.getIpAddr(PoetryUtil.getRequest()), user.getUsername());
+            log.info("管理员请求 - IP: {}, 用户: {}", clientIp, user.getUsername());
             if (loginCheck.value() == PoetryEnum.USER_TYPE_ADMIN.getCode() && user.getId().intValue() != CommonConst.ADMIN_USER_ID) {
                 log.warn("非超级管理员尝试访问超级管理员接口: {}", user.getUsername());
                 return PoetryResult.fail("请输入管理员账号！");
