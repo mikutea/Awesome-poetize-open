@@ -372,8 +372,14 @@ if need_icons then
         if res and res.status == 200 and res.body then
             -- 解析响应
             local ok, parsed_response = pcall(cjson.decode, res.body)
-            if ok and parsed_response and parsed_response.code == 200 and parsed_response.data then
-                seo_config_data = cjson.encode(parsed_response.data)
+            -- 直接使用解析后的响应，不再检查code和data字段
+            if ok and parsed_response and type(parsed_response) == "table" then
+                -- 记录日志，便于调试
+                ngx.log(ngx.INFO, "SEO配置响应解析成功，包含图标: " .. (parsed_response.site_icon or "无"))
+                
+                -- 直接使用解析后的响应
+                seo_config_data = res.body
+                
                 -- 缓存SEO配置24小时（SEO配置很少变化）
                 local cache_success = seo_cache:set(seo_config_cache_key, seo_config_data, 86400)
                 if cache_success then
@@ -382,7 +388,7 @@ if need_icons then
                     ngx.log(ngx.ERR, "SEO配置缓存失败")
                 end
             else
-                ngx.log(ngx.ERR, "SEO配置响应解析失败")
+                ngx.log(ngx.ERR, "SEO配置响应解析失败，响应内容: " .. (res.body:sub(1, 100) or "空"))
                 seo_config_data = nil
             end
         else
@@ -393,12 +399,36 @@ if need_icons then
     
     -- 处理SEO配置数据
     if seo_config_data then
-        local ok, seo_config = pcall(cjson.decode, seo_config_data)
-        if ok and seo_config and type(seo_config) == "table" then
-            ngx.ctx.icon_data = generate_icon_meta_tags(seo_config)
-            ngx.log(ngx.DEBUG, "成功生成图标meta标签")
+        -- 尝试解析数据，如果已经是表，则直接使用
+        local seo_config
+        if type(seo_config_data) == "table" then
+            seo_config = seo_config_data
+            ngx.log(ngx.INFO, "SEO配置数据已经是表格式，直接使用")
         else
-            ngx.log(ngx.WARN, "SEO配置JSON解析失败")
+            -- 尝试解析JSON字符串
+            local ok
+            ok, seo_config = pcall(cjson.decode, seo_config_data)
+            if not ok or type(seo_config) ~= "table" then
+                ngx.log(ngx.ERR, "无法解析SEO配置数据: " .. tostring(seo_config))
+                seo_config = nil
+            end
+        end
+        
+        -- 生成图标meta标签
+        if seo_config and type(seo_config) == "table" then
+            -- 记录关键字段便于调试
+            ngx.log(ngx.INFO, "SEO配置有效，生成图标标签。site_icon=" .. (seo_config.site_icon or "无"))
+            
+            ngx.ctx.icon_data = generate_icon_meta_tags(seo_config)
+            
+            -- 记录生成的图标标签内容
+            if ngx.ctx.icon_data and ngx.ctx.icon_data ~= "" then
+                ngx.log(ngx.INFO, "成功生成图标meta标签，长度: " .. string.len(ngx.ctx.icon_data))
+            else
+                ngx.log(ngx.WARN, "生成的图标meta标签为空")
+            end
+        else
+            ngx.log(ngx.WARN, "SEO配置无效或为空，无法生成图标标签")
             ngx.ctx.icon_data = ""
         end
     else

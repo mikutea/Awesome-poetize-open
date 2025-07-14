@@ -143,7 +143,7 @@ if ngx.ctx.icon_data and type(ngx.ctx.icon_data) == "string" and ngx.ctx.icon_da
     local default_icon_pattern = '<link rel="icon" href="poetize.jpg" sizes="16x16" id="default-favicon">'
     chunk = string.gsub(chunk, default_icon_pattern, ngx.ctx.icon_data, 1)
     ngx.log(ngx.INFO, "替换默认图标标签")
-    ngx.ctx.icon_injected = true
+            ngx.ctx.icon_injected = true
 end
 
 -- 去重meta标签
