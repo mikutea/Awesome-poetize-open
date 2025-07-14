@@ -1,11 +1,30 @@
 
 local chunk = ngx.arg[1]
+local eof = ngx.arg[2]
 if not chunk then return end
 
 -- 确保只处理HTML内容
 local content_type = ngx.header.content_type
 if not content_type or not string.find(content_type, "text/html", 1, true) then
     return
+end
+
+-- 初始化累积头部内容
+if not ngx.ctx.accumulated_head then
+    ngx.ctx.accumulated_head = ""
+end
+
+-- 累积头部内容
+if not ngx.ctx.head_complete then
+    local head_end_pos = string.find(chunk, "</head>", 1, true)
+    if head_end_pos then
+        -- 找到head结束标签，累积到此为止
+        ngx.ctx.accumulated_head = ngx.ctx.accumulated_head .. string.sub(chunk, 1, head_end_pos + 6)
+        ngx.ctx.head_complete = true
+    else
+        -- 继续累积头部内容
+        ngx.ctx.accumulated_head = ngx.ctx.accumulated_head .. chunk
+    end
 end
 
 -- 处理HTML lang属性
@@ -136,14 +155,57 @@ if ngx.ctx.title and ngx.ctx.title ~= "" and not ngx.ctx.title_injected then
 end
 
 -- 注入图标数据
-if ngx.ctx.icon_data and type(ngx.ctx.icon_data) == "string" and ngx.ctx.icon_data ~= "" and not ngx.ctx.icon_injected then
-    ngx.log(ngx.INFO, "准备注入图标数据")
+if ngx.ctx.icon_data and type(ngx.ctx.icon_data) == "string" and ngx.ctx.icon_data ~= "" and not ngx.ctx.icon_injected and ngx.ctx.head_complete then
+    local accumulated_head = ngx.ctx.accumulated_head
     
-    -- 直接替换默认图标标签
-    local default_icon_pattern = '<link rel="icon" href="poetize.jpg" sizes="16x16" id="default-favicon">'
-    chunk = string.gsub(chunk, default_icon_pattern, ngx.ctx.icon_data, 1)
-    ngx.log(ngx.INFO, "替换默认图标标签")
-            ngx.ctx.icon_injected = true
+    -- 尝试替换默认图标标签
+    local default_icon_pattern = '<link rel=icon href=./poetize%.jpg sizes=16x16 id=default%-favicon>'
+    local match_start, match_end = string.find(accumulated_head, default_icon_pattern)
+    local replacement_made = false
+    
+    if match_start then
+        -- 替换匹配的标签
+        accumulated_head = string.sub(accumulated_head, 1, match_start - 1) .. 
+                          ngx.ctx.icon_data .. 
+                          string.sub(accumulated_head, match_end + 1)
+        
+        -- 更新上下文中的头部内容
+        ngx.ctx.accumulated_head = accumulated_head
+        
+        -- 如果当前块包含匹配的标签，也需要替换
+        local current_match_start, current_match_end = string.find(chunk, default_icon_pattern)
+        if current_match_start then
+            chunk = string.sub(chunk, 1, current_match_start - 1) .. 
+                   ngx.ctx.icon_data .. 
+                   string.sub(chunk, current_match_end + 1)
+        end
+        
+        replacement_made = true
+    end
+    
+    -- 如果没有找到匹配，在head结束前添加
+    if not replacement_made then
+        local head_end_pos = string.find(accumulated_head, "</head>", 1, true)
+        if head_end_pos then
+            -- 在head结束前添加图标
+            accumulated_head = string.sub(accumulated_head, 1, head_end_pos - 1) .. 
+                              ngx.ctx.icon_data .. 
+                              string.sub(accumulated_head, head_end_pos)
+            
+            -- 更新上下文中的头部内容
+            ngx.ctx.accumulated_head = accumulated_head
+            
+            -- 如果当前块包含head结束标签，也需要替换
+            local head_end_in_chunk = string.find(chunk, "</head>", 1, true)
+            if head_end_in_chunk then
+                chunk = string.sub(chunk, 1, head_end_in_chunk - 1) .. 
+                       ngx.ctx.icon_data .. 
+                       string.sub(chunk, head_end_in_chunk)
+            end
+        end
+    end
+    
+    ngx.ctx.icon_injected = true
 end
 
 -- 去重meta标签

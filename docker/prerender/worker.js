@@ -679,13 +679,35 @@ async function fetchTranslation(id, lang) {
 async function fetchMeta(id, lang) {
   try {
     logger.debug('Fetching meta', { id, lang });
-    const res = await axios.get(`${PYTHON_BACKEND_URL}/python/seo/getArticleMeta`, { 
-      params: { id },
-      timeout: 5000,
-      headers: INTERNAL_SERVICE_HEADERS
-    });
-    const meta = (res.data && res.data.status === 'success') ? (res.data.data || {}) : {};
+    
+    // 并行获取文章元数据和SEO配置
+    const [articleMetaRes, seoConfigRes] = await Promise.all([
+      axios.get(`${PYTHON_BACKEND_URL}/python/seo/getArticleMeta`, { 
+        params: { id },
+        timeout: 5000,
+        headers: INTERNAL_SERVICE_HEADERS
+      }),
+      axios.get(`${PYTHON_BACKEND_URL}/seo/getSeoConfig`, { 
+        timeout: 5000,
+        headers: INTERNAL_SERVICE_HEADERS
+      })
+    ]);
+    
+    // 获取文章元数据
+    const meta = (articleMetaRes.data && articleMetaRes.data.status === 'success') ? (articleMetaRes.data.data || {}) : {};
     logger.debug('Meta fetched', { id, lang, keysCount: Object.keys(meta).length });
+    
+    // 获取SEO配置
+    const seoConfig = (seoConfigRes.data && seoConfigRes.data.code === 200) ? (seoConfigRes.data.data || {}) : {};
+    
+    // 使用通用函数添加图标字段
+    addSeoIconFieldsToMeta(meta, seoConfig);
+    
+    logger.debug('Added icon fields from SEO config to article meta', { 
+      articleId: id, 
+      hasSiteIcon: !!meta.site_icon
+    });
+    
     return meta;
   } catch (error) {
     logger.warn('Failed to fetch meta, using defaults', { 
@@ -771,6 +793,11 @@ async function fetchSeoConfig() {
       site_title: seoConfig.site_title,
       site_address: seoConfig.site_address,
       og_image: seoConfig.og_image,
+      site_icon: seoConfig.site_icon ? '存在' : '不存在',
+      apple_touch_icon: seoConfig.apple_touch_icon ? '存在' : '不存在',
+      site_icon_192: seoConfig.site_icon_192 ? '存在' : '不存在',
+      site_icon_512: seoConfig.site_icon_512 ? '存在' : '不存在',
+      site_logo: seoConfig.site_logo ? '存在' : '不存在',
       default_author: seoConfig.default_author,
       cacheDuration: seoConfigCache.cacheDuration / 1000 + 's'
     });
@@ -962,7 +989,11 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     templateHtml = fs.readFileSync(templatePath, 'utf8');
   }
   
-  const $ = cheerio.load(templateHtml);
+  const $ = cheerio.load(templateHtml, {
+    decodeEntities: false, // 避免编码HTML实体
+    xmlMode: false,        // 使用HTML模式
+    normalizeWhitespace: false // 不规范化空白
+  });
 
   $('html').attr('lang', lang);
   $('head title').text(title);
@@ -984,6 +1015,43 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     metaStringified: JSON.stringify(meta)
   });
 
+  // 处理图标字段
+  const iconMapping = {
+    'site_icon': { rel: 'icon', id: 'seo-favicon' },
+    'apple_touch_icon': { rel: 'apple-touch-icon' },
+    'site_icon_192': { rel: 'icon', type: 'image/png', sizes: '192x192' },
+    'site_icon_512': { rel: 'icon', type: 'image/png', sizes: '512x512' },
+    'site_logo': { rel: 'icon', type: 'image/png', sizes: 'any' }
+  };
+  
+  // 如果有site_icon，移除默认的favicon
+  if (meta && meta.site_icon) {
+    $('head link[rel="icon"]').remove();
+    $('head link[id="default-favicon"]').remove();
+    logger.info('Removed default favicon for replacement');
+  }
+  
+  // 添加各种图标
+  if (meta) {
+    Object.keys(iconMapping).forEach(field => {
+      if (meta[field]) {
+        const attrs = iconMapping[field];
+        const $link = $('<link>');
+        $link.attr('href', meta[field]);
+        
+        // 添加所有属性
+        Object.keys(attrs).forEach(attr => {
+          $link.attr(attr, attrs[attr]);
+        });
+        
+        // 添加换行和缩进
+        $('head').append('\n  ');
+        $('head').append($link);
+        logger.debug(`Added ${field} icon to HTML`, { url: meta[field] });
+      }
+    });
+  }
+
   // 注入新的meta，一次一个，更安全
   if (typeof meta === 'object' && meta !== null) {
     for (const key in meta) {
@@ -994,15 +1062,22 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       if (key === 'title') {
         // title已在上面处理
         continue;
+      } else if (Object.keys(iconMapping).includes(key)) {
+        // 图标已在上面处理
+        continue;
       } else if (key.startsWith('hreflang')) {
         // hreflang 已经是完整的 <link> 标签
+        $('head').append('\n  ');
         $('head').append(meta[key]);
       } else if (key === 'canonical') {
+        $('head').append('\n  ');
         $('head').append(`<link rel="canonical" href="${value}">`);
       } else if (['description', 'keywords', 'author'].includes(key)) {
+        $('head').append('\n  ');
         $('head').append(`<meta name="${key}" content="${value}">`);
       } else {
         // 处理 og:, twitter:, article: 等属性
+        $('head').append('\n  ');
         $('head').append(`<meta property="${key}" content="${value}">`);
       }
     }
@@ -1102,6 +1177,7 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     </style>
   `;
   
+  $('head').append('\n  ');
   $('head').append(criticalCSS);
 
   // 添加资源预加载优化
@@ -1193,9 +1269,25 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     </script>
   `;
   
+  $('body').append('\n  ');
   $('body').append(loadingScript);
-
-  return $.html();
+  
+  // 确保生成的HTML具有良好的格式
+  let html = $.html();
+  
+  // 优化HTML输出格式，确保meta标签等有换行
+  html = html.replace(/<meta/g, '\n  <meta');
+  html = html.replace(/<link/g, '\n  <link');
+  html = html.replace(/<style/g, '\n  <style');
+  html = html.replace(/<\/style>/g, '\n  </style>');
+  html = html.replace(/<script/g, '\n  <script');
+  html = html.replace(/<\/script>/g, '\n  </script>');
+  
+  // 确保head和body标签有良好的缩进
+  html = html.replace(/<\/head>/g, '\n</head>');
+  html = html.replace(/<\/body>/g, '\n</body>');
+  
+  return html;
 }
 
 // ===== 文章页面渲染函数 =====
@@ -1213,6 +1305,14 @@ function buildHtml({ title, meta, content, lang }) {
   
   // 确保meta是一个有效的对象
   const safeMeta = (typeof meta === 'object' && meta !== null) ? meta : {};
+  
+  // 记录是否包含图标字段
+  logger.debug('Article meta contains icon fields:', {
+    hasSiteIcon: !!safeMeta.site_icon,
+    hasAppleTouchIcon: !!safeMeta.apple_touch_icon,
+    hasSiteIcon192: !!safeMeta.site_icon_192,
+    hasSiteIcon512: !!safeMeta.site_icon_512
+  });
   
   return buildHtmlTemplate({ 
     title: title || 'Poetize', 
@@ -1254,6 +1354,9 @@ async function renderHomePage(lang = 'zh') {
       'twitter:description': description,
       'twitter:image': ogImage
     };
+    
+    // 使用通用函数添加图标字段
+    addSeoIconFieldsToMeta(meta, seoConfig);
 
     // 构建首页内容（只包含静态SEO内容，动态内容由客户端加载）
     const homeContent = `
@@ -1369,6 +1472,9 @@ async function renderFavoritePage(lang = 'zh') {
       'twitter:description': description,
       'twitter:image': ogImage
     };
+    
+    // 使用通用函数添加图标字段
+    addSeoIconFieldsToMeta(meta, seoConfig);
 
     // 构建百宝箱内容
     const favoriteContent = `
@@ -1506,6 +1612,9 @@ async function renderDefaultSortPage(lang = 'zh') {
       'twitter:description': description,
       'twitter:image': ogImage
     };
+    
+    // 使用通用函数添加图标字段
+    addSeoIconFieldsToMeta(meta, seoConfig);
 
     // 构建默认分类页面内容
     const defaultSortContent = `
@@ -1571,6 +1680,7 @@ async function renderDefaultSortPage(lang = 'zh') {
 // ===== 分类页面渲染函数 =====
 async function renderSortPage(sortId, labelId = null, lang = 'zh') {
   try {
+    // 并行获取多个数据源
     const [webInfo, seoConfig, sortData, articles] = await Promise.all([
       fetchWebInfo(),
       fetchSeoConfig(),
@@ -1607,6 +1717,9 @@ async function renderSortPage(sortId, labelId = null, lang = 'zh') {
       'twitter:description': description,
       'twitter:image': ogImage
     };
+    
+    // 使用通用函数添加图标字段
+    addSeoIconFieldsToMeta(meta, seoConfig);
 
     // 构建分类页面内容
     const sortContent = `
@@ -2687,3 +2800,29 @@ app.listen(PORT, () => {
   });
   console.log(`🚀 Prerender worker listening on port ${PORT}`);
 });
+
+// 添加一个通用函数，用于将SEO配置中的图标字段添加到meta对象中
+function addSeoIconFieldsToMeta(meta, seoConfig) {
+  if (!meta || !seoConfig) return meta;
+  
+  // 定义需要从SEO配置中复制到meta的图标字段
+  const iconFields = [
+    'site_icon',
+    'apple_touch_icon',
+    'site_icon_192',
+    'site_icon_512',
+    'site_logo',
+    'og_image'
+  ];
+  
+  // 复制字段
+  iconFields.forEach(field => {
+    if (seoConfig[field] && !meta[field]) {
+      meta[field] = seoConfig[field];
+    }
+  });
+  
+  // 如果将来需要添加新的图标字段，只需要在iconFields数组中添加即可
+  
+  return meta;
+}
