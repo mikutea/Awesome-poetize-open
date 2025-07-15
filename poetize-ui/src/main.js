@@ -7,6 +7,8 @@ import http from './utils/request'
 import common from './utils/common'
 import constant from './utils/constant'
 import mavonEditor from 'mavon-editor'
+// 导入字体加载器
+import { loadFonts } from './utils/font-loader'
 //引入js
 // 使用try-catch包裹live2d加载，防止加载失败
 try {
@@ -239,6 +241,27 @@ store.watch(
     applyGrayMode();
   },
   { immediate: false }
+);
+
+// 初始加载字体
+if (store.state.sysConfig) {
+  loadFonts(store.state.sysConfig).catch(err => {
+    console.error('加载字体失败:', err);
+  });
+}
+
+// 监听系统配置变化，重新加载字体
+store.watch(
+  (state) => state.sysConfig,
+  (newConfig) => {
+    if (newConfig) {
+      console.log('系统配置更新，重新加载字体...');
+      loadFonts(newConfig).catch(err => {
+        console.error('加载字体失败:', err);
+      });
+    }
+  },
+  { deep: true }
 );
 
 const app = new Vue({

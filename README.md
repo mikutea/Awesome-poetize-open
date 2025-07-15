@@ -123,33 +123,32 @@ bash <(curl -sL install.leapya.com)
 
 #### 1. 服务器要求
 
-- 操作系统：推荐 Debian 10.3.3+ 或 Ubuntu 18.04+
-- 内存：建议 4GB 及以上（2GB内存环境将自动配置2GB交换空间）
-- 硬盘：建议 30GB 及以上
+- 操作系统：推荐 Debian 10.3.3+ 或 Ubuntu 18.04+，详见下方测试表
+- 内存：建议 2GB 及以上（2GB内存环境将自动配置2GB交换空间）
+- 硬盘：建议 30GB 及以上，至少需要10G
 
 ##### 系统兼容性测试结果
 
-| 操作系统类型           | CPU  | 内存 | 存储 | 测试结果    |
-| ---------------------- | ---- | ---- | ---- | ----------- |
-| Ubuntu 18.04+ x64      | 1核+ | 1G+  | 30GB | ✅ 推荐     |
-| Debian 10+ x64         | 1核+ | 1G+  | 30GB | ✅ 推荐     |
-| CentOS 7/8+ x64        | 1核+ | 1G+  | 30GB | ✅ 推荐     |
-| RHEL/Rocky/AlmaLinux   | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| Fedora/Oracle Linux    | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| Amazon Linux           | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| 阿里云/腾讯云 Linux    | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| 麒麟/统信UOS/Deepin    | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| openEuler/EulerOS      | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| Alpine/Arch Linux      | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| openSUSE               | 1核+ | 1G+  | 30GB | ✅ 支持     |
-| Windows Server/桌面版  | -    | -    | -    | ❌ 不支持   |
-| CentOS 6.x 及更早系统  | -    | -    | -    | ❌ 不支持   |
+| 操作系统类型          | CPU  | 内存 | 存储 | 测试结果  |
+| --------------------- | ---- | ---- | ---- | --------- |
+| Ubuntu 18.04+ x64     | 1核+ | 1G+  | 30GB | ✅ 推荐   |
+| Debian 10+ x64        | 1核+ | 1G+  | 30GB | ✅ 推荐   |
+| CentOS 7/8+ x64       | 1核+ | 1G+  | 30GB | ✅ 推荐   |
+| RHEL/Rocky/AlmaLinux  | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| Fedora/Oracle Linux   | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| Amazon Linux          | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| 阿里云/腾讯云 Linux   | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| 麒麟/统信UOS/Deepin   | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| openEuler/EulerOS     | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| Alpine/Arch Linux     | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| openSUSE              | 1核+ | 1G+  | 30GB | ✅ 支持   |
+| Windows Server/桌面版 | -    | -    | -    | ❌ 不支持 |
+| CentOS 6.x 及更早系统 | -    | -    | -    | ❌ 不支持 |
 
 #### 2. 环境准备
 
 * 域名解析到服务器
 * 开放 80 TCP 和443 UDP/TCP 端口
-* 🇨🇳 **国内环境部署需[下载专用离线资源包](#关于中国国内环境部署)**，避免网络问题
 
 #### 3. 部署步骤
 
@@ -163,8 +162,11 @@ bash <(curl -sL install.leapya.com)
 # 方式二：非交互模式(替换成自己的域名，每个域名使用-d隔开):
 bash <(curl -sL install.leapya.com) -d 域名.com -d www.域名.com
 
-# 方式三：或克隆本仓库使用deploy.sh脚本部署
+# 方式三：或克隆本仓库使用deploy.sh脚本部署（交互模式）：
 git clone https://github.com/LeapYa/Awesome-poetize-open.git && sudo chmod +x deploy.sh && sudo ./deploy.sh
+
+# 方式四：或克隆本仓库使用deploy.sh脚本部署（非交互模式，替换成自己的域名，每个域名使用-d隔开)：
+git clone https://github.com/LeapYa/Awesome-poetize-open.git && sudo chmod +x deploy.sh && sudo ./deploy.sh -d 域名.com -d www.域名.com
 ```
 
 ##### **启动顺序**
@@ -324,36 +326,40 @@ docker exec poetize-nginx /enable-https.sh
 3. **服务部署** - 环境初始化与服务启动
 4. **部署完成** - 汇总、访问信息、常用命令
 
-#### 关于中国国内环境部署
+#### 关于国内环境部署
 
 国内环境存在Docker安装困难或网络受限的情况，为确保顺利部署，项目已提供完整的离线部署方案。只需从Release页面下载离线资源包并按以下结构放置：
 
 ##### 1. 使用deploy.sh脚本：
- - 项目中提供的**deploy.sh**脚本已经包含了国内环境的配置和加速源设置。
- - 该脚本会自动配置npm使用淘宝镜像源，并增加网络参数以提高下载速度。
- - 通过执行**deploy.sh**，可以自动完成环境的初始化和依赖的安装。
+
+- 项目中提供的**deploy.sh**脚本已经包含了国内环境的配置和加速源设置。
+- 该脚本会自动配置npm使用淘宝镜像源，并增加网络参数以提高下载速度。
+- 通过执行**deploy.sh**，可以自动完成环境的初始化和依赖的安装。
 
 ##### 2. 离线资源包：
- - 从Release页面下载离线资源包。
- - 按照以下结构放置资源包：
 
-   ```
-   offline/
-   ├── docker.tar.gz           # Docker离线安装包
-   ├── docker-compose          # Docker Compose二进制文件 
-   └── images/                 # Docker镜像目录
-      ├── mysql.tar           # MySQL数据库镜像
-      ├── nginx.tar           # Nginx反向代理镜像
-      ├── java.tar            # Java后端服务镜像
-      └── python.tar          # Python后端服务镜像
-   ```
+- 从Release页面下载离线资源包。
+- 按照以下结构放置资源包：
+
+  ```
+  offline/
+  ├── docker.tar.gz           # Docker离线安装包
+  ├── docker-compose          # Docker Compose二进制文件 
+  └── images/                 # Docker镜像目录
+     ├── mysql.tar           # MySQL数据库镜像
+     ├── nginx.tar           # Nginx反向代理镜像
+     ├── java.tar            # Java后端服务镜像
+     └── python.tar          # Python后端服务镜像
+  ```
 
 ##### 3. 执行部署：
- - 确保所有资源包和配置文件已正确放置。
- - 运行以下命令以启动部署：
-   ```
-   chmod +x ./deploy.sh && sudo ./deploy.sh
-   ```
+
+- 确保所有资源包和配置文件已正确放置。
+- 运行以下命令以启动部署：
+  ```
+  chmod +x ./deploy.sh && sudo ./deploy.sh
+  ```
+
 通过这些步骤，您可以在中国国内环境中顺利部署项目，避免网络限制带来的问题。
 
 ## 📝 配置指南
@@ -428,6 +434,7 @@ docker exec poetize-nginx /enable-https.sh
 ├── poetize-server/          # Java后端
 ├── poetize-ui/              # 博客系统UI (Vue2)
 ├── py/                      # Python服务
+├── split_font/              # 分割字体文件目录
 └── README.md                # 项目文档
 ```
 
@@ -443,6 +450,15 @@ docker exec poetize-nginx /enable-https.sh
 │   ├── package.json         # 聊天室依赖配置
 │   ├── package-lock.json    # 聊天室依赖版本锁定文件
 │   └── src/                 # 聊天室源代码
+│       ├── assets/          # 静态资源
+│       ├── components/      # UI组件
+│       ├── router/          # 路由配置
+│       ├── store/           # 状态管理
+│       ├── utils/           # 工具类
+│       │   ├── font-loader.js  # 字体动态加载器
+│       │   ├── common.js       # 通用工具
+│       │   └── request.js      # 请求封装
+│       └── main.js          # 主入口
 ├── poetize-server/          # Java后端
 │   ├── pom.xml              # 主项目Maven配置
 │   ├── package.json         # 依赖配置
@@ -459,6 +475,17 @@ docker exec poetize-nginx /enable-https.sh
 │   ├── package.json         # 博客UI依赖配置
 │   ├── package-lock.json    # 博客UI依赖版本锁定文件
 │   └── src/                 # 博客UI源代码
+│       ├── assets/          # 静态资源
+│       │   ├── css/         # 样式文件
+│       │   │   └── index.css # 主样式
+│       ├── components/      # UI组件
+│       ├── router/          # 路由配置
+│       ├── store/           # 状态管理
+│       ├── utils/           # 工具类
+│       │   ├── font-loader.js  # 字体动态加载器
+│       │   ├── common.js       # 通用工具
+│       │   └── request.js      # 请求封装
+│       └── main.js          # 主入口
 ├── py/                      # Python服务
 │   ├── main.py              # Python主应用入口
 │   ├── config.py            # 配置文件处理
@@ -479,6 +506,13 @@ docker exec poetize-nginx /enable-https.sh
 │   │   ├── data/            # 翻译数据
 │   │   └── utils.py         # 工具函数
 │   └── third_login_config.json # 第三方登录配置
+├── split_font/              # 分割字体文件目录
+│   ├── font_chunks/         # 分块字体文件
+│   │   ├── font.base.woff2  # 基础字符字体
+│   │   ├── font.level1.woff2 # 一级常用汉字字体
+│   │   ├── font.level2.woff2 # 二级常用汉字字体
+│   │   └── font.other.woff2 # 其他字符字体
+│   └── unicode_ranges.json  # Unicode范围配置文件
 └── README.md                # 项目文档
 ```
 
@@ -486,21 +520,34 @@ docker exec poetize-nginx /enable-https.sh
 
 ### 前端开发
 
-1. **依赖安装**
+1. **更换测试环境的访问API(生产环境中需要更改回去)**
+
+   修改poetize-ui/src/utils/constant.js
+
+   ```
+   // 测试环境
+   baseURL: "http://localhost:8081",
+   pythonBaseURL: "http://localhost:5000", // Python服务URL
+   imBaseURL: "http://localhost:81/im",
+   webURL: "http://localhost",
+
+   // 生产环境(本地开发需要注释掉)
+   // webURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
+   // baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
+   // pythonBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/python",
+   // imBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
+   ```
+
+2. **依赖安装**
 
    ```bash
    cd poetize-ui
    npm install --legacy-peer-deps
    ```
-2. **开发服务**
+3. **开发服务**
 
    ```bash
    npm run serve
-   ```
-3. **构建发布**
-
-   ```bash
-   npm run build
    ```
 
 ### Java后端开发
@@ -682,24 +729,6 @@ Python服务提供以下关键功能：
 * **mysql/conf/my.cnf** - 数据库引擎设置
 * **应用配置** - Java和Python各自配置文件
 * **敏感数据** - 密码、密钥不应提交，使用.gitignore或环境变量
-
-### 注意项
-
-* 在本地开发时需要将poetize-ui\src\utils\constant.js的访问API更换成测试环境的访问API
-
-```
-  // 测试环境
-  baseURL: "http://localhost:8081",
-  pythonBaseURL: "http://localhost:5000", // Python服务URL
-  imBaseURL: "http://localhost:81/im",
-  webURL: "http://localhost",
-
-  // 生产环境(本地开发需要注释掉)
-  // webURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
-  // baseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/api",
-  // pythonBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/python",
-  // imBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
-```
 
 ## 🔧 技术栈
 

@@ -12,7 +12,7 @@ body {
  * 3. level2: 国家二级常用字
  * 4. other: 原始字体中其余的所有字符
  */
-
+/* 
  @font-face {
     font-family: 'MyAwesomeFont';
     src: url('/static/assets/font_chunks/font.base.woff2') format('woff2');
@@ -5348,7 +5348,7 @@ body {
  U+FF20-FF5D,
  U+FFE0-FFE1,
  U+FFE3-FFE5;
-  }
+  } */
 
 /* 居中 */
 .myCenter {

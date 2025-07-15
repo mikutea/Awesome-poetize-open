@@ -21,7 +21,7 @@
  * 4. other: 原始字体中其余的所有字符
  */
 
- @font-face {
+ /* @font-face {
     font-family: 'MyAwesomeFont';
     src: url('/static/assets/font_chunks/font.base.woff2') format('woff2');
     font-weight: normal;
@@ -5356,7 +5356,7 @@
  U+FF20-FF5D,
  U+FFE0-FFE1,
  U+FFE3-FFE5;
-  }
+  } */
 
 html, body, div, span, applet, object, iframe,
 h1, h2, h3, h4, h5, h6, p, blockquote, pre,

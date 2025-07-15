@@ -33,6 +33,8 @@ import 'element-plus/dist/index.css'
 import http from './utils/request'
 import common from './utils/common'
 import constant from './utils/constant'
+// 导入字体加载器
+import { loadFonts } from './utils/font-loader'
 
 import 'vfonts/FiraCode.css'
 import './assets/css/index.css'
@@ -124,5 +126,26 @@ router.beforeEach((to, from, next) => {
     next();
   }
 })
+
+// 初始加载字体
+if (store.state.sysConfig) {
+  loadFonts(store.state.sysConfig).catch(err => {
+    console.error('加载字体失败:', err);
+  });
+}
+
+// 监听系统配置变化，重新加载字体
+store.watch(
+  (state) => state.sysConfig,
+  (newConfig) => {
+    if (newConfig) {
+      console.log('系统配置更新，重新加载字体...');
+      loadFonts(newConfig).catch(err => {
+        console.error('加载字体失败:', err);
+      });
+    }
+  },
+  { deep: true }
+);
 
 app.mount('#app')
