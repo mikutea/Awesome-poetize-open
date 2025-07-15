@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
@@ -229,40 +230,57 @@ public class CommonQuery {
     }
 
     public List<List<Integer>> getArticleIds(String searchText) {
-        @SuppressWarnings("unchecked")
-        List<Article> articles = (List<Article>) PoetryCache.get(CommonConst.ARTICLE_LIST);
-        if (articles == null) {
-            synchronized (CommonConst.ARTICLE_LIST.intern()) {
-                @SuppressWarnings("unchecked")
-                List<Article> cachedArticles = (List<Article>) PoetryCache.get(CommonConst.ARTICLE_LIST);
-                if (cachedArticles == null) {
-                    LambdaQueryChainWrapper<Article> wrapper = new LambdaQueryChainWrapper<>(articleMapper);
-                    articles = wrapper
-                            .select(Article::getId, Article::getArticleTitle, Article::getArticleContent)
-                            .eq(Article::getDeleted, false)
-                            .orderByDesc(Article::getCreateTime)
-                            .list();
-                    PoetryCache.put(CommonConst.ARTICLE_LIST, articles);
-                } else {
-                    articles = cachedArticles;
-                }
-            }
+        // 限制文章搜索关键词长度，避免过长搜索导致性能问题
+        if (StringUtils.hasText(searchText) && searchText.length() > 50) {
+            searchText = searchText.substring(0, 50);
         }
-
+        
+        // 使用缓存键包含搜索文本，为每个搜索关键词提供独立缓存
+        String cacheKey = CommonConst.ARTICLE_SEARCH_RESULT + "_" + searchText;
+        
+        @SuppressWarnings("unchecked")
+        List<List<Integer>> cachedIds = (List<List<Integer>>) PoetryCache.get(cacheKey);
+        if (cachedIds != null) {
+            return cachedIds;
+                }
+        
+        // 直接在数据库层面执行搜索，避免加载所有文章内容到内存
         List<List<Integer>> ids = new ArrayList<>();
         List<Integer> titleIds = new ArrayList<>();
         List<Integer> contentIds = new ArrayList<>();
 
-        for (Article article : articles) {
-            if (StringUtil.matchString(article.getArticleTitle(), searchText)) {
-                titleIds.add(article.getId());
-            } else if (StringUtil.matchString(article.getArticleContent(), searchText)) {
-                contentIds.add(article.getId());
-            }
+        if (StringUtils.hasText(searchText)) {
+            // 搜索标题包含关键词的文章ID
+            LambdaQueryChainWrapper<Article> titleWrapper = new LambdaQueryChainWrapper<>(articleMapper);
+            titleIds = titleWrapper
+                    .select(Article::getId)
+                    .eq(Article::getDeleted, false)
+                    .like(Article::getArticleTitle, searchText)
+                    .last("LIMIT 100") // 限制结果数量
+                    .list()
+                    .stream()
+                    .map(Article::getId)
+                    .collect(Collectors.toList());
+            
+            // 搜索内容包含关键词的文章ID
+            LambdaQueryChainWrapper<Article> contentWrapper = new LambdaQueryChainWrapper<>(articleMapper);
+            contentIds = contentWrapper
+                    .select(Article::getId)
+                    .eq(Article::getDeleted, false)
+                    .like(Article::getArticleContent, searchText)
+                    .last("LIMIT 100") // 限制结果数量
+                    .list()
+                    .stream()
+                    .map(Article::getId)
+                    .collect(Collectors.toList());
         }
 
         ids.add(titleIds);
         ids.add(contentIds);
+        
+        // 缓存搜索结果10分钟
+        PoetryCache.put(cacheKey, ids, 600);
+        
         return ids;
     }
 

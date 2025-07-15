@@ -34,7 +34,8 @@
                  v-model="articleSearch"
                  @keyup.enter="selectArticle()"
                  @input="handleSearchInput"
-                 placeholder="搜索文章" maxlength="500">
+                 placeholder="搜索文章" 
+                 maxlength="50">
           <div class="ais-SearchBox-submit" @click="selectArticle()" title="搜索" :class="{'search-active': articleSearch}">
             <svg style="margin-top: 3.5px;margin-left: 18px" viewBox="0 0 1024 1024" width="20" height="20">
               <path
@@ -52,12 +53,15 @@
           </div>
         </div>
 
-        <div class="search-tooltip" v-if="showSearchTips">
+        <div class="search-tooltip" v-if="showSearchTips || (articleSearch && articleSearch.length >= 45)">
           <div class="tooltip-content">
             <div class="tooltip-icon">💡</div>
             <div class="tooltip-text">
               <div>支持多关键词搜索，空格分隔</div>
               <div>例如：<span class="search-keyword">诗词 唐朝</span></div>
+              <div v-if="articleSearch && articleSearch.length >= 45" style="color:#ff7a7a; margin-top:5px;">
+                <i class="el-icon-warning"></i> 搜索关键词限制为50字符
+              </div>
             </div>
           </div>
         </div>

@@ -23,6 +23,9 @@ public class ScheduleTask {
     @Autowired
     private HistoryInfoMapper historyInfoMapper;
 
+    /**
+     * 每天凌晨执行的完整清理和统计任务
+     */
     @Scheduled(cron = "0 0 0 * * ?")
     public void cleanIpHistory() {
         try {
@@ -99,6 +102,66 @@ public class ScheduleTask {
             defaultStats.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
             defaultStats.put(CommonConst.IP_HISTORY_COUNT, 0L);
             PoetryCache.put(CommonConst.IP_HISTORY_STATISTICS, defaultStats);
+        }
+    }
+    
+    /**
+     * 每小时更新一次访问统计数据
+     * 只更新最关键的统计数据，减轻系统负担
+     */
+    @Scheduled(cron = "0 0 * * * ?")  // 每小时执行一次
+    public void updateVisitStatistics() {
+        try {
+            log.info("开始执行小时级访问统计更新");
+            
+            Map<String, Object> history = (Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS);
+            if (history == null) {
+                history = new HashMap<>();
+            }
+            
+            // 更新总访问量
+            try {
+                Long count = historyInfoMapper.getHistoryCount();
+                history.put(CommonConst.IP_HISTORY_COUNT, count);
+                log.info("成功更新总访问量: {}", count);
+            } catch (Exception e) {
+                log.error("更新总访问量失败", e);
+            }
+            
+            // 更新24小时数据
+            try {
+                history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour());
+                log.info("成功更新24小时访问统计");
+            } catch (Exception e) {
+                log.error("更新24小时访问统计失败", e);
+            }
+            
+            PoetryCache.put(CommonConst.IP_HISTORY_STATISTICS, history);
+            log.info("小时级访问统计更新完成");
+            
+        } catch (Exception e) {
+            log.error("小时级访问统计更新失败", e);
+        }
+    }
+    
+    /**
+     * 系统启动后立即执行一次访问统计数据初始化
+     * 确保即使在非凌晨时间启动系统，也能显示正确的统计数据
+     */
+    @Scheduled(fixedDelay = 15000, initialDelay = 15000)  // 启动后15秒执行一次
+    public void initializeStatisticsOnStartup() {
+        try {
+            // 检查统计数据是否存在
+            Map<String, Object> stats = (Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS);
+            Long count = stats != null ? (Long) stats.get(CommonConst.IP_HISTORY_COUNT) : null;
+            
+            // 如果不存在或访问量为0，执行初始化
+            if (stats == null || count == null || count == 0) {
+                log.info("系统启动后初始化访问统计数据");
+                updateVisitStatistics();
+            }
+        } catch (Exception e) {
+            log.error("初始化访问统计失败", e);
         }
     }
 }

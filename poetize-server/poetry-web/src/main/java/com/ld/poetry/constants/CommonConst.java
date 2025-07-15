@@ -150,6 +150,11 @@ public class CommonConst {
     public static final String ARTICLE_LIST = "article_list";
 
     /**
+     * 文章搜索结果缓存，按关键词分别存储
+     */
+    public static final String ARTICLE_SEARCH_RESULT = "article_search_result";
+
+    /**
      * 文章缓存，用于首页
      */
     public static final String SORT_ARTICLE_LIST = "sort_article_list";

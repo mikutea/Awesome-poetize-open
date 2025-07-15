@@ -488,9 +488,10 @@ def register_web_admin_api(app: FastAPI):
     
     @app.get('/webInfo/getThirdLoginConfig')
     @app.options('/webInfo/getThirdLoginConfig')
-    async def get_third_login_config_api(request: Request):
+    async def get_third_login_config_api(request: Request, _: bool = Depends(admin_required)):
         """获取第三方登录配置"""
         print("收到获取第三方登录配置请求")
+        
         host = request.headers.get('host', 'localhost:5000')
         config_data = get_third_login_config(host)
         print(f"返回第三方登录配置数据")

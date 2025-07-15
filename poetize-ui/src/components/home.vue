@@ -539,13 +539,6 @@
                 window.OriginTitile = originalWebTitle;
               }
               
-              // 每30秒自动刷新访问量数据
-              if (!this.visitCountInterval) {
-                this.visitCountInterval = setInterval(() => {
-                  this.refreshVisitCounts();
-                }, 30000); // 30秒更新一次
-              }
-
               // 获取完 webInfo 后再执行一次自动夜间判断
               this.maybeApplyAutoNight();
             }
@@ -558,29 +551,7 @@
           });
       },
       
-      // 只刷新访问量数据的方法
-      refreshVisitCounts() {
-        this.$http.get(this.$constant.baseURL + "/webInfo/getWebInfo")
-          .then((res) => {
-            if (!this.$common.isEmpty(res.data)) {
-              // 单独更新访问量
-              this.$store.state.visitCounts = {
-                historyAllCount: res.data.historyAllCount,
-                historyDayCount: res.data.historyDayCount
-              };
-              
-              // 合并到webInfo中
-              this.$store.state.webInfo = {
-                ...this.$store.state.webInfo,
-                historyAllCount: res.data.historyAllCount,
-                historyDayCount: res.data.historyDayCount
-              };
-            }
-          })
-          .catch((error) => {
-            console.error("刷新访问量失败:", error);
-          });
-      },
+      // 已移除定时刷新访问量的逻辑
       getSysConfig() {
         this.$http.get(this.$constant.baseURL + "/sysConfig/listSysConfig")
           .then((res) => {

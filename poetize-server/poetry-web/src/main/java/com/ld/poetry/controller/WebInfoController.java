@@ -17,6 +17,10 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.MediaType;
+
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -93,8 +97,20 @@ public class WebInfoController {
     /**
      * 获取网站信息
      */
+    // 静态缓存，避免频繁计算访问量
+    private static WebInfo cachedPublicWebInfo = null;
+    private static long lastUpdateTime = 0;
+    private static final long CACHE_TTL = 10000; // 10秒缓存生效期
+
     @GetMapping("/getWebInfo")
     public PoetryResult<WebInfo> getWebInfo() {
+        // 检查本地缓存是否有效（10秒内）
+        long currentTime = System.currentTimeMillis();
+        if (cachedPublicWebInfo != null && (currentTime - lastUpdateTime) < CACHE_TTL) {
+            return PoetryResult.success(cachedPublicWebInfo);
+        }
+        
+        // 缓存过期，重新构建
         WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
         if (webInfo != null) {
             WebInfo result = new WebInfo();
@@ -103,8 +119,30 @@ public class WebInfoController {
             result.setRandomName(null);
             result.setWaifuJson(null);
 
-            webInfo.setHistoryAllCount(((Long) ((Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS)).get(CommonConst.IP_HISTORY_COUNT)).toString());
-            webInfo.setHistoryDayCount(Integer.toString(((List<Map<String, Object>>) ((Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS)).get(CommonConst.IP_HISTORY_HOUR)).size()));
+            try {
+                Map<String, Object> historyStats = (Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS);
+                if (historyStats != null) {
+                    // 获取访问统计
+                    Long historyCount = (Long) historyStats.get(CommonConst.IP_HISTORY_COUNT);
+                    List<Map<String, Object>> hourStats = (List<Map<String, Object>>) historyStats.get(CommonConst.IP_HISTORY_HOUR);
+                    
+                    if (historyCount != null) {
+                        result.setHistoryAllCount(historyCount.toString());
+                    }
+                    
+                    if (hourStats != null) {
+                        result.setHistoryDayCount(Integer.toString(hourStats.size()));
+                    }
+                }
+            } catch (Exception e) {
+                // 捕获可能的类型转换异常，避免影响正常响应
+                log.warn("获取访问统计时出错", e);
+            }
+            
+            // 更新本地缓存
+            cachedPublicWebInfo = result;
+            lastUpdateTime = currentTime;
+            
             return PoetryResult.success(result);
         }
         return PoetryResult.success();
@@ -120,6 +158,53 @@ public class WebInfoController {
         result.put("ip", clientIP);
         result.put("timestamp", System.currentTimeMillis());
         return PoetryResult.success(result);
+    }
+
+    @LoginCheck(0)
+    @PostMapping("/updateThirdLoginConfig")
+    public PoetryResult<Object> updateThirdLoginConfig(@RequestBody Map<String, Object> config) {
+        try {
+            String pythonServerUrl = restTemplate.getUriTemplateHandler().expand("").toString();
+            if (pythonServerUrl == null || pythonServerUrl.isEmpty()) {
+                // 如果RestTemplate没有配置baseUrl，则从环境变量中获取
+                pythonServerUrl = System.getProperty("PYTHON_SERVICE_URL", "http://localhost:5000");
+            }
+            String thirdLoginConfigUrl = pythonServerUrl + "/webInfo/updateThirdLoginConfig";
+            
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.add("X-Internal-Service", "poetize-java");
+            headers.add("X-Admin-Request", "true");
+            
+            // 创建请求实体
+            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(config, headers);
+            
+            log.info("转发第三方登录配置更新请求到Python服务: {}", thirdLoginConfigUrl);
+            
+            // 发送请求到Python服务
+            Map<String, Object> response = restTemplate.postForObject(
+                thirdLoginConfigUrl,
+                requestEntity,
+                Map.class
+            );
+            
+            log.info("Python服务第三方登录配置更新响应: {}", response);
+            
+            if (response != null && response.containsKey("code")) {
+                int code = Integer.parseInt(response.get("code").toString());
+                if (code == 200) {
+                    return PoetryResult.success(response.get("data"));
+                } else {
+                    return PoetryResult.fail(response.get("message") != null ? response.get("message").toString() : "第三方登录配置更新失败");
+                }
+            } else {
+                return PoetryResult.fail("Python服务响应格式错误");
+            }
+        } catch (Exception e) {
+            log.error("第三方登录配置更新失败", e);
+            return PoetryResult.fail("第三方登录配置更新失败: " + e.getMessage());
+        }
     }
 
     /**
@@ -405,6 +490,54 @@ public class WebInfoController {
         }
 
         return PoetryResult.success(stats);
+    }
+
+    @LoginCheck(0)
+    @GetMapping("/getThirdLoginConfig")
+    public PoetryResult<Object> getThirdLoginConfig() {
+        try {
+            String pythonServerUrl = restTemplate.getUriTemplateHandler().expand("").toString();
+            if (pythonServerUrl == null || pythonServerUrl.isEmpty()) {
+                // 如果RestTemplate没有配置baseUrl，则从环境变量中获取
+                pythonServerUrl = System.getProperty("PYTHON_SERVICE_URL", "http://localhost:5000");
+            }
+            String thirdLoginConfigUrl = pythonServerUrl + "/webInfo/getThirdLoginConfig";
+            
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.add("X-Internal-Service", "poetize-java");
+            headers.add("X-Admin-Request", "true");
+            
+            // 创建请求实体
+            HttpEntity<String> requestEntity = new HttpEntity<>(headers);
+            
+            log.info("转发获取第三方登录配置请求到Python服务: {}", thirdLoginConfigUrl);
+            
+            // 发送请求到Python服务
+            Map<String, Object> response = restTemplate.exchange(
+                thirdLoginConfigUrl,
+                org.springframework.http.HttpMethod.GET,
+                requestEntity,
+                Map.class
+            ).getBody();
+            
+            log.info("Python服务第三方登录配置响应: {}", response);
+            
+            if (response != null && response.containsKey("code")) {
+                int code = Integer.parseInt(response.get("code").toString());
+                if (code == 200) {
+                    return PoetryResult.success(response.get("data"));
+                } else {
+                    return PoetryResult.fail(response.get("message") != null ? response.get("message").toString() : "获取第三方登录配置失败");
+                }
+            } else {
+                return PoetryResult.fail("Python服务响应格式错误");
+            }
+        } catch (Exception e) {
+            log.error("获取第三方登录配置失败", e);
+            return PoetryResult.fail("获取第三方登录配置失败: " + e.getMessage());
+        }
     }
 
 }

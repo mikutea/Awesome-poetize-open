@@ -224,7 +224,7 @@ export default {
     // 获取配置
     getConfig() {
       this.loading = true;
-      this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getThirdLoginConfig", {}, true)
+      this.$http.get(this.$constant.baseURL + "/webInfo/getThirdLoginConfig")
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
             this.config = res.data;
@@ -249,7 +249,7 @@ export default {
     // 保存配置
     saveConfig() {
       this.loading = true;
-      this.$http.post(this.$constant.pythonBaseURL + "/webInfo/updateThirdLoginConfig", this.config, true)
+      this.$http.post(this.$constant.baseURL + "/webInfo/updateThirdLoginConfig", this.config)
         .then((res) => {
           this.$message({
             message: "第三方登录配置保存成功",
@@ -298,8 +298,8 @@ export default {
         type: "info"
       });
 
-      // 这里实际上应该打开登录窗口进行测试
-      window.open(`/login/${platform.type}`, '_blank');
+      // 打开登录窗口进行测试
+      window.open(`${this.$constant.pythonBaseURL}/login/${platform.type}`, '_blank', 'width=800,height=600');
     }
   }
 }

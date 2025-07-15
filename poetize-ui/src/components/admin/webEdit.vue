@@ -2742,7 +2742,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       async getThirdLoginConfig() {
         console.log("开始获取第三方登录配置...");
         try {
-          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getThirdLoginConfig", true);
+          const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getThirdLoginConfig");
           console.log("第三方登录配置API响应:", res);
           console.log("响应数据:", res.data);
           
@@ -2962,7 +2962,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         }
         
         this.loading = true;
-        this.$http.post(this.$constant.pythonBaseURL + "/webInfo/updateThirdLoginConfig", this.thirdLoginConfig, true)
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateThirdLoginConfig", this.thirdLoginConfig)
           .then((res) => {
             this.$message({
               message: "第三方登录配置保存成功",
@@ -2980,7 +2980,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       },
       updateThirdLoginConfig() {
         this.loading = true;
-        this.$http.post(this.$constant.pythonBaseURL + "/webInfo/updateThirdLoginConfig", this.thirdLoginConfig, true)
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateThirdLoginConfig", this.thirdLoginConfig)
           .then((res) => {
             this.$message({
               message: "第三方登录功能" + (this.thirdLoginConfig.enable ? "已启用" : "已禁用"),
