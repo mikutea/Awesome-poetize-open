@@ -201,9 +201,15 @@ async def admin_required(
     
     # 获取客户端IP
     client_ip = request.client.host
-    if request.headers.get('X-Forwarded-For'):
-        # 使用最左侧的IP（通常是客户端真实IP）
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    
+    # 如果请求来源是内部受信任网络（如Nginx反向代理）且提供了X-Forwarded-For，则使用其中的第一个IP
+    if x_forwarded_for and is_internal_network_ip(request.client.host):
+        original_ip = client_ip
+        client_ip = x_forwarded_for.split(',')[0].strip()
+        logger.info(f"使用X-Forwarded-For获取真实IP: {client_ip} (来源于内部代理: {original_ip})")
+    elif x_forwarded_for:
+        logger.info(f"忽略不可信来源的X-Forwarded-For: {x_forwarded_for} (请求来源: {client_ip})")
     
     # 详细记录所有请求头用于调试
     all_headers = dict(request.headers)
