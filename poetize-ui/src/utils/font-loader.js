@@ -3,6 +3,9 @@
  * 通过动态创建CSS来加载字体文件，使用系统配置的CDN地址
  */
 
+// 默认Unicode范围定义
+let baseRange, level1Range, level2Range, otherRange
+
 /**
  * 从远程URL加载JSON
  * @param {string} url 远程文件URL
