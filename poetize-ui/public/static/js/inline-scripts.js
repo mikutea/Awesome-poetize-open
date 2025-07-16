@@ -5,8 +5,33 @@
   }
 })();
 
-// 看板娘拖拽功能
+// 看板娘拖拽功能，仅在启用看板娘功能时执行
 (function() {
+  // 检查看板娘功能是否启用
+  function isWaifuEnabled() {
+    try {
+      // 从本地存储获取配置
+      const webInfoStr = localStorage.getItem('webInfo');
+      if (webInfoStr) {
+        const webInfoData = JSON.parse(webInfoStr);
+        // 检查
+        if (webInfoData.data) {
+          return webInfoData.data.enableWaifu === true;
+        }
+      }
+      return false; // 默认为禁用
+    } catch (e) {
+      console.error('检查看板娘状态出错:', e);
+      return false;
+    }
+  }
+
+  // 仅在看板娘功能启用时执行拖拽代码
+  if (!isWaifuEnabled()) {
+    console.log('看板娘功能已禁用，跳过拖拽功能初始化');
+    return;
+  }
+
   // 等待DOM加载完成
   document.addEventListener('DOMContentLoaded', function() {
     // 等待看板娘元素加载

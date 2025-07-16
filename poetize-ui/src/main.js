@@ -9,46 +9,45 @@ import constant from './utils/constant'
 import mavonEditor from 'mavon-editor'
 // 导入字体加载器
 import { loadFonts } from './utils/font-loader'
+
 //引入js
-// 使用try-catch包裹live2d加载，防止加载失败
-try {
-  // 确保CSS文件加载
-  const loadCss = (url) => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = url;
-    document.head.appendChild(link);
-  };
-  
-  // 确保基本的看板娘样式已加载
-  loadCss(constant.live2d_path + 'waifu.css');
-  
-  // 延迟加载live2d，确保核心内容优先加载
+// 优化Live2D加载逻辑，功能关闭时完全不加载任何资源
   window.addEventListener('load', () => {
     setTimeout(() => {
       // 检查看板娘是否启用
-      const checkWaifuEnabled = () => {
-        try {
-          // 从本地存储获取配置
-          const webInfoStr = localStorage.getItem('webInfo');
-          if (webInfoStr) {
-            const webInfoData = JSON.parse(webInfoStr);
-            // 处理两种可能的数据格式
-            if (webInfoData.data && webInfoData.data.enableWaifu !== undefined) {
-              return webInfoData.data.enableWaifu === true;
-            } else if (webInfoData.enableWaifu !== undefined) {
-              return webInfoData.enableWaifu === true;
-            }
-          }
-          return store.state.webInfo.enableWaifu === true;
-        } catch (e) {
-          console.error('检查看板娘状态出错:', e);
-          return false;
-        }
+     const checkWaifuEnabled = () => {
+       try {
+         // 从本地存储获取配置
+         const webInfoStr = localStorage.getItem('webInfo');
+         if (webInfoStr) {
+           const webInfoData = JSON.parse(webInfoStr);
+           // 只检查新格式
+           if (webInfoData.data) {
+             return webInfoData.data.enableWaifu === true;
+           }
+         }
+         return store.state.webInfo.enableWaifu === true;
+       } catch (e) {
+         console.error('检查看板娘状态出错:', e);
+         return false;
+       }
+     };
+      
+    // 只在启用状态下加载看板娘的CSS和JS
+      if (checkWaifuEnabled()) {
+      console.log('看板娘功能已启用，开始加载资源');
+      
+      // 1. 加载CSS文件
+      const loadCss = (url) => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        document.head.appendChild(link);
       };
       
-      // 只在启用状态下加载看板娘
-      if (checkWaifuEnabled()) {
+      loadCss(constant.live2d_path + 'waifu.css');
+      
+      // 2. 动态加载JS
         import('./utils/live2d').then(() => {
           console.log('看板娘加载成功');
           
@@ -84,13 +83,11 @@ try {
           console.warn('看板娘加载失败，但不影响主要功能:', error);
         });
       } else {
-        console.log('看板娘功能已禁用，跳过加载');
+      console.log('看板娘功能已禁用，跳过所有相关资源的加载');
       }
-    }, 2000); // 延迟2秒加载
+  }, 500); // 将延迟从2000毫秒减少到500毫秒，加快页面加载
   });
-} catch (err) {
-  console.warn('看板娘初始化失败，但不影响主要功能:', err);
-}
+
 import './utils/title'
 //引入css
 import './assets/css/animation.css'

@@ -442,11 +442,9 @@
             const webInfoStr = localStorage.getItem('webInfo');
             if (webInfoStr) {
               const webInfoData = JSON.parse(webInfoStr);
-              // 处理两种可能的数据格式
-              if (webInfoData.data && webInfoData.data.enableWaifu !== undefined) {
+              // 检查
+              if (webInfoData.data) {
                 return webInfoData.data.enableWaifu === true;
-              } else if (webInfoData.enableWaifu !== undefined) {
-                return webInfoData.enableWaifu === true;
               }
             }
             return this.$store.state.webInfo.enableWaifu === true;

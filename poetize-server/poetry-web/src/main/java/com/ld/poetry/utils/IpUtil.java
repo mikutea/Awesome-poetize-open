@@ -312,17 +312,6 @@ public class IpUtil {
     }
     
     /**
-     * 获取IP地理位置信息（占位方法，可以集成第三方IP库）
-     */
-    public static String getIpLocation(String ip) {
-        // TODO: 可以集成IP2Location、GeoIP等库
-        if (isInternalIp(ip)) {
-            return "内网";
-        }
-        return "未知";
-    }
-    
-    /**
      * 验证IP是否在指定的CIDR范围内
      */
     public static boolean isIpInCidr(String ip, String cidr) {
