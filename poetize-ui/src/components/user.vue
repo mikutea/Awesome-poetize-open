@@ -447,10 +447,13 @@
               // 检查是否有重定向URL
               const redirect = this.$route.query.redirect;
               const hasComment = this.$route.query.hasComment;
-              
+              const hasReplyAction = this.$route.query.hasReplyAction;
+
               if (redirect) {
-                // 保留hasComment参数以触发评论恢复
-                const query = hasComment === 'true' ? { hasComment: 'true' } : {};
+                // 保留hasComment和hasReplyAction参数以触发评论/回复状态恢复
+                const query = {};
+                if (hasComment === 'true') query.hasComment = 'true';
+                if (hasReplyAction === 'true') query.hasReplyAction = 'true';
                 this.$router.push({ path: redirect, query: query });
               } else {
                 this.$router.push({path: '/'});
@@ -525,10 +528,13 @@
               // 检查是否有重定向URL
               const redirect = this.$route.query.redirect;
               const hasComment = this.$route.query.hasComment;
-              
+              const hasReplyAction = this.$route.query.hasReplyAction;
+
               if (redirect) {
-                // 保留hasComment参数以触发评论恢复
-                const query = hasComment === 'true' ? { hasComment: 'true' } : {};
+                // 保留hasComment和hasReplyAction参数以触发评论/回复状态恢复
+                const query = {};
+                if (hasComment === 'true') query.hasComment = 'true';
+                if (hasReplyAction === 'true') query.hasReplyAction = 'true';
                 this.$router.push({ path: redirect, query: query });
               } else {
                 // 如果没有重定向，则跳转首页并打开IM聊天室

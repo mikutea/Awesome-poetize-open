@@ -13,6 +13,7 @@ import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.service.ArticleService;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.LabelService;
 import com.ld.poetry.service.SeoService;
 import com.ld.poetry.service.SortService;
@@ -57,13 +58,16 @@ public class ApiController {
 
     private final TranslationService translationService;
 
+    private final CacheService cacheService;
+
     public ApiController(ArticleService articleService,
                         LabelMapper labelMapper,
                         SortMapper sortMapper,
                         SortService sortService,
                         LabelService labelService,
                         SeoService seoService,
-                        TranslationService translationService) {
+                        TranslationService translationService,
+                        CacheService cacheService) {
         this.articleService = articleService;
         this.labelMapper = labelMapper;
         this.sortMapper = sortMapper;
@@ -71,14 +75,20 @@ public class ApiController {
         this.labelService = labelService;
         this.seoService = seoService;
         this.translationService = translationService;
+        this.cacheService = cacheService;
     }
 
     /**
      * 验证API密钥
      */
     private WebInfo validateApiKey(HttpServletRequest request) {
-        // 获取网站信息
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        // 使用Redis缓存获取网站信息
+        WebInfo webInfo = cacheService.getCachedWebInfo();
+
+        // 降级到PoetryCache获取
+        if (webInfo == null) {
+            webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        }
         if (webInfo == null || webInfo.getApiEnabled() == null || !webInfo.getApiEnabled()) {
             log.warn("API请求被拒绝：API未启用");
             throw new PoetryRuntimeException("API未启用");

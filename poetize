@@ -1,8 +1,9 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-08
+## 修改时间: 2025-07-21
 ## 描述: Poetize 博客系统全局管理命令
-## 版本: 1.2.1
+## 版本: 1.2.2
+## 新增功能: 系统更新命令 (poetize -update)
 
 # 定义颜色
 RED='\033[0;31m'
@@ -117,6 +118,7 @@ show_help() {
     printf "  -start, -up               启动所有服务\n"
     printf "  -stop, -down              停止所有服务\n"
     printf "  -restart                  重启所有服务\n"
+    printf "  -update                   更新系统到最新版本\n"
     printf "  -uninstall                卸载当前项目的Poetize实例\n"
     printf "  -uninstall-all            完全卸载所有Poetize系统\n"
     printf "  -deploy, -bushu, -bs      执行部署脚本\n"
@@ -131,10 +133,18 @@ show_help() {
     printf "  -version, -v              显示版本信息\n"
     printf "  -help, -h                 显示此帮助信息\n"
     printf "\n"
+    printf "${BLUE}更新管理:${NC}\n"
+    printf "  -update                   更新系统到最新版本\n"
+    printf "                           （自动检测Git仓库或下载方式）\n"
+    printf "  -update --backup-only     仅执行数据备份\n"
+    printf "  -update --dry-run         模拟更新过程（不实际执行）\n"
+    printf "  -update --force           强制更新（跳过确认）\n"
+    printf "\n"
     printf "${BLUE}示例:${NC}\n"
     printf "  poetize -status           # 查看服务状态\n"
     printf "  poetize -qy               # 快速迁移\n"
     printf "  poetize -bs               # 快速部署\n"
+    printf "  poetize -update           # 更新到最新版本\n"
     printf "  poetize -logs nginx       # 查看nginx日志\n"
     printf "  poetize -restart          # 重启所有服务\n"
     printf "  poetize -uninstall        # 卸载当前项目实例\n"
@@ -144,9 +154,10 @@ show_help() {
 
 # 显示版本信息
 show_version() {
-    printf "${GREEN}POETIZE 管理工具 v1.1.0${NC}\n"
+    printf "${GREEN}POETIZE 管理工具 v1.2.0${NC}\n"
     printf "作者: LeapYa\n"
     printf "项目: Awesome-poetize-open\n"
+    printf "新增功能: 系统更新命令\n"
 }
 
 find_project_dir() {
@@ -461,23 +472,23 @@ show_info() {
 check_health() {
     info "正在检查服务健康状态..."
     printf "\n"
-    
+
     local all_healthy=true
     local base_services=("poetize-nginx" "poetize-java" "poetize-python" "poetize-mariadb" "poetize-prerender")
-    
+
     # 获取所有运行中的poetize相关容器
     local running_containers=$(sudo docker ps --format "{{.Names}}" | grep "^poetize-" | sort)
-    
+
     # 为每个基础服务类型检查所有实例
     for base_service in "${base_services[@]}"; do
         local found_instances=false
-        
+
         # 检查该服务类型的所有实例
         while IFS= read -r container_name; do
             if [[ "$container_name" =~ ^${base_service}(-blog[0-9]+)?$ ]]; then
                 found_instances=true
                 printf "${BLUE}检查 $container_name...${NC}\n"
-                
+
                 # 检查容器状态
                 local container_status=$(sudo docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null)
                 if [ "$container_status" != "running" ]; then
@@ -485,7 +496,7 @@ check_health() {
                     all_healthy=false
                     continue
                 fi
-                
+
                 # 检查健康状态
                 local health_status=$(sudo docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "no-healthcheck")
                 case "$health_status" in
@@ -505,20 +516,1657 @@ check_health() {
                 esac
             fi
         done <<< "$running_containers"
-        
+
         # 如果没有找到任何实例，显示未运行状态
         if [ "$found_instances" = false ]; then
             printf "${RED}✗ $base_service 容器未运行${NC}\n"
             all_healthy=false
         fi
     done
-    
+
     printf "\n"
     if [ "$all_healthy" = true ]; then
         success "所有服务健康状态良好"
     else
         warning "部分服务存在问题，请检查日志"
     fi
+}
+
+# ================================ UPDATE 命令相关函数 ================================
+
+# 全局变量
+UPDATE_BACKUP_DIR=""
+UPDATE_TIMESTAMP=""
+UPDATE_DRY_RUN=false
+UPDATE_FORCE=false
+UPDATE_BACKUP_ONLY=false
+UPDATE_STATE_FILE=".update_state"
+UPDATE_METHOD=""  # git 或 download
+
+# 初始化更新环境
+init_update_environment() {
+    UPDATE_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    UPDATE_BACKUP_DIR="./backup_${UPDATE_TIMESTAMP}"
+
+    info "初始化更新环境..."
+    info "备份目录: $UPDATE_BACKUP_DIR"
+    info "时间戳: $UPDATE_TIMESTAMP"
+
+    # 创建备份目录
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        mkdir -p "$UPDATE_BACKUP_DIR"
+        if [ $? -ne 0 ]; then
+            error "创建备份目录失败: $UPDATE_BACKUP_DIR"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# 检查更新前置条件
+check_update_prerequisites() {
+    info "检查更新前置条件..."
+
+    # 检查是否在项目根目录
+    if [ ! -f "docker-compose.yml" ] || [ ! -f "poetize" ]; then
+        error "请在poetize项目根目录下执行更新命令"
+        return 1
+    fi
+
+    # 检查更新方式
+    if [ -d ".git" ]; then
+        info "检测到Git仓库，将使用Git方式更新"
+        UPDATE_METHOD="git"
+    else
+        warning "未检测到Git仓库，将使用重新下载方式更新"
+        UPDATE_METHOD="download"
+    fi
+
+    # 检查网络连接
+    if ! ping -c 1 github.com &> /dev/null && ! ping -c 1 gitee.com &> /dev/null; then
+        warning "网络连接检查失败，可能影响代码更新"
+    fi
+
+    # 检查Docker服务
+    check_docker
+
+    # 检查数据库配置
+    info "检查数据库配置..."
+    show_database_config_info
+
+    # 检查磁盘空间（至少需要1GB）
+    local available_space=$(df . | awk 'NR==2 {print $4}')
+    if [ "$available_space" -lt 1048576 ]; then  # 1GB = 1048576 KB
+        warning "可用磁盘空间不足1GB，建议清理后再执行更新"
+    fi
+
+    success "前置条件检查完成"
+    return 0
+}
+
+# 备份用户数据
+backup_user_data() {
+    info "开始备份用户数据..."
+
+    # 备份py/data目录
+    if [ -d "py/data" ]; then
+        info "备份py/data目录..."
+        if [ "$UPDATE_DRY_RUN" = false ]; then
+            cp -r py/data "$UPDATE_BACKUP_DIR/py_data_backup" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                success "py/data目录备份完成"
+            else
+                error "py/data目录备份失败"
+                return 1
+            fi
+        else
+            info "[模拟] 备份py/data目录到 $UPDATE_BACKUP_DIR/py_data_backup"
+        fi
+    else
+        warning "py/data目录不存在，跳过备份"
+    fi
+
+    # 备份配置文件
+    local config_files=(".poetize-config" ".config/db_credentials.txt" "docker-compose.override.yml")
+    for config_file in "${config_files[@]}"; do
+        if [ -f "$config_file" ]; then
+            info "备份配置文件: $config_file"
+            if [ "$UPDATE_DRY_RUN" = false ]; then
+                mkdir -p "$UPDATE_BACKUP_DIR/$(dirname "$config_file")"
+                cp "$config_file" "$UPDATE_BACKUP_DIR/$config_file" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    success "配置文件 $config_file 备份完成"
+                else
+                    warning "配置文件 $config_file 备份失败"
+                fi
+            else
+                info "[模拟] 备份配置文件 $config_file"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 获取数据库配置信息
+get_database_config() {
+    local db_name="poetize"
+    local db_user="poetize"
+    local db_password=""
+    local db_root_password=""
+
+    info "正在获取数据库配置信息..."
+
+    # 方法1: 从.config/db_credentials.txt文件读取（deploy.sh生成的配置）
+    if [ -f ".config/db_credentials.txt" ]; then
+        info "从 .config/db_credentials.txt 读取数据库配置"
+
+        # 读取poetize用户密码
+        db_password=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: *//' | tr -d '\r\n ')
+        db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: *//' | tr -d '\r\n ')
+
+        if [ -n "$db_password" ]; then
+            success "成功从凭据文件读取数据库配置"
+            echo "$db_name|$db_user|$db_password|$db_root_password"
+            return 0
+        else
+            warning "凭据文件存在但无法解析密码"
+        fi
+    fi
+
+    # 方法2: 从docker-compose.yml文件读取环境变量
+    if [ -f "docker-compose.yml" ]; then
+        info "从 docker-compose.yml 读取数据库配置"
+
+        # 读取MARIADB_PASSWORD
+        db_password=$(grep "MARIADB_PASSWORD=" docker-compose.yml | head -1 | sed 's/.*MARIADB_PASSWORD=//' | tr -d ' \r\n')
+        db_root_password=$(grep "MARIADB_ROOT_PASSWORD=" docker-compose.yml | head -1 | sed 's/.*MARIADB_ROOT_PASSWORD=//' | tr -d ' \r\n')
+
+        if [ -n "$db_password" ]; then
+            success "成功从docker-compose.yml读取数据库配置"
+            echo "$db_name|$db_user|$db_password|$db_root_password"
+            return 0
+        else
+            warning "docker-compose.yml存在但无法解析数据库密码"
+        fi
+    fi
+
+    # 方法3: 从运行中的容器环境变量读取
+    local db_container="poetize-mariadb"
+    if sudo docker ps --format "{{.Names}}" | grep -q "^${db_container}$"; then
+        info "从运行中的数据库容器读取配置"
+
+        db_password=$(sudo docker exec "$db_container" printenv MARIADB_PASSWORD 2>/dev/null | tr -d '\r\n ')
+        db_root_password=$(sudo docker exec "$db_container" printenv MARIADB_ROOT_PASSWORD 2>/dev/null | tr -d '\r\n ')
+
+        if [ -n "$db_password" ]; then
+            success "成功从容器环境变量读取数据库配置"
+            echo "$db_name|$db_user|$db_password|$db_root_password"
+            return 0
+        else
+            warning "容器运行中但无法读取环境变量"
+        fi
+    fi
+
+    # 方法4: 尝试使用默认密码（兼容性）
+    warning "无法从配置文件读取数据库密码，尝试使用默认密码"
+    db_password="poetize123"
+    db_root_password="root123"
+
+    echo "$db_name|$db_user|$db_password|$db_root_password"
+    return 1  # 返回1表示使用了默认密码
+}
+
+# 测试数据库连接
+test_database_connection() {
+    local db_config="$1"
+    local db_container="poetize-mariadb"
+
+    if [ -z "$db_config" ]; then
+        return 1
+    fi
+
+    # 解析配置信息
+    local db_name=$(echo "$db_config" | cut -d'|' -f1)
+    local db_user=$(echo "$db_config" | cut -d'|' -f2)
+    local db_password=$(echo "$db_config" | cut -d'|' -f3)
+
+    # 测试连接
+    sudo docker exec "$db_container" mariadb \
+        -u"$db_user" -p"$db_password" \
+        -e "SELECT 1;" "$db_name" >/dev/null 2>&1
+
+    return $?
+}
+
+# 显示数据库配置信息（调试用）
+show_database_config_info() {
+    info "数据库配置信息检查："
+
+    # 检查凭据文件
+    if [ -f ".config/db_credentials.txt" ]; then
+        success "✓ 找到数据库凭据文件: .config/db_credentials.txt"
+        local file_size=$(du -h .config/db_credentials.txt | cut -f1)
+        info "  文件大小: $file_size"
+        local file_perms=$(ls -l .config/db_credentials.txt | cut -d' ' -f1)
+        info "  文件权限: $file_perms"
+    else
+        warning "✗ 未找到数据库凭据文件: .config/db_credentials.txt"
+    fi
+
+    # 检查docker-compose.yml
+    if [ -f "docker-compose.yml" ]; then
+        success "✓ 找到docker-compose.yml文件"
+        local has_db_config=$(grep -c "MARIADB_PASSWORD" docker-compose.yml)
+        info "  数据库配置项数量: $has_db_config"
+    else
+        warning "✗ 未找到docker-compose.yml文件"
+    fi
+
+    # 检查数据库容器状态
+    local db_container="poetize-mariadb"
+    if sudo docker ps --format "{{.Names}}" | grep -q "^${db_container}$"; then
+        success "✓ 数据库容器正在运行: $db_container"
+        local container_status=$(sudo docker inspect --format='{{.State.Status}}' "$db_container" 2>/dev/null)
+        info "  容器状态: $container_status"
+    else
+        warning "✗ 数据库容器未运行: $db_container"
+    fi
+}
+
+# 备份数据库
+backup_database() {
+    info "开始备份数据库..."
+
+    # 检查数据库容器是否运行
+    local db_container="poetize-mariadb"
+    if ! sudo docker ps --format "{{.Names}}" | grep -q "^${db_container}$"; then
+        warning "数据库容器未运行，跳过数据库备份"
+        return 0
+    fi
+
+    # 获取数据库连接信息
+    local db_config=$(get_database_config)
+    local config_status=$?
+
+    if [ -z "$db_config" ]; then
+        error "无法获取数据库配置信息"
+        return 1
+    fi
+
+    # 解析配置信息
+    local db_name=$(echo "$db_config" | cut -d'|' -f1)
+    local db_user=$(echo "$db_config" | cut -d'|' -f2)
+    local db_password=$(echo "$db_config" | cut -d'|' -f3)
+    local db_root_password=$(echo "$db_config" | cut -d'|' -f4)
+
+    if [ -z "$db_password" ]; then
+        error "数据库密码为空，无法执行备份"
+        return 1
+    fi
+
+    local backup_file="$UPDATE_BACKUP_DIR/database_backup_${UPDATE_TIMESTAMP}.sql"
+
+    info "备份数据库到: $backup_file"
+    info "数据库: $db_name, 用户: $db_user"
+
+    if [ $config_status -ne 0 ]; then
+        warning "使用默认密码进行备份，如果失败请检查数据库配置"
+    fi
+
+    # 测试数据库连接
+    info "测试数据库连接..."
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        if test_database_connection "$db_config"; then
+            success "数据库连接测试成功"
+        else
+            error "数据库连接测试失败，请检查密码和配置"
+            error "可能的原因："
+            error "1. 数据库密码不正确"
+            error "2. 数据库服务未完全启动"
+            error "3. 配置文件损坏"
+            return 1
+        fi
+    else
+        info "[模拟] 测试数据库连接"
+    fi
+
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        # 执行数据库备份
+        info "正在执行数据库备份..."
+        sudo docker exec "$db_container" mariadb-dump \
+            -u"$db_user" -p"$db_password" \
+            --single-transaction \
+            --routines \
+            --triggers \
+            --events \
+            --hex-blob \
+            --add-drop-database \
+            --databases "$db_name" > "$backup_file" 2>/dev/null
+
+        local backup_result=$?
+
+        if [ $backup_result -eq 0 ] && [ -s "$backup_file" ]; then
+            success "数据库备份完成: $backup_file"
+            info "备份文件大小: $(du -h "$backup_file" | cut -f1)"
+
+            # 验证备份文件内容
+            if grep -q "CREATE DATABASE" "$backup_file" && grep -q "USE \`$db_name\`" "$backup_file"; then
+                success "备份文件验证通过"
+            else
+                warning "备份文件可能不完整，请检查"
+            fi
+        else
+            error "数据库备份失败"
+            if [ -f "$backup_file" ]; then
+                info "备份文件大小: $(du -h "$backup_file" | cut -f1)"
+                if [ ! -s "$backup_file" ]; then
+                    error "备份文件为空，可能是密码错误或权限不足"
+                fi
+            fi
+            return 1
+        fi
+    else
+        info "[模拟] 备份数据库到 $backup_file"
+        info "[模拟] 使用配置: 数据库=$db_name, 用户=$db_user"
+    fi
+
+    return 0
+}
+
+# 备份Docker volumes
+backup_docker_volumes() {
+    info "开始备份Docker数据卷..."
+
+    local volumes=("poetize_uploads" "mysql_data" "redis_data")
+
+    for volume in "${volumes[@]}"; do
+        # 检查volume是否存在
+        if sudo docker volume ls --format "{{.Name}}" | grep -q "^${volume}$"; then
+            info "备份数据卷: $volume"
+
+            if [ "$UPDATE_DRY_RUN" = false ]; then
+                local volume_backup_dir="$UPDATE_BACKUP_DIR/volumes/$volume"
+                mkdir -p "$volume_backup_dir"
+
+                # 使用临时容器备份volume
+                sudo docker run --rm \
+                    -v "${volume}:/source:ro" \
+                    -v "$(pwd)/$volume_backup_dir:/backup" \
+                    alpine:latest \
+                    sh -c "cd /source && tar czf /backup/data.tar.gz ." 2>/dev/null
+
+                if [ $? -eq 0 ]; then
+                    success "数据卷 $volume 备份完成"
+                else
+                    warning "数据卷 $volume 备份失败"
+                fi
+            else
+                info "[模拟] 备份数据卷 $volume"
+            fi
+        else
+            warning "数据卷 $volume 不存在，跳过备份"
+        fi
+    done
+
+    return 0
+}
+
+# 更新代码
+update_code() {
+    info "开始更新代码..."
+
+    # 保存当前分支和提交信息
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+    local current_commit=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+    info "当前分支: $current_branch"
+    info "当前提交: ${current_commit:0:8}"
+
+    # 保存状态信息
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        echo "ORIGINAL_BRANCH=$current_branch" > "$UPDATE_STATE_FILE"
+        echo "ORIGINAL_COMMIT=$current_commit" >> "$UPDATE_STATE_FILE"
+        echo "BACKUP_DIR=$UPDATE_BACKUP_DIR" >> "$UPDATE_STATE_FILE"
+        echo "UPDATE_TIMESTAMP=$UPDATE_TIMESTAMP" >> "$UPDATE_STATE_FILE"
+    fi
+
+    # 检查是否有未提交的更改
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        warning "检测到未提交的更改"
+        if [ "$UPDATE_FORCE" = false ]; then
+            error "请先提交或暂存您的更改，或使用 --force 参数强制更新"
+            return 1
+        else
+            warning "强制模式：将暂存当前更改"
+            if [ "$UPDATE_DRY_RUN" = false ]; then
+                git stash push -m "Auto-stash before update at $UPDATE_TIMESTAMP" 2>/dev/null
+            else
+                info "[模拟] 暂存当前更改"
+            fi
+        fi
+    fi
+
+    # 获取远程更新
+    info "获取远程更新..."
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        git fetch origin 2>/dev/null
+        if [ $? -ne 0 ]; then
+            error "获取远程更新失败"
+            return 1
+        fi
+    else
+        info "[模拟] 执行 git fetch origin"
+    fi
+
+    # 检查是否有新版本
+    local remote_commit=$(git rev-parse origin/$current_branch 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+    if [ "$current_commit" = "$remote_commit" ]; then
+        success "代码已是最新版本，无需更新"
+        return 0
+    fi
+
+    info "发现新版本，准备更新..."
+    info "远程提交: ${remote_commit:0:8}"
+
+    # 执行代码更新
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        # 检查远程分支是否存在
+        if ! git rev-parse --verify origin/$current_branch >/dev/null 2>&1; then
+            warning "远程分支 origin/$current_branch 不存在"
+            if git rev-parse --verify origin/main >/dev/null 2>&1; then
+                warning "将切换到 main 分支"
+                current_branch="main"
+            elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+                warning "将切换到 master 分支"
+                current_branch="master"
+            else
+                error "无法找到可用的远程分支"
+                return 1
+            fi
+        fi
+
+        # 根据分支类型选择更新策略
+        if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
+            info "主分支更新：使用 reset --hard 策略"
+            warning "注意：这将丢弃所有本地未推送的更改"
+            git reset --hard origin/$current_branch 2>/dev/null
+        else
+            info "开发分支更新：使用 pull 策略"
+            git pull origin $current_branch 2>/dev/null
+            local pull_result=$?
+
+            # 检查是否有合并冲突
+            if [ $pull_result -ne 0 ]; then
+                if git status --porcelain | grep -q "^UU\|^AA\|^DD"; then
+                    error "检测到合并冲突，需要手动解决"
+                    error "请执行以下步骤："
+                    error "1. 解决冲突文件中的冲突标记"
+                    error "2. 执行 git add <冲突文件>"
+                    error "3. 执行 git commit"
+                    error "4. 重新运行 poetize -update"
+                    return 1
+                fi
+            fi
+        fi
+
+        local update_result=$?
+        if [ $update_result -eq 0 ]; then
+            success "代码更新完成"
+            local new_commit=$(git rev-parse HEAD 2>/dev/null)
+            info "新版本提交: ${new_commit:0:8}"
+
+            # 显示更新摘要
+            local commit_count=$(git rev-list --count $current_commit..$new_commit 2>/dev/null || echo "0")
+            info "更新了 $commit_count 个提交"
+
+            # 检查配置文件是否有更改
+            local changed_files=$(git diff --name-only $current_commit..$new_commit)
+
+            # 处理docker-compose.yml更改
+            if echo "$changed_files" | grep -q "docker-compose.yml"; then
+                warning "检测到docker-compose.yml文件有更新"
+                info "正在合并Docker Compose配置..."
+
+                # 获取更新前的配置
+                git show $current_commit:docker-compose.yml > "$UPDATE_BACKUP_DIR/docker-compose.yml.old" 2>/dev/null || {
+                    warning "无法获取更新前的配置，跳过配置合并"
+                }
+
+                # 如果成功获取了旧配置，进行合并
+                if [ -f "$UPDATE_BACKUP_DIR/docker-compose.yml.old" ]; then
+                    # 提取用户配置
+                    local user_config="$UPDATE_BACKUP_DIR/user_config.env"
+                    extract_user_config "$UPDATE_BACKUP_DIR/docker-compose.yml.old" "$user_config"
+
+                    # 应用用户配置到新版本
+                    if apply_user_config "$user_config" "docker-compose.yml"; then
+                        success "Docker Compose配置合并成功"
+                    else
+                        warning "配置合并失败，请手动检查docker-compose.yml"
+                    fi
+                fi
+            fi
+
+            # 处理nginx配置文件更改
+            if echo "$changed_files" | grep -q "docker/nginx/"; then
+                warning "检测到nginx配置文件有更新"
+                info "正在合并nginx配置..."
+
+                # 备份当前nginx配置
+                backup_nginx_configs "$UPDATE_BACKUP_DIR"
+
+                # 如果存在用户配置，应用到新版本
+                local user_config="$UPDATE_BACKUP_DIR/user_config.env"
+                if [ -f "$user_config" ]; then
+                    source "$user_config"
+
+                    # 应用nginx域名配置
+                    if [ -n "$NGINX_SERVER_NAMES" ] || [ -n "$SSL_DOMAIN" ] || [ -n "$NGINX_VALID_REFERERS" ]; then
+                        apply_nginx_domain_config "$NGINX_SERVER_NAMES" "$SSL_DOMAIN" "$NGINX_VALID_REFERERS"
+                        success "nginx配置合并成功"
+                    fi
+                else
+                    warning "未找到用户配置，nginx配置将使用新版本默认值"
+                fi
+            fi
+        else
+            error "代码更新失败"
+            return 1
+        fi
+    else
+        info "[模拟] 更新代码到最新版本"
+        info "[模拟] 当前分支: $current_branch"
+        if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
+            info "[模拟] 使用 git reset --hard origin/$current_branch"
+        else
+            info "[模拟] 使用 git pull origin $current_branch"
+        fi
+    fi
+
+    return 0
+}
+
+# 检测中国网络环境
+is_china_environment() {
+    # 检测方法1: 尝试访问GitHub
+    if ! curl -s --connect-timeout 3 https://github.com >/dev/null 2>&1; then
+        return 0  # 可能在中国环境
+    fi
+
+    # 检测方法2: 检查DNS解析
+    local github_ip=$(nslookup github.com 2>/dev/null | grep "Address:" | tail -1 | awk '{print $2}')
+    if [[ "$github_ip" =~ ^20\.205\. ]]; then
+        return 1  # 国际环境
+    fi
+
+    return 0  # 默认认为是中国环境
+}
+
+# 下载方式更新代码
+update_code_by_download() {
+    info "开始通过重新下载方式更新代码..."
+
+    # 确定下载URL
+    local download_url="https://github.com/LeapYa/Awesome-poetize-open.git"
+    local repo_url="https://gitee.com/leapya/poetize.git"
+    local temp_dir="poetize_update_temp_$(date +%s)"
+
+    if is_china_environment; then
+        info "检测到中国网络环境，使用Gitee镜像"
+        download_url="$repo_url"
+    fi
+
+    # 保存当前状态
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        echo "UPDATE_METHOD=download" > "$UPDATE_STATE_FILE"
+        echo "BACKUP_DIR=$UPDATE_BACKUP_DIR" >> "$UPDATE_STATE_FILE"
+        echo "UPDATE_TIMESTAMP=$UPDATE_TIMESTAMP" >> "$UPDATE_STATE_FILE"
+        echo "ORIGINAL_DIR=$(pwd)" >> "$UPDATE_STATE_FILE"
+    fi
+
+    info "下载最新版本到临时目录: $temp_dir"
+
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        # 下载最新代码
+        git clone --depth 1 "$download_url" "$temp_dir" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            error "下载最新代码失败"
+            rm -rf "$temp_dir" 2>/dev/null
+            return 1
+        fi
+
+        # 删除临时目录的.git文件夹
+        rm -rf "$temp_dir/.git" 2>/dev/null
+
+        # 备份当前项目文件（除了用户数据和配置）
+        info "备份当前项目文件..."
+        local current_backup="$UPDATE_BACKUP_DIR/current_project_backup"
+        mkdir -p "$current_backup"
+
+        # 复制当前项目文件，排除用户数据
+        rsync -av --exclude='py/data' --exclude='.config' --exclude='backup_*' \
+              --exclude='*.log' --exclude='node_modules' \
+              ./ "$current_backup/" 2>/dev/null || {
+            cp -r . "$current_backup/" 2>/dev/null
+        }
+
+        # 用新代码替换当前代码
+        info "应用新版本代码..."
+
+        # 特殊处理配置文件
+        info "处理配置文件..."
+
+        # 1. 处理docker-compose.yml配置文件
+        info "处理Docker Compose配置文件..."
+        if [ -f "docker-compose.yml" ] && [ -f "$temp_dir/docker-compose.yml" ]; then
+            if merge_docker_compose_config "$temp_dir/docker-compose.yml" "$UPDATE_BACKUP_DIR"; then
+                success "Docker Compose配置合并成功"
+            else
+                warning "Docker Compose配置合并失败，使用新版本配置"
+                cp "$temp_dir/docker-compose.yml" "docker-compose.yml"
+            fi
+        else
+            # 如果文件不存在，直接复制
+            cp "$temp_dir/docker-compose.yml" "docker-compose.yml" 2>/dev/null || true
+        fi
+
+        # 2. 处理nginx配置文件
+        info "处理nginx配置文件..."
+        merge_nginx_configs "$temp_dir" "$UPDATE_BACKUP_DIR"
+
+        # 保留重要文件和目录到临时目录
+        local preserve_items=("py/data" ".config" "backup_*" "*.log")
+        for item in "${preserve_items[@]}"; do
+            if [ -e "$item" ]; then
+                cp -r "$item" "$temp_dir/" 2>/dev/null || true
+            fi
+        done
+
+        # 替换其他项目文件（排除docker-compose.yml，因为已经特殊处理）
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -av --delete --exclude='py/data' --exclude='.config' \
+                  --exclude='backup_*' --exclude='*.log' --exclude='docker-compose.yml' \
+                  "$temp_dir/" ./ 2>/dev/null
+        else
+            # 如果rsync不可用，使用cp
+            info "rsync不可用，使用cp命令替换文件..."
+
+            # 删除旧文件（保留重要目录和docker-compose.yml）
+            find . -maxdepth 1 -not -name 'py' -not -name '.config' \
+                   -not -name 'backup_*' -not -name '*.log' \
+                   -not -name 'docker-compose.yml' -not -name '.' \
+                   -exec rm -rf {} + 2>/dev/null || true
+
+            # 复制新文件（排除docker-compose.yml）
+            for item in "$temp_dir"/*; do
+                local basename=$(basename "$item")
+                if [ "$basename" != "docker-compose.yml" ]; then
+                    cp -r "$item" . 2>/dev/null || true
+                fi
+            done
+        fi
+
+        # 清理临时目录
+        rm -rf "$temp_dir" 2>/dev/null
+
+        success "代码更新完成（下载方式）"
+        info "新版本已应用，用户数据已保留"
+    else
+        info "[模拟] 下载最新代码到 $temp_dir"
+        info "[模拟] 备份当前项目文件"
+        info "[模拟] 应用新版本代码"
+        info "[模拟] 保留用户数据和配置"
+    fi
+
+    return 0
+}
+
+# ================================ 配置文件合并功能 ================================
+
+# 提取docker-compose.yml中的用户配置
+extract_user_config() {
+    local compose_file="$1"
+    local config_file="$2"
+
+    info "提取用户配置从: $compose_file"
+
+    if [ ! -f "$compose_file" ]; then
+        warning "配置文件不存在: $compose_file"
+        return 1
+    fi
+
+    # 创建配置提取文件
+    cat > "$config_file" <<EOF
+# POETIZE 用户配置提取文件
+# 生成时间: $(date)
+# 源文件: $compose_file
+
+EOF
+
+    # 提取域名配置
+    local site_url=$(grep "SITE_URL=" "$compose_file" | head -1 | sed 's/.*SITE_URL=//' | tr -d ' ')
+    local frontend_host=$(grep "FRONTEND_HOST=" "$compose_file" | head -1 | sed 's/.*FRONTEND_HOST=//' | tr -d ' ')
+
+    if [ -n "$site_url" ]; then
+        echo "SITE_URL=$site_url" >> "$config_file"
+    fi
+    if [ -n "$frontend_host" ]; then
+        echo "FRONTEND_HOST=$frontend_host" >> "$config_file"
+    fi
+
+    # 提取数据库配置
+    local mariadb_root_password=$(grep "MARIADB_ROOT_PASSWORD=" "$compose_file" | head -1 | sed 's/.*MARIADB_ROOT_PASSWORD=//' | tr -d ' ')
+    local mariadb_password=$(grep "MARIADB_PASSWORD=" "$compose_file" | head -1 | sed 's/.*MARIADB_PASSWORD=//' | tr -d ' ')
+    local spring_datasource_password=$(grep "SPRING_DATASOURCE_PASSWORD=" "$compose_file" | head -1 | sed 's/.*SPRING_DATASOURCE_PASSWORD=//' | tr -d ' ')
+
+    if [ -n "$mariadb_root_password" ]; then
+        echo "MARIADB_ROOT_PASSWORD=$mariadb_root_password" >> "$config_file"
+    fi
+    if [ -n "$mariadb_password" ]; then
+        echo "MARIADB_PASSWORD=$mariadb_password" >> "$config_file"
+    fi
+    if [ -n "$spring_datasource_password" ]; then
+        echo "SPRING_DATASOURCE_PASSWORD=$spring_datasource_password" >> "$config_file"
+    fi
+
+    # 提取Redis配置
+    local redis_password=$(grep -o 'poetize_redis_[^"]*' "$compose_file" | head -1)
+    if [ -n "$redis_password" ] && [ "$redis_password" != "poetize_redis_2025" ]; then
+        echo "REDIS_PASSWORD=$redis_password" >> "$config_file"
+    fi
+
+    # 提取AES密钥配置
+    local vue_aes_key=$(grep "VUE_APP_POETIZE_AES_KEY=" "$compose_file" | head -1 | sed 's/.*VUE_APP_POETIZE_AES_KEY=//' | tr -d ' ')
+    local poetize_aes_key=$(grep "POETIZE_AES_KEY=" "$compose_file" | head -1 | sed 's/.*POETIZE_AES_KEY=//' | tr -d ' ')
+
+    if [ -n "$vue_aes_key" ]; then
+        echo "VUE_APP_POETIZE_AES_KEY=$vue_aes_key" >> "$config_file"
+    fi
+    if [ -n "$poetize_aes_key" ]; then
+        echo "POETIZE_AES_KEY=$poetize_aes_key" >> "$config_file"
+    fi
+
+    # 提取网络配置
+    local subnet=$(grep "subnet:" "$compose_file" | head -1 | sed 's/.*subnet: *//' | tr -d ' ')
+    local gateway=$(grep "gateway:" "$compose_file" | head -1 | sed 's/.*gateway: *//' | tr -d ' ')
+
+    if [ -n "$subnet" ]; then
+        echo "DOCKER_SUBNET=$subnet" >> "$config_file"
+    fi
+    if [ -n "$gateway" ]; then
+        echo "DOCKER_GATEWAY=$gateway" >> "$config_file"
+    fi
+
+    # 提取邮箱配置
+    local email=$(grep -o '[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]*\.[a-zA-Z]{2,}' "$compose_file" | head -1)
+    if [ -n "$email" ] && [ "$email" != "your-email@example.com" ]; then
+        echo "ADMIN_EMAIL=$email" >> "$config_file"
+    fi
+
+    # 提取容器名称后缀（多实例配置）
+    local container_suffix=$(grep "container_name: poetize-nginx" "$compose_file" | sed 's/.*poetize-nginx//' | tr -d ' ')
+    if [ -n "$container_suffix" ]; then
+        echo "CONTAINER_SUFFIX=$container_suffix" >> "$config_file"
+    fi
+
+    # 提取nginx配置文件中的域名配置
+    extract_nginx_domain_config "$config_file"
+
+    success "用户配置提取完成: $config_file"
+    return 0
+}
+
+# 提取nginx配置文件中的域名配置
+extract_nginx_domain_config() {
+    local config_file="$1"
+
+    info "提取nginx配置文件中的域名配置..."
+
+    # 定义nginx配置文件列表
+    local nginx_configs=("docker/nginx/default.conf" "docker/nginx/default.http.conf" "docker/nginx/default.https.conf")
+
+    # 提取域名配置
+    local domains=""
+    local ssl_domain=""
+
+    for nginx_config in "${nginx_configs[@]}"; do
+        if [ -f "$nginx_config" ]; then
+            # 提取server_name中的域名（排除example.com）
+            local server_names=$(grep "server_name" "$nginx_config" | head -1 | sed 's/.*server_name *//' | sed 's/;.*//' | tr -d ' ')
+            if [ -n "$server_names" ] && [ "$server_names" != "example.com www.example.com" ]; then
+                domains="$server_names"
+                info "从 $nginx_config 提取到域名: $domains"
+            fi
+
+            # 提取SSL证书路径中的域名
+            local ssl_cert_domain=$(grep "ssl_certificate.*live/" "$nginx_config" | head -1 | sed 's|.*live/||' | sed 's|/.*||')
+            if [ -n "$ssl_cert_domain" ] && [ "$ssl_cert_domain" != "example.com" ]; then
+                ssl_domain="$ssl_cert_domain"
+                info "从 $nginx_config 提取到SSL域名: $ssl_domain"
+            fi
+        fi
+    done
+
+    # 保存域名配置
+    if [ -n "$domains" ]; then
+        echo "NGINX_SERVER_NAMES=$domains" >> "$config_file"
+    fi
+
+    if [ -n "$ssl_domain" ]; then
+        echo "SSL_DOMAIN=$ssl_domain" >> "$config_file"
+    fi
+
+    # 提取valid_referers配置
+    for nginx_config in "${nginx_configs[@]}"; do
+        if [ -f "$nginx_config" ]; then
+            local referers=$(grep "valid_referers.*example\.com" "$nginx_config" | head -1 | sed 's/.*valid_referers *//' | sed 's/;.*//')
+            if [ -n "$referers" ] && [[ "$referers" != *"example.com"* ]]; then
+                echo "NGINX_VALID_REFERERS=$referers" >> "$config_file"
+                info "从 $nginx_config 提取到referers配置: $referers"
+                break
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 应用nginx域名配置
+apply_nginx_domain_config() {
+    local domains="$1"
+    local ssl_domain="$2"
+    local referers="$3"
+
+    info "应用nginx域名配置..."
+
+    # 定义nginx配置文件列表
+    local nginx_configs=("docker/nginx/default.conf" "docker/nginx/default.http.conf" "docker/nginx/default.https.conf")
+
+    for nginx_config in "${nginx_configs[@]}"; do
+        if [ -f "$nginx_config" ]; then
+            info "更新配置文件: $nginx_config"
+
+            # 更新server_name
+            if [ -n "$domains" ]; then
+                sed -i "s/server_name example.com www.example.com;/server_name $domains;/g" "$nginx_config"
+                info "  更新server_name: $domains"
+            fi
+
+            # 更新SSL证书路径
+            if [ -n "$ssl_domain" ] && [[ "$nginx_config" == *"https"* ]]; then
+                sed -i "s|ssl_certificate /etc/letsencrypt/live/example.com/|ssl_certificate /etc/letsencrypt/live/$ssl_domain/|g" "$nginx_config"
+                sed -i "s|ssl_certificate_key /etc/letsencrypt/live/example.com/|ssl_certificate_key /etc/letsencrypt/live/$ssl_domain/|g" "$nginx_config"
+                sed -i "s|ssl_trusted_certificate /etc/letsencrypt/live/example.com/|ssl_trusted_certificate /etc/letsencrypt/live/$ssl_domain/|g" "$nginx_config"
+                info "  更新SSL证书路径: $ssl_domain"
+            fi
+
+            # 更新valid_referers
+            if [ -n "$referers" ]; then
+                sed -i "s/valid_referers none blocked server_names ~\\\\.example\\\\.com\$ example.com;/valid_referers $referers;/g" "$nginx_config"
+                info "  更新valid_referers: $referers"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 备份nginx配置文件
+backup_nginx_configs() {
+    local backup_dir="$1"
+
+    info "备份nginx配置文件..."
+
+    local nginx_backup_dir="$backup_dir/nginx_configs"
+    mkdir -p "$nginx_backup_dir"
+
+    # 备份nginx配置文件
+    local nginx_configs=("docker/nginx/default.conf" "docker/nginx/default.http.conf" "docker/nginx/default.https.conf" "docker/nginx/enable-https.sh")
+
+    for nginx_config in "${nginx_configs[@]}"; do
+        if [ -f "$nginx_config" ]; then
+            local backup_file="$nginx_backup_dir/$(basename "$nginx_config")"
+            cp "$nginx_config" "$backup_file" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                info "备份 $nginx_config -> $backup_file"
+            else
+                warning "备份 $nginx_config 失败"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 恢复nginx配置文件
+restore_nginx_configs() {
+    local backup_dir="$1"
+
+    info "恢复nginx配置文件..."
+
+    local nginx_backup_dir="$backup_dir/nginx_configs"
+
+    if [ ! -d "$nginx_backup_dir" ]; then
+        warning "nginx配置备份目录不存在: $nginx_backup_dir"
+        return 1
+    fi
+
+    # 恢复nginx配置文件
+    local nginx_configs=("default.conf" "default.http.conf" "default.https.conf" "enable-https.sh")
+
+    for nginx_config in "${nginx_configs[@]}"; do
+        local backup_file="$nginx_backup_dir/$nginx_config"
+        local target_file="docker/nginx/$nginx_config"
+
+        if [ -f "$backup_file" ]; then
+            cp "$backup_file" "$target_file" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                info "恢复 $backup_file -> $target_file"
+            else
+                warning "恢复 $target_file 失败"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 应用用户配置到新的docker-compose.yml
+apply_user_config() {
+    local config_file="$1"
+    local compose_file="$2"
+
+    info "应用用户配置到: $compose_file"
+
+    if [ ! -f "$config_file" ]; then
+        warning "配置文件不存在: $config_file"
+        return 1
+    fi
+
+    if [ ! -f "$compose_file" ]; then
+        error "目标文件不存在: $compose_file"
+        return 1
+    fi
+
+    # 读取配置文件
+    source "$config_file"
+
+    # 应用域名配置
+    if [ -n "$SITE_URL" ]; then
+        info "应用SITE_URL配置: $SITE_URL"
+        sed -i "s|SITE_URL=http://example.com|SITE_URL=$SITE_URL|g" "$compose_file"
+    fi
+
+    if [ -n "$FRONTEND_HOST" ]; then
+        info "应用FRONTEND_HOST配置: $FRONTEND_HOST"
+        sed -i "s/FRONTEND_HOST=example.com/FRONTEND_HOST=$FRONTEND_HOST/g" "$compose_file"
+    fi
+
+    # 应用数据库配置
+    if [ -n "$MARIADB_ROOT_PASSWORD" ]; then
+        info "应用数据库ROOT密码配置"
+        sed -i "s/MARIADB_ROOT_PASSWORD=root123/MARIADB_ROOT_PASSWORD=$MARIADB_ROOT_PASSWORD/g" "$compose_file"
+    fi
+
+    if [ -n "$MARIADB_PASSWORD" ]; then
+        info "应用数据库用户密码配置"
+        sed -i "s/MARIADB_PASSWORD=poetize123/MARIADB_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+        sed -i "s/SPRING_DATASOURCE_PASSWORD=poetize123/SPRING_DATASOURCE_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+        sed -i "s/DB_PASSWORD=poetize123/DB_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+        sed -i "s/MYSQL_PASSWORD=poetize123/MYSQL_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+        sed -i "s/DATABASE_PASSWORD=poetize123/DATABASE_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+        sed -i "s/MARIADB_USER_PASSWORD=poetize123/MARIADB_USER_PASSWORD=$MARIADB_PASSWORD/g" "$compose_file"
+
+        # 更新healthcheck中的密码
+        sed -i "s|mariadb-admin ping -h localhost -u poetize -ppoetize123|mariadb-admin ping -h localhost -u poetize -p$MARIADB_PASSWORD|g" "$compose_file"
+        sed -i "s|mariadb -h localhost -u poetize -ppoetize123|mariadb -h localhost -u poetize -p$MARIADB_PASSWORD|g" "$compose_file"
+    fi
+
+    # 应用Redis配置
+    if [ -n "$REDIS_PASSWORD" ]; then
+        info "应用Redis密码配置"
+        sed -i "s/poetize_redis_2025/$REDIS_PASSWORD/g" "$compose_file"
+    fi
+
+    # 应用AES密钥配置
+    if [ -n "$VUE_APP_POETIZE_AES_KEY" ]; then
+        info "应用VUE AES密钥配置"
+        sed -i "s|VUE_APP_POETIZE_AES_KEY=.*|VUE_APP_POETIZE_AES_KEY=$VUE_APP_POETIZE_AES_KEY|g" "$compose_file"
+    fi
+
+    if [ -n "$POETIZE_AES_KEY" ]; then
+        info "应用POETIZE AES密钥配置"
+        sed -i "s|POETIZE_AES_KEY=.*|POETIZE_AES_KEY=$POETIZE_AES_KEY|g" "$compose_file"
+    fi
+
+    # 应用网络配置
+    if [ -n "$DOCKER_SUBNET" ] && [ -n "$DOCKER_GATEWAY" ]; then
+        info "应用Docker网络配置: $DOCKER_SUBNET"
+        # 提取网段信息
+        local base_ip=$(echo "$DOCKER_GATEWAY" | sed 's/\.[0-9]*$//')
+
+        sed -i "s|subnet: 172\.28\.147\.0/28|subnet: $DOCKER_SUBNET|g" "$compose_file"
+        sed -i "s|gateway: 172\.28\.147\.1|gateway: $DOCKER_GATEWAY|g" "$compose_file"
+        sed -i "s|ip_range: 172\.28\.147\.0/28|ip_range: $DOCKER_SUBNET|g" "$compose_file"
+
+        # 更新所有服务的固定IP地址
+        for i in {2..10}; do
+            sed -i "s|ipv4_address: 172\.28\.147\.$i|ipv4_address: $base_ip.$i|g" "$compose_file"
+        done
+
+        sed -i "s|DOCKER_SUBNET=172\.28\.147\.0/28|DOCKER_SUBNET=$DOCKER_SUBNET|g" "$compose_file"
+    fi
+
+    # 应用邮箱配置
+    if [ -n "$ADMIN_EMAIL" ]; then
+        info "应用管理员邮箱配置: $ADMIN_EMAIL"
+        sed -i "s/your-email@example\.com/$ADMIN_EMAIL/g" "$compose_file"
+    fi
+
+    # 应用nginx域名配置
+    if [ -n "$NGINX_SERVER_NAMES" ] || [ -n "$SSL_DOMAIN" ] || [ -n "$NGINX_VALID_REFERERS" ]; then
+        info "应用nginx域名配置"
+        apply_nginx_domain_config "$NGINX_SERVER_NAMES" "$SSL_DOMAIN" "$NGINX_VALID_REFERERS"
+    fi
+
+    # 应用多实例配置
+    if [ -n "$CONTAINER_SUFFIX" ]; then
+        info "应用多实例配置后缀: $CONTAINER_SUFFIX"
+        # 这里需要调用类似deploy.sh中的多实例修改函数
+        apply_multi_instance_config "$compose_file" "$CONTAINER_SUFFIX"
+    fi
+
+    success "用户配置应用完成"
+    return 0
+}
+
+# 应用多实例配置
+apply_multi_instance_config() {
+    local compose_file="$1"
+    local suffix="$2"
+
+    info "应用多实例配置，后缀: $suffix"
+
+    # 修改容器名称
+    sed -i "s/container_name: poetize-nginx/container_name: poetize-nginx$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-ui/container_name: poetize-ui$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-im-ui/container_name: poetize-im-ui$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-certbot/container_name: poetize-certbot$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-python/container_name: poetize-python$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-java/container_name: poetize-java$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-mariadb/container_name: poetize-mariadb$suffix/g" "$compose_file"
+    sed -i "s/container_name: poetize-prerender/container_name: poetize-prerender$suffix/g" "$compose_file"
+
+    # 修改网络名称
+    sed -i "s/poetize-network/poetize-network$suffix/g" "$compose_file"
+
+    # 修改卷名称
+    sed -i "s/mysql_data:/mysql_data$suffix:/g" "$compose_file"
+    sed -i "s/certbot-etc:/certbot-etc$suffix:/g" "$compose_file"
+    sed -i "s/certbot-var:/certbot-var$suffix:/g" "$compose_file"
+    sed -i "s/web-root:/web-root$suffix:/g" "$compose_file"
+    sed -i "s/poetize_node_modules:/poetize_node_modules$suffix:/g" "$compose_file"
+    sed -i "s/im_node_modules:/im_node_modules$suffix:/g" "$compose_file"
+    sed -i "s/poetize_ui_dist:/poetize_ui_dist$suffix:/g" "$compose_file"
+    sed -i "s/poetize_im_dist:/poetize_im_dist$suffix:/g" "$compose_file"
+    sed -i "s/poetize_uploads:/poetize_uploads$suffix:/g" "$compose_file"
+    sed -i "s/ollama_data:/ollama_data$suffix:/g" "$compose_file"
+
+    # 修改容器间通信的主机名
+    sed -i "s/poetize-java:8081/poetize-java$suffix:8081/g" "$compose_file"
+    sed -i "s/poetize-python:5000/poetize-python$suffix:5000/g" "$compose_file"
+    sed -i "s/poetize-mariadb:3306/poetize-mariadb$suffix:3306/g" "$compose_file"
+    sed -i "s/poetize-prerender:4000/poetize-prerender$suffix:4000/g" "$compose_file"
+
+    # 修改数据库相关配置
+    sed -i "s/MYSQL_HOST=poetize-mariadb/MYSQL_HOST=poetize-mariadb$suffix/g" "$compose_file"
+    sed -i "s/JAVA_BACKEND_HOST=poetize-java/JAVA_BACKEND_HOST=poetize-java$suffix/g" "$compose_file"
+    sed -i "s/PYTHON_BACKEND_HOST=poetize-python/PYTHON_BACKEND_HOST=poetize-python$suffix/g" "$compose_file"
+    sed -i "s/PRERENDER_HOST=poetize-prerender/PRERENDER_HOST=poetize-prerender$suffix/g" "$compose_file"
+}
+
+# 验证docker-compose.yml配置
+validate_docker_compose() {
+    local compose_file="$1"
+
+    info "验证Docker Compose配置: $compose_file"
+
+    if [ ! -f "$compose_file" ]; then
+        error "配置文件不存在: $compose_file"
+        return 1
+    fi
+
+    # 使用docker-compose config命令验证
+    if command -v docker-compose >/dev/null 2>&1; then
+        if docker-compose -f "$compose_file" config -q >/dev/null 2>&1; then
+            success "Docker Compose配置验证通过"
+            return 0
+        else
+            error "Docker Compose配置验证失败"
+            return 1
+        fi
+    else
+        warning "docker-compose命令不可用，跳过配置验证"
+        return 0
+    fi
+}
+
+# 智能合并docker-compose.yml配置
+merge_docker_compose_config() {
+    local old_compose="docker-compose.yml"
+    local new_compose="$1"
+    local backup_dir="$2"
+
+    info "开始智能合并Docker Compose配置..."
+
+    # 1. 备份原配置文件和nginx配置
+    local config_backup="$backup_dir/docker-compose.yml.backup"
+    cp "$old_compose" "$config_backup" 2>/dev/null || {
+        warning "无法备份原配置文件"
+    }
+
+    # 备份nginx配置文件
+    backup_nginx_configs "$backup_dir"
+
+    # 2. 提取用户配置
+    local user_config="$backup_dir/user_config.env"
+    extract_user_config "$old_compose" "$user_config" || {
+        warning "提取用户配置失败，将使用默认配置"
+        cp "$new_compose" "$old_compose"
+        return 1
+    }
+
+    # 3. 应用新版本配置
+    cp "$new_compose" "$old_compose" || {
+        error "应用新版本配置失败"
+        return 1
+    }
+
+    # 4. 应用用户配置到新版本
+    apply_user_config "$user_config" "$old_compose" || {
+        warning "应用用户配置失败，尝试恢复备份"
+        cp "$config_backup" "$old_compose" 2>/dev/null
+        return 1
+    }
+
+    # 5. 验证合并后的配置
+    if validate_docker_compose "$old_compose"; then
+        success "Docker Compose配置合并成功"
+        info "用户配置已保留并应用到新版本"
+        return 0
+    else
+        error "合并后的配置验证失败，恢复备份"
+        cp "$config_backup" "$old_compose" 2>/dev/null
+        restore_nginx_configs "$backup_dir"
+        return 1
+    fi
+}
+
+# 合并nginx配置文件
+merge_nginx_configs() {
+    local temp_dir="$1"
+    local backup_dir="$2"
+
+    info "合并nginx配置文件..."
+
+    # 定义nginx配置文件列表
+    local nginx_configs=("docker/nginx/default.conf" "docker/nginx/default.http.conf" "docker/nginx/default.https.conf")
+
+    # 检查是否存在用户配置
+    local user_config="$backup_dir/user_config.env"
+    if [ ! -f "$user_config" ]; then
+        warning "用户配置文件不存在，直接使用新版本nginx配置"
+        # 直接复制新版本的nginx配置
+        for nginx_config in "${nginx_configs[@]}"; do
+            if [ -f "$temp_dir/$nginx_config" ]; then
+                mkdir -p "$(dirname "$nginx_config")"
+                cp "$temp_dir/$nginx_config" "$nginx_config" 2>/dev/null
+            fi
+        done
+        return 0
+    fi
+
+    # 读取用户配置
+    source "$user_config"
+
+    # 复制新版本的nginx配置文件
+    for nginx_config in "${nginx_configs[@]}"; do
+        if [ -f "$temp_dir/$nginx_config" ]; then
+            info "更新nginx配置: $nginx_config"
+            mkdir -p "$(dirname "$nginx_config")"
+            cp "$temp_dir/$nginx_config" "$nginx_config" 2>/dev/null
+
+            # 应用用户的域名配置
+            if [ -f "$nginx_config" ]; then
+                # 应用server_name配置
+                if [ -n "$NGINX_SERVER_NAMES" ]; then
+                    sed -i "s/server_name example.com www.example.com;/server_name $NGINX_SERVER_NAMES;/g" "$nginx_config"
+                    info "  应用server_name: $NGINX_SERVER_NAMES"
+                fi
+
+                # 应用SSL证书路径（仅对HTTPS配置）
+                if [ -n "$SSL_DOMAIN" ] && [[ "$nginx_config" == *"https"* ]]; then
+                    sed -i "s|ssl_certificate /etc/letsencrypt/live/example.com/|ssl_certificate /etc/letsencrypt/live/$SSL_DOMAIN/|g" "$nginx_config"
+                    sed -i "s|ssl_certificate_key /etc/letsencrypt/live/example.com/|ssl_certificate_key /etc/letsencrypt/live/$SSL_DOMAIN/|g" "$nginx_config"
+                    sed -i "s|ssl_trusted_certificate /etc/letsencrypt/live/example.com/|ssl_trusted_certificate /etc/letsencrypt/live/$SSL_DOMAIN/|g" "$nginx_config"
+                    info "  应用SSL证书路径: $SSL_DOMAIN"
+                fi
+
+                # 应用valid_referers配置
+                if [ -n "$NGINX_VALID_REFERERS" ]; then
+                    sed -i "s/valid_referers none blocked server_names ~\\\\.example\\\\.com\$ example.com;/valid_referers $NGINX_VALID_REFERERS;/g" "$nginx_config"
+                    info "  应用valid_referers: $NGINX_VALID_REFERERS"
+                fi
+            fi
+        fi
+    done
+
+    # 处理enable-https.sh脚本
+    if [ -f "$temp_dir/docker/nginx/enable-https.sh" ]; then
+        info "更新enable-https.sh脚本"
+        cp "$temp_dir/docker/nginx/enable-https.sh" "docker/nginx/enable-https.sh" 2>/dev/null
+        chmod +x "docker/nginx/enable-https.sh" 2>/dev/null
+    fi
+
+    success "nginx配置文件合并完成"
+    return 0
+}
+
+# 恢复数据库
+restore_database() {
+    info "开始恢复数据库..."
+
+    # 检查是否有数据库备份文件
+    local backup_file="$UPDATE_BACKUP_DIR/database_backup_${UPDATE_TIMESTAMP}.sql"
+    if [ ! -f "$backup_file" ]; then
+        warning "未找到数据库备份文件，跳过数据库恢复"
+        return 0
+    fi
+
+    # 检查数据库容器是否运行
+    local db_container="poetize-mariadb"
+    if ! sudo docker ps --format "{{.Names}}" | grep -q "^${db_container}$"; then
+        warning "数据库容器未运行，跳过数据库恢复"
+        return 0
+    fi
+
+    # 获取数据库连接信息
+    local db_config=$(get_database_config)
+    local config_status=$?
+
+    if [ -z "$db_config" ]; then
+        error "无法获取数据库配置信息"
+        return 1
+    fi
+
+    # 解析配置信息
+    local db_name=$(echo "$db_config" | cut -d'|' -f1)
+    local db_user=$(echo "$db_config" | cut -d'|' -f2)
+    local db_password=$(echo "$db_config" | cut -d'|' -f3)
+    local db_root_password=$(echo "$db_config" | cut -d'|' -f4)
+
+    if [ -z "$db_password" ]; then
+        error "数据库密码为空，无法执行恢复"
+        return 1
+    fi
+
+    info "恢复数据库从: $backup_file"
+    info "数据库: $db_name, 用户: $db_user"
+
+    if [ $config_status -ne 0 ]; then
+        warning "使用默认密码进行恢复，如果失败请检查数据库配置"
+    fi
+
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        # 验证备份文件
+        if [ ! -s "$backup_file" ]; then
+            error "备份文件为空或不存在"
+            return 1
+        fi
+
+        info "正在恢复数据库..."
+
+        # 执行数据库恢复
+        sudo docker exec -i "$db_container" mariadb \
+            -u"$db_user" -p"$db_password" \
+            < "$backup_file" 2>/dev/null
+
+        local restore_result=$?
+
+        if [ $restore_result -eq 0 ]; then
+            success "数据库恢复完成"
+
+            # 验证恢复结果
+            local table_count=$(sudo docker exec "$db_container" mariadb \
+                -u"$db_user" -p"$db_password" \
+                -e "USE $db_name; SHOW TABLES;" 2>/dev/null | wc -l)
+
+            if [ "$table_count" -gt 1 ]; then  # 大于1因为包含表头
+                success "数据库恢复验证通过，共 $((table_count-1)) 个表"
+            else
+                warning "数据库恢复后表数量异常，请检查"
+            fi
+        else
+            error "数据库恢复失败"
+            return 1
+        fi
+    else
+        info "[模拟] 恢复数据库从 $backup_file"
+        info "[模拟] 使用配置: 数据库=$db_name, 用户=$db_user"
+    fi
+
+    return 0
+}
+
+# 恢复用户数据
+restore_user_data() {
+    info "开始恢复用户数据..."
+
+    # 恢复py/data目录
+    if [ -d "$UPDATE_BACKUP_DIR/py_data_backup" ]; then
+        info "恢复py/data目录..."
+        if [ "$UPDATE_DRY_RUN" = false ]; then
+            # 备份新版本的py/data（如果存在）
+            if [ -d "py/data" ]; then
+                mv py/data "py/data.new_version_backup" 2>/dev/null
+            fi
+
+            # 恢复备份的数据
+            cp -r "$UPDATE_BACKUP_DIR/py_data_backup" py/data 2>/dev/null
+            if [ $? -eq 0 ]; then
+                success "py/data目录恢复完成"
+            else
+                error "py/data目录恢复失败"
+                # 尝试恢复新版本的数据
+                if [ -d "py/data.new_version_backup" ]; then
+                    mv "py/data.new_version_backup" py/data 2>/dev/null
+                fi
+                return 1
+            fi
+        else
+            info "[模拟] 恢复py/data目录"
+        fi
+    else
+        warning "未找到py/data备份，跳过恢复"
+    fi
+
+    # 恢复配置文件
+    local config_files=(".poetize-config" ".config/db_credentials.txt" "docker-compose.override.yml")
+    for config_file in "${config_files[@]}"; do
+        if [ -f "$UPDATE_BACKUP_DIR/$config_file" ]; then
+            info "恢复配置文件: $config_file"
+            if [ "$UPDATE_DRY_RUN" = false ]; then
+                mkdir -p "$(dirname "$config_file")"
+                cp "$UPDATE_BACKUP_DIR/$config_file" "$config_file" 2>/dev/null
+                if [ $? -eq 0 ]; then
+                    success "配置文件 $config_file 恢复完成"
+                else
+                    warning "配置文件 $config_file 恢复失败"
+                fi
+            else
+                info "[模拟] 恢复配置文件 $config_file"
+            fi
+        fi
+    done
+
+    return 0
+}
+
+# 回滚更新
+rollback_update() {
+    error "更新失败，开始回滚..."
+
+    # 读取状态文件
+    if [ -f "$UPDATE_STATE_FILE" ]; then
+        source "$UPDATE_STATE_FILE"
+        info "回滚到原始状态..."
+        info "原始分支: $ORIGINAL_BRANCH"
+        info "原始提交: ${ORIGINAL_COMMIT:0:8}"
+
+        # 回滚代码
+        if [ "$ORIGINAL_COMMIT" != "unknown" ]; then
+            info "回滚代码..."
+            git reset --hard "$ORIGINAL_COMMIT" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                success "代码回滚完成"
+            else
+                error "代码回滚失败"
+            fi
+        fi
+
+        # 恢复原始数据（如果备份存在）
+        if [ -d "$BACKUP_DIR" ]; then
+            info "恢复原始数据..."
+            restore_user_data
+        fi
+
+        # 清理状态文件
+        rm -f "$UPDATE_STATE_FILE" 2>/dev/null
+    else
+        warning "未找到状态文件，无法自动回滚"
+    fi
+
+    error "回滚完成，请检查系统状态"
+}
+
+# 清理更新环境
+cleanup_update() {
+    info "清理更新环境..."
+
+    # 清理状态文件
+    if [ -f "$UPDATE_STATE_FILE" ]; then
+        rm -f "$UPDATE_STATE_FILE" 2>/dev/null
+    fi
+
+    # 询问是否保留备份
+    if [ -d "$UPDATE_BACKUP_DIR" ] && [ "$UPDATE_DRY_RUN" = false ]; then
+        printf "\n"
+        printf "${YELLOW}是否保留备份目录 $UPDATE_BACKUP_DIR？${NC}\n"
+        printf "备份包含您的数据和配置文件，建议保留一段时间。\n"
+        read -rp "保留备份？(Y/n): " keep_backup
+
+        case "$keep_backup" in
+            [Nn]|[Nn][Oo])
+                info "删除备份目录..."
+                rm -rf "$UPDATE_BACKUP_DIR" 2>/dev/null
+                success "备份目录已删除"
+                ;;
+            *)
+                success "备份目录已保留: $UPDATE_BACKUP_DIR"
+                info "您可以稍后手动删除此目录"
+                ;;
+        esac
+    fi
+}
+
+# 重建和重启服务
+rebuild_and_restart_services() {
+    info "重建和重启服务..."
+
+    if [ "$UPDATE_DRY_RUN" = false ]; then
+        # 停止现有服务
+        info "停止现有服务..."
+        $DOCKER_COMPOSE_CMD down 2>/dev/null
+
+        # 清理旧镜像（可选）
+        info "清理Docker缓存..."
+        sudo docker system prune -f 2>/dev/null || true
+
+        # 重新构建和启动服务
+        info "重新构建和启动服务..."
+        $DOCKER_COMPOSE_CMD up -d --build
+
+        if [ $? -eq 0 ]; then
+            success "服务重启完成"
+            sleep 5
+            show_status
+        else
+            error "服务重启失败"
+            return 1
+        fi
+    else
+        info "[模拟] 停止服务"
+        info "[模拟] 清理Docker缓存"
+        info "[模拟] 重新构建和启动服务"
+    fi
+
+    return 0
+}
+
+# 主要的update函数
+run_update() {
+    local update_args=("$@")
+
+    # 解析参数
+    for arg in "${update_args[@]}"; do
+        case "$arg" in
+            "--dry-run")
+                UPDATE_DRY_RUN=true
+                ;;
+            "--force")
+                UPDATE_FORCE=true
+                ;;
+            "--backup-only")
+                UPDATE_BACKUP_ONLY=true
+                ;;
+        esac
+    done
+
+    # 显示更新信息
+    printf "\n"
+    printf "${GREEN}===========================================${NC}\n"
+    printf "${GREEN}    POETIZE 系统更新工具 v1.0.0${NC}\n"
+    printf "${GREEN}===========================================${NC}\n"
+    printf "\n"
+    
+    # 查找项目目录
+    find_project_dir
+
+    if [ "$UPDATE_DRY_RUN" = true ]; then
+        warning "模拟模式：将模拟更新过程，不会实际执行操作"
+    fi
+
+    if [ "$UPDATE_BACKUP_ONLY" = true ]; then
+        info "仅备份模式：只执行数据备份，不更新代码"
+    fi
+
+    # 确认操作
+    if [ "$UPDATE_FORCE" = false ] && [ "$UPDATE_DRY_RUN" = false ]; then
+        printf "\n"
+        printf "${YELLOW}警告：更新操作将会：${NC}\n"
+        printf "1. 备份当前数据和配置\n"
+        printf "2. 从远程仓库拉取最新代码\n"
+        printf "3. 恢复您的数据和配置\n"
+        printf "4. 重新构建和启动服务\n"
+        printf "\n"
+        printf "${RED}请确保您已经保存了所有重要工作！${NC}\n"
+        printf "\n"
+        read -rp "确认执行更新操作？(y/N): " confirm_update
+
+        case "$confirm_update" in
+            [Yy]|[Yy][Ee][Ss])
+                info "用户确认，开始更新..."
+                ;;
+            *)
+                info "用户取消，退出更新"
+                exit 0
+                ;;
+        esac
+    fi
+
+    # 设置错误处理
+    set -e
+    trap 'rollback_update; exit 1' ERR
+
+    # 执行更新步骤
+    printf "\n"
+    info "开始执行更新流程..."
+
+    # 1. 初始化环境
+    init_update_environment || exit 1
+
+    # 2. 检查前置条件
+    check_update_prerequisites || exit 1
+
+    # 3. 备份数据
+    info "步骤 1/5: 备份用户数据"
+    backup_user_data || exit 1
+
+    info "步骤 2/5: 备份数据库"
+    backup_database || exit 1
+
+    info "步骤 3/5: 备份Docker数据卷"
+    backup_docker_volumes || exit 1
+
+    # 如果只是备份模式，到此结束
+    if [ "$UPDATE_BACKUP_ONLY" = true ]; then
+        success "备份完成！备份目录: $UPDATE_BACKUP_DIR"
+        exit 0
+    fi
+
+    # 4. 更新代码
+    info "步骤 4/7: 更新代码"
+    if [ "$UPDATE_METHOD" = "git" ]; then
+        update_code || exit 1
+    else
+        update_code_by_download || exit 1
+    fi
+
+    # 5. 恢复数据
+    info "步骤 5/7: 恢复用户数据"
+    restore_user_data || exit 1
+
+    # 6. 重建服务
+    info "步骤 6/7: 重建和重启服务"
+    rebuild_and_restart_services || exit 1
+
+    # 7. 验证配置文件
+    info "步骤 7/8: 验证配置文件"
+    if ! validate_docker_compose "docker-compose.yml"; then
+        error "Docker Compose配置验证失败"
+        warning "尝试恢复备份配置..."
+        if [ -f "$UPDATE_BACKUP_DIR/docker-compose.yml.backup" ]; then
+            cp "$UPDATE_BACKUP_DIR/docker-compose.yml.backup" "docker-compose.yml"
+            if validate_docker_compose "docker-compose.yml"; then
+                warning "已恢复备份配置，但可能丢失新版本功能"
+            else
+                error "备份配置也无效，请手动检查配置文件"
+                exit 1
+            fi
+        else
+            error "无备份配置可恢复，请手动修复docker-compose.yml"
+            exit 1
+        fi
+    else
+        success "配置文件验证通过"
+    fi
+
+    # 8. 恢复数据库
+    info "步骤 8/8: 恢复数据库"
+    restore_database || exit 1
+
+    # 清理错误处理
+    set +e
+    trap - ERR
+
+    # 清理环境
+    cleanup_update
+
+    # 完成
+    printf "\n"
+    printf "${GREEN}===========================================${NC}\n"
+    printf "${GREEN}         更新完成！${NC}\n"
+    printf "${GREEN}===========================================${NC}\n"
+    printf "\n"
+    success "POETIZE系统已成功更新到最新版本"
+    info "备份目录: $UPDATE_BACKUP_DIR"
+    printf "\n"
+    info "建议执行以下命令检查系统状态："
+    printf "  ${CYAN}poetize -status${NC}    # 查看服务状态\n"
+    printf "  ${CYAN}poetize -health${NC}    # 检查服务健康状态\n"
+    printf "\n"
 }
 
 # 主函数
@@ -542,6 +2190,10 @@ main() {
             ;;
         "-restart")
             restart_services
+            ;;
+        "-update")
+            shift  # 移除 -update 参数
+            run_update "$@"  # 传递剩余的参数
             ;;
         "-uninstall")
             uninstall_services

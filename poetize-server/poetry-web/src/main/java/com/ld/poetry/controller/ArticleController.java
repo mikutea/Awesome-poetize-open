@@ -4,8 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.ArticleService;
-import com.ld.poetry.constants.CommonConst;
-import com.ld.poetry.utils.cache.PoetryCache;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
@@ -67,6 +66,9 @@ public class ArticleController {
     private SeoService seoService;
 
     @Autowired
+    private CacheService cacheService;
+
+    @Autowired
     private RestTemplate restTemplate;
 
     @Autowired
@@ -77,7 +79,11 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/saveArticle")
-    public PoetryResult saveArticle(@Validated @RequestBody ArticleVO articleVO) {
+    public PoetryResult saveArticle(@Validated @RequestBody ArticleVO articleVO,
+                                   @RequestParam(value = "skipAiTranslation", defaultValue = "false") boolean skipAiTranslation,
+                                   @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
+                                   @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                   @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
             return PoetryResult.fail("文章内容不能为空");
@@ -91,19 +97,10 @@ public class ArticleController {
                 // 尝试获取当前用户ID
                 Integer currentUserId = PoetryUtil.getUserId();
                 if (currentUserId == null) {
-                    // 尝试从请求头获取token并解析
-                    String token = PoetryUtil.getTokenWithoutBearer();
-                    if (token != null) {
-                        User user = (User) PoetryCache.get(token);
-                        if (user != null) {
-                            currentUserId = user.getId();
-                        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-                            // 如果是管理员token，使用管理员ID
-                            User adminUser = PoetryUtil.getAdminUser();
-                            if (adminUser != null) {
-                                currentUserId = adminUser.getId();
-                            }
-                        }
+                    // 使用PoetryUtil获取当前用户（已集成Redis缓存）
+                    User user = PoetryUtil.getCurrentUser();
+                    if (user != null) {
+                        currentUserId = user.getId();
                     }
                 }
                 
@@ -113,12 +110,15 @@ public class ArticleController {
                 articleVO.setUserId(currentUserId);
             }
             
-            // 缓存清理
+            // 使用Redis缓存清理替换PoetryCache
             if (articleVO.getUserId() != null) {
-                PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + articleVO.getUserId().toString());
+                // 清理用户文章列表缓存
+                String userArticleKey = "poetry:cache:user:article:list:" + articleVO.getUserId();
+                cacheService.deleteKey(userArticleKey);
             }
-            PoetryCache.remove(CommonConst.ARTICLE_LIST);
-            PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+            // 清理文章相关缓存
+            cacheService.evictSortArticleList();
+            cacheService.evictSortList();
             
             // 保存文章
             PoetryResult result = articleService.saveArticle(articleVO);
@@ -128,10 +128,20 @@ public class ArticleController {
                 final Integer articleId = articleVO.getId();
                 final Integer sortId = articleVO.getSortId();
                 
+                // 准备暂存翻译数据
+                Map<String, String> pendingTranslation = null;
+                if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+                    pendingTranslation = new HashMap<>();
+                    pendingTranslation.put("title", pendingTranslationTitle);
+                    pendingTranslation.put("content", pendingTranslationContent);
+                    pendingTranslation.put("language", pendingTranslationLanguage);
+                }
+
                 // 异步执行翻译，避免阻塞用户操作（翻译完成后内部会触发预渲染）
+                final Map<String, String> finalPendingTranslation = pendingTranslation;
                 new Thread(() -> {
                     try {
-                        translationService.translateAndSaveArticle(articleId);
+                        translationService.translateAndSaveArticle(articleId, skipAiTranslation, finalPendingTranslation);
                     } catch (Exception e) {
                         // 翻译失败不影响保存结果
                         log.error("翻译文章失败: " + e.getMessage(), e);
@@ -210,7 +220,11 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/saveArticleAsync")
-    public PoetryResult<String> saveArticleAsync(@Validated @RequestBody ArticleVO articleVO) {
+    public PoetryResult<String> saveArticleAsync(@Validated @RequestBody ArticleVO articleVO,
+                                                @RequestParam(value = "skipAiTranslation", defaultValue = "false") boolean skipAiTranslation,
+                                                @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
+                                                @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                                @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
             return PoetryResult.fail("文章内容不能为空");
@@ -221,17 +235,10 @@ public class ArticleController {
             if (articleVO.getUserId() == null) {
                 Integer currentUserId = PoetryUtil.getUserId();
                 if (currentUserId == null) {
-                    String token = PoetryUtil.getTokenWithoutBearer();
-                    if (token != null) {
-                        User user = (User) PoetryCache.get(token);
-                        if (user != null) {
-                            currentUserId = user.getId();
-                        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-                            User adminUser = PoetryUtil.getAdminUser();
-                            if (adminUser != null) {
-                                currentUserId = adminUser.getId();
-                            }
-                        }
+                    // 使用PoetryUtil获取当前用户（已集成Redis缓存）
+                    User user = PoetryUtil.getCurrentUser();
+                    if (user != null) {
+                        currentUserId = user.getId();
                     }
                 }
                 
@@ -241,15 +248,27 @@ public class ArticleController {
                 articleVO.setUserId(currentUserId);
             }
             
-            // 调用异步保存服务
-            PoetryResult<String> result = articleService.saveArticleAsync(articleVO);
-            
-            // 清理缓存
-            if (articleVO.getUserId() != null) {
-                PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + articleVO.getUserId().toString());
+            // 准备暂存翻译数据
+            Map<String, String> pendingTranslation = null;
+            if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+                pendingTranslation = new HashMap<>();
+                pendingTranslation.put("title", pendingTranslationTitle);
+                pendingTranslation.put("content", pendingTranslationContent);
+                pendingTranslation.put("language", pendingTranslationLanguage);
             }
-            PoetryCache.remove(CommonConst.ARTICLE_LIST);
-            PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+
+            // 调用异步保存服务
+            PoetryResult<String> result = articleService.saveArticleAsync(articleVO, skipAiTranslation, pendingTranslation);
+            
+            // 使用Redis缓存清理替换PoetryCache
+            if (articleVO.getUserId() != null) {
+                // 清理用户文章列表缓存
+                String userArticleKey = "poetry:cache:user:article:list:" + articleVO.getUserId();
+                cacheService.deleteKey(userArticleKey);
+            }
+            // 清理文章相关缓存
+            cacheService.evictSortArticleList();
+            cacheService.evictSortList();
             
             return result;
         } catch (Exception e) {
@@ -287,9 +306,15 @@ public class ArticleController {
     @GetMapping("/deleteArticle")
     @LoginCheck(1)
     public PoetryResult deleteArticle(@RequestParam("id") Integer id) {
-        PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + PoetryUtil.getUserId().toString());
-        PoetryCache.remove(CommonConst.ARTICLE_LIST);
-        PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+        // 使用Redis缓存清理替换PoetryCache
+        Integer userId = PoetryUtil.getUserId();
+        if (userId != null) {
+            String userArticleKey = "poetry:cache:user:article:list:" + userId;
+            cacheService.deleteKey(userArticleKey);
+        }
+        // 清理文章相关缓存
+        cacheService.evictSortArticleList();
+        cacheService.evictSortList();
         
         // 删除文章翻译（仅删除，不重新翻译）
         try {
@@ -353,10 +378,20 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/updateArticle")
-    public PoetryResult updateArticle(@Validated @RequestBody ArticleVO articleVO) {
-        PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + PoetryUtil.getUserId().toString());
-        PoetryCache.remove(CommonConst.ARTICLE_LIST);
-        PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+    public PoetryResult updateArticle(@Validated @RequestBody ArticleVO articleVO,
+                                     @RequestParam(value = "skipAiTranslation", defaultValue = "false") boolean skipAiTranslation,
+                                     @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
+                                     @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                     @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
+        // 使用Redis缓存清理替换PoetryCache
+        Integer userId = PoetryUtil.getUserId();
+        if (userId != null) {
+            String userArticleKey = "poetry:cache:user:article:list:" + userId;
+            cacheService.deleteKey(userArticleKey);
+        }
+        // 清理文章相关缓存
+        cacheService.evictSortArticleList();
+        cacheService.evictSortList();
         
         PoetryResult result = articleService.updateArticle(articleVO);
         
@@ -365,10 +400,20 @@ public class ArticleController {
             final Integer articleId = articleVO.getId();
             final Integer sortId = articleVO.getSortId();
             
+            // 准备暂存翻译数据
+            Map<String, String> pendingTranslation = null;
+            if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+                pendingTranslation = new HashMap<>();
+                pendingTranslation.put("title", pendingTranslationTitle);
+                pendingTranslation.put("content", pendingTranslationContent);
+                pendingTranslation.put("language", pendingTranslationLanguage);
+            }
+
             // 异步执行翻译，避免阻塞用户操作（翻译完成后内部会触发预渲染）
+            final Map<String, String> finalPendingTranslation = pendingTranslation;
             new Thread(() -> {
                 try {
-                    translationService.translateAndSaveArticle(articleId);
+                    translationService.translateAndSaveArticle(articleId, skipAiTranslation, finalPendingTranslation);
                 } catch (Exception e) {
                     log.error("文章更新后自动翻译失败", e);
                 }
@@ -684,11 +729,11 @@ public class ArticleController {
         if (id == null) {
             return PoetryResult.fail("文章ID不能为空");
         }
-        
+
         if (!StringUtils.hasText(language)) {
             return PoetryResult.fail("翻译语言不能为空");
         }
-        
+
         try {
             // 获取文章翻译
             Map<String, String> translationResult = translationService.getArticleTranslation(id, language);
@@ -696,6 +741,82 @@ public class ArticleController {
         } catch (Exception e) {
             log.error("获取文章翻译失败", e);
             return PoetryResult.fail("获取翻译失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取文章所有可用的翻译语言
+     */
+    @GetMapping("/getAvailableLanguages")
+    public PoetryResult<List<String>> getAvailableLanguages(@RequestParam("id") Integer id) {
+        // 检查参数
+        if (id == null) {
+            return PoetryResult.fail("文章ID不能为空");
+        }
+
+        try {
+            // 获取文章所有可用的翻译语言
+            List<String> availableLanguages = translationService.getArticleAvailableLanguages(id);
+            return PoetryResult.success(availableLanguages);
+        } catch (Exception e) {
+            log.error("获取文章可用翻译语言失败", e);
+            return PoetryResult.fail("获取可用翻译语言失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取翻译语言配置
+     */
+    @GetMapping("/getTranslationConfig")
+    public PoetryResult<Map<String, String>> getTranslationConfig() {
+        try {
+            // 获取翻译语言配置
+            Map<String, String> config = translationService.getTranslationLanguageConfig();
+            return PoetryResult.success(config);
+        } catch (Exception e) {
+            log.error("获取翻译语言配置失败", e);
+            return PoetryResult.fail("获取翻译语言配置失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动保存文章翻译
+     */
+    @PostMapping("/saveManualTranslation")
+    public PoetryResult<String> saveManualTranslation(@RequestParam("id") Integer id,
+                                                     @RequestParam("targetLanguage") String targetLanguage,
+                                                     @RequestParam("translatedTitle") String translatedTitle,
+                                                     @RequestParam("translatedContent") String translatedContent) {
+        // 检查参数
+        if (id == null) {
+            return PoetryResult.fail("文章ID不能为空");
+        }
+
+        if (!StringUtils.hasText(targetLanguage)) {
+            return PoetryResult.fail("目标语言不能为空");
+        }
+
+        if (!StringUtils.hasText(translatedTitle)) {
+            return PoetryResult.fail("翻译标题不能为空");
+        }
+
+        if (!StringUtils.hasText(translatedContent)) {
+            return PoetryResult.fail("翻译内容不能为空");
+        }
+
+        try {
+            // 保存手动翻译
+            Map<String, Object> result = translationService.saveManualTranslation(id, targetLanguage,
+                                                                                 translatedTitle, translatedContent);
+
+            if ((Boolean) result.get("success")) {
+                return PoetryResult.success((String) result.get("message"));
+            } else {
+                return PoetryResult.fail((String) result.get("message"));
+            }
+        } catch (Exception e) {
+            log.error("保存手动翻译失败", e);
+            return PoetryResult.fail("保存翻译失败：" + e.getMessage());
         }
     }
 
@@ -721,7 +842,11 @@ public class ArticleController {
      */
     @LoginCheck(1)
     @PostMapping("/updateArticleAsync")
-    public PoetryResult<String> updateArticleAsync(@Validated @RequestBody ArticleVO articleVO) {
+    public PoetryResult<String> updateArticleAsync(@Validated @RequestBody ArticleVO articleVO,
+                                                  @RequestParam(value = "skipAiTranslation", defaultValue = "false") boolean skipAiTranslation,
+                                                  @RequestParam(value = "pendingTranslationTitle", required = false) String pendingTranslationTitle,
+                                                  @RequestParam(value = "pendingTranslationContent", required = false) String pendingTranslationContent,
+                                                  @RequestParam(value = "pendingTranslationLanguage", required = false) String pendingTranslationLanguage) {
         // 防止空指针异常，验证输入
         if (articleVO == null) {
             return PoetryResult.fail("文章内容不能为空");
@@ -732,15 +857,26 @@ public class ArticleController {
         }
         
         try {
-            // 调用异步更新服务
-            PoetryResult<String> result = articleService.updateArticleAsync(articleVO);
-            
-            // 清理缓存
-            if (articleVO.getUserId() != null) {
-                PoetryCache.remove(CommonConst.USER_ARTICLE_LIST + articleVO.getUserId().toString());
+            // 准备暂存翻译数据
+            Map<String, String> pendingTranslation = null;
+            if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+                pendingTranslation = new HashMap<>();
+                pendingTranslation.put("title", pendingTranslationTitle);
+                pendingTranslation.put("content", pendingTranslationContent);
+                pendingTranslation.put("language", pendingTranslationLanguage);
             }
-            PoetryCache.remove(CommonConst.ARTICLE_LIST);
-            PoetryCache.remove(CommonConst.SORT_ARTICLE_LIST);
+
+            // 调用异步更新服务
+            PoetryResult<String> result = articleService.updateArticleAsync(articleVO, skipAiTranslation, pendingTranslation);
+            
+            // 使用Redis缓存清理替换PoetryCache
+            if (articleVO.getUserId() != null) {
+                String userArticleKey = "poetry:cache:user:article:list:" + articleVO.getUserId();
+                cacheService.deleteKey(userArticleKey);
+            }
+            // 清理文章相关缓存
+            cacheService.evictSortArticleList();
+            cacheService.evictSortList();
             
             return result;
         } catch (Exception e) {

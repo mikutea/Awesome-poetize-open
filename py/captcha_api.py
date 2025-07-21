@@ -40,8 +40,17 @@ def init_data_files():
 
 # 获取智能验证码配置
 def get_captcha_config():
-    """获取智能验证码配置"""
+    """获取智能验证码配置（带缓存）"""
     try:
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        cached_config = cache_service.get_cached_captcha_config(is_public=False)
+        if cached_config:
+            print("从缓存获取验证码配置")
+            return cached_config
+
         if os.path.exists(CAPTCHA_CONFIG_FILE):
             with open(CAPTCHA_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 config = json.load(f)
@@ -54,10 +63,26 @@ def get_captcha_config():
                     config["slide"] = DEFAULT_CAPTCHA_CONFIG["slide"]
                 if "checkbox" not in config:
                     config["checkbox"] = DEFAULT_CAPTCHA_CONFIG["checkbox"]
+
+                # 缓存配置
+                try:
+                    cache_service.cache_captcha_config(config, is_public=False)
+                    print("验证码配置已缓存")
+                except Exception as cache_e:
+                    print(f"缓存验证码配置失败: {cache_e}")
+
                 return config
         else:
             # 返回默认配置并保存
             save_captcha_config(DEFAULT_CAPTCHA_CONFIG)
+
+            # 缓存默认配置
+            try:
+                cache_service.cache_captcha_config(DEFAULT_CAPTCHA_CONFIG, is_public=False)
+                print("默认验证码配置已缓存")
+            except Exception as cache_e:
+                print(f"缓存默认验证码配置失败: {cache_e}")
+
             return DEFAULT_CAPTCHA_CONFIG
     except Exception as e:
         print(f"获取智能验证码配置失败: {str(e)}")
@@ -65,10 +90,24 @@ def get_captcha_config():
 
 # 保存智能验证码配置
 def save_captcha_config(config):
-    """保存智能验证码配置"""
+    """保存智能验证码配置（带缓存清理）"""
     try:
         with open(CAPTCHA_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
+
+        # 使用统一的缓存刷新服务
+        try:
+            from cache_refresh_service import get_cache_refresh_service
+            refresh_service = get_cache_refresh_service()
+            refresh_result = refresh_service.refresh_captcha_caches()
+
+            if refresh_result.get("success", False):
+                print(f"验证码配置更新完成，成功清理 {refresh_result.get('cleared_count', 0)} 个相关缓存")
+            else:
+                print(f"验证码缓存清理部分失败: 成功 {refresh_result.get('cleared_count', 0)}, 失败 {refresh_result.get('failed_count', 0)}")
+        except Exception as cache_e:
+            print(f"清理验证码相关缓存失败: {cache_e}")
+
         return True
     except Exception as e:
         print(f"保存智能验证码配置失败: {str(e)}")
@@ -276,10 +315,23 @@ def register_captcha_api(app: FastAPI):
 
     @app.get('/captcha/getConfig')
     async def get_public_captcha_config():
-        """获取面向普通用户的验证码配置（不需要权限）"""
+        """获取面向普通用户的验证码配置（不需要权限，带缓存）"""
         try:
+            from cache_service import get_cache_service
+            cache_service = get_cache_service()
+
+            # 先尝试从缓存获取公共配置
+            cached_public_config = cache_service.get_cached_captcha_config(is_public=True)
+            if cached_public_config:
+                print("从缓存获取公共验证码配置")
+                return {
+                    "code": 200,
+                    "message": "获取成功",
+                    "data": cached_public_config
+                }
+
             config = get_captcha_config()
-            
+
             # 只返回前端验证组件必要的配置信息
             public_config = {
                 "enable": config.get('enable', False),
@@ -288,6 +340,13 @@ def register_captcha_api(app: FastAPI):
                 "slide": config.get('slide', DEFAULT_CAPTCHA_CONFIG['slide']),
                 "checkbox": config.get('checkbox', DEFAULT_CAPTCHA_CONFIG['checkbox'])
             }
+
+            # 缓存公共配置
+            try:
+                cache_service.cache_captcha_config(public_config, is_public=True)
+                print("公共验证码配置已缓存")
+            except Exception as cache_e:
+                print(f"缓存公共验证码配置失败: {cache_e}")
             
             return {
                 "code": 200,

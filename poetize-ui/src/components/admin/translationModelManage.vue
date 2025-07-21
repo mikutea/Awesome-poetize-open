@@ -71,6 +71,11 @@
                       中文
                     </span>
                   </el-option>
+                  <el-option label="繁体中文" value="zh-TW">
+                    <span class="option-content">
+                      繁体中文
+                    </span>
+                  </el-option>
                   <el-option label="英文" value="en">
                     <span class="option-content">
                       英文
@@ -119,6 +124,11 @@
                   <el-option label="中文" value="zh">
                     <span class="option-content">
                       中文
+                    </span>
+                  </el-option>
+                  <el-option label="繁体中文" value="zh-TW">
+                    <span class="option-content">
+                      繁体中文
                     </span>
                   </el-option>
                   <el-option label="英文" value="en">

@@ -31,6 +31,7 @@ from config import JAVA_BACKEND_URL, FRONTEND_URL, detect_frontend_url_from_requ
 from cryptography.fernet import Fernet
 import threading
 from datetime import datetime
+from typing import Dict, List, Optional, Any
 from auth_decorator import admin_required  # 导入管理员权限装饰器
 from fnmatch import fnmatch
 import xml.etree.ElementTree as ET
@@ -42,6 +43,326 @@ logger = logging.getLogger('seo_api')
 
 # 设置默认请求超时时间（秒）
 DEFAULT_TIMEOUT = 90
+
+# SEO缓存管理器
+class SEOCacheManager:
+    """SEO数据缓存管理器 - 基于Redis统一缓存架构"""
+
+    def __init__(self):
+        """初始化SEO缓存管理器"""
+        from cache_service import get_cache_service
+        self.cache_service = get_cache_service()
+        self.cache_duration = 300  # 5分钟缓存
+
+        # 缓存键前缀
+        self.meta_cache_prefix = "poetize:seo:meta:"
+        self.article_data_prefix = "poetize:seo:article:"
+
+    def _get_meta_cache_key(self, article_id: str, lang: str = None) -> str:
+        """生成SEO元数据缓存键"""
+        return f"{self.meta_cache_prefix}{article_id}:{lang or 'default'}"
+
+    def _get_article_data_cache_key(self, article_id: str) -> str:
+        """生成文章数据缓存键"""
+        return f"{self.article_data_prefix}{article_id}"
+
+    def get_cached_meta(self, article_id: str, lang: str = None) -> Optional[Dict]:
+        """从Redis获取缓存的SEO元数据"""
+        cache_key = self._get_meta_cache_key(article_id, lang)
+
+        try:
+            cached_data = self.cache_service.get(cache_key)
+            if cached_data:
+                logger.debug(f"Redis缓存命中: {cache_key}")
+                return cached_data
+        except Exception as e:
+            logger.warning(f"从Redis获取SEO元数据缓存失败: {cache_key} - {e}")
+
+        return None
+
+    def set_cached_meta(self, article_id: str, lang: str, meta_data: Dict):
+        """将SEO元数据缓存到Redis"""
+        cache_key = self._get_meta_cache_key(article_id, lang)
+
+        try:
+            success = self.cache_service.set(cache_key, meta_data, self.cache_duration)
+            if success:
+                logger.debug(f"SEO元数据已缓存到Redis: {cache_key}")
+            else:
+                logger.warning(f"SEO元数据缓存到Redis失败: {cache_key}")
+        except Exception as e:
+            logger.error(f"缓存SEO元数据到Redis时发生错误: {cache_key} - {e}")
+
+    def get_cached_article_data(self, article_id: str) -> Optional[Dict]:
+        """从Redis获取缓存的文章数据"""
+        cache_key = self._get_article_data_cache_key(article_id)
+
+        try:
+            cached_data = self.cache_service.get(cache_key)
+            if cached_data:
+                logger.debug(f"文章数据Redis缓存命中: {cache_key}")
+                return cached_data
+        except Exception as e:
+            logger.warning(f"从Redis获取文章数据缓存失败: {cache_key} - {e}")
+
+        return None
+
+    def set_cached_article_data(self, article_id: str, article_data: Dict):
+        """将文章数据缓存到Redis"""
+        cache_key = self._get_article_data_cache_key(article_id)
+
+        try:
+            success = self.cache_service.set(cache_key, article_data, self.cache_duration)
+            if success:
+                logger.debug(f"文章数据已缓存到Redis: {cache_key}")
+            else:
+                logger.warning(f"文章数据缓存到Redis失败: {cache_key}")
+        except Exception as e:
+            logger.error(f"缓存文章数据到Redis时发生错误: {cache_key} - {e}")
+
+    def clear_article_cache(self, article_id: str) -> int:
+        """清理指定文章的所有Redis缓存
+
+        Args:
+            article_id: 文章ID
+
+        Returns:
+            int: 清理的缓存条目数量
+        """
+        cleared_count = 0
+
+        try:
+            # 清理SEO元数据缓存（所有语言版本）
+            # 使用Redis SCAN命令查找所有相关的缓存键
+            meta_pattern = f"{self.meta_cache_prefix}{article_id}:*"
+            meta_keys = self._scan_redis_keys(meta_pattern)
+
+            if meta_keys:
+                deleted_count = self.cache_service.delete(*meta_keys)
+                cleared_count += deleted_count
+                logger.debug(f"清理SEO元数据缓存: {deleted_count} 个键")
+
+            # 清理文章数据缓存
+            article_data_key = self._get_article_data_cache_key(article_id)
+            if self.cache_service.exists(article_data_key):
+                deleted_count = self.cache_service.delete(article_data_key)
+                cleared_count += deleted_count
+                logger.debug(f"清理文章数据缓存: {deleted_count} 个键")
+
+            if cleared_count > 0:
+                logger.info(f"清理文章 {article_id} 的Redis缓存，共清理 {cleared_count} 个条目")
+
+        except Exception as e:
+            logger.error(f"清理文章 {article_id} 的Redis缓存时发生错误: {e}")
+
+        return cleared_count
+
+    def clear_articles_cache(self, article_ids: List[str]) -> int:
+        """批量清理多个文章的Redis缓存
+
+        Args:
+            article_ids: 文章ID列表
+
+        Returns:
+            int: 清理的缓存条目总数
+        """
+        total_cleared = 0
+
+        try:
+            # 收集所有需要删除的缓存键
+            keys_to_delete = []
+
+            for article_id in article_ids:
+                # SEO元数据缓存键
+                meta_pattern = f"{self.meta_cache_prefix}{article_id}:*"
+                meta_keys = self._scan_redis_keys(meta_pattern)
+                keys_to_delete.extend(meta_keys)
+
+                # 文章数据缓存键
+                article_data_key = self._get_article_data_cache_key(article_id)
+                if self.cache_service.exists(article_data_key):
+                    keys_to_delete.append(article_data_key)
+
+            # 批量删除缓存键
+            if keys_to_delete:
+                total_cleared = self.cache_service.delete(*keys_to_delete)
+                logger.info(f"批量清理 {len(article_ids)} 个文章的Redis缓存，共清理 {total_cleared} 个条目")
+
+        except Exception as e:
+            logger.error(f"批量清理文章Redis缓存时发生错误: {e}")
+
+        return total_cleared
+
+    def clear_all_cache(self) -> int:
+        """清空所有SEO相关的Redis缓存
+
+        Returns:
+            int: 清理的缓存条目总数
+        """
+        total_cleared = 0
+
+        try:
+            # 清理所有SEO元数据缓存
+            meta_pattern = f"{self.meta_cache_prefix}*"
+            meta_keys = self._scan_redis_keys(meta_pattern)
+
+            # 清理所有文章数据缓存
+            article_pattern = f"{self.article_data_prefix}*"
+            article_keys = self._scan_redis_keys(article_pattern)
+
+            # 合并所有需要删除的键
+            all_keys = meta_keys + article_keys
+
+            if all_keys:
+                total_cleared = self.cache_service.delete(*all_keys)
+                logger.info(f"清空所有SEO Redis缓存，共清理 {total_cleared} 个条目")
+
+        except Exception as e:
+            logger.error(f"清空所有SEO Redis缓存时发生错误: {e}")
+
+        return total_cleared
+
+    def _scan_redis_keys(self, pattern: str) -> List[str]:
+        """使用SCAN命令安全地查找Redis键"""
+        try:
+            return self.cache_service.scan_keys(pattern)
+        except Exception as e:
+            logger.warning(f"扫描Redis键失败: {pattern} - {e}")
+            return []
+
+    def preload_article_cache(self, article_id: str, languages: List[str] = None):
+        """预热文章Redis缓存（新文章发布时可选使用）
+
+        Args:
+            article_id: 文章ID
+            languages: 要预热的语言列表，默认为常用语言
+        """
+        if languages is None:
+            languages = ['zh', 'en']  # 默认预热中英文
+
+        logger.info(f"开始预热文章 {article_id} 的Redis缓存，语言: {languages}")
+
+        # 这里可以异步预热缓存，避免阻塞主流程
+        # 实际实现时可以调用getArticleMeta接口来触发缓存生成
+        try:
+            # 预热逻辑可以在后续版本中实现
+            # 当前版本保持接口兼容性
+            pass
+        except Exception as e:
+            logger.error(f"预热文章 {article_id} 缓存时发生错误: {e}")
+
+# 全局缓存管理器实例
+seo_cache_manager = SEOCacheManager()
+
+# HTTP客户端连接池 - 优化网络请求性能
+class HTTPClientPool:
+    """HTTP客户端连接池管理器"""
+
+    def __init__(self):
+        self._client = None
+        self._lock = asyncio.Lock()
+
+    async def get_client(self) -> httpx.AsyncClient:
+        """获取HTTP客户端实例"""
+        if self._client is None:
+            async with self._lock:
+                if self._client is None:
+                    # 配置连接池参数以提升并发性能
+                    limits = httpx.Limits(
+                        max_keepalive_connections=20,  # 保持连接数
+                        max_connections=100,           # 最大连接数
+                        keepalive_expiry=30.0         # 连接保持时间
+                    )
+
+                    timeout = httpx.Timeout(
+                        connect=10.0,    # 连接超时
+                        read=30.0,       # 读取超时
+                        write=10.0,      # 写入超时
+                        pool=5.0         # 连接池超时
+                    )
+
+                    self._client = httpx.AsyncClient(
+                        limits=limits,
+                        timeout=timeout
+                        # 暂时禁用HTTP/2，避免依赖问题
+                        # http2=True
+                    )
+
+        return self._client
+
+    async def close(self):
+        """关闭HTTP客户端"""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+# 全局HTTP客户端池
+http_client_pool = HTTPClientPool()
+
+# SEO缓存清理工具函数
+async def clear_seo_cache_for_article(article_id: str, reason: str = "文章更新"):
+    """清理指定文章的SEO缓存（异步，不影响主业务流程）
+
+    Args:
+        article_id: 文章ID
+        reason: 清理原因，用于日志记录
+    """
+    try:
+        cleared_count = seo_cache_manager.clear_article_cache(article_id)
+        logger.info(f"SEO缓存清理成功 - 文章ID: {article_id}, 原因: {reason}, 清理条目: {cleared_count}")
+    except Exception as e:
+        logger.error(f"SEO缓存清理失败 - 文章ID: {article_id}, 原因: {reason}, 错误: {e}")
+
+async def clear_seo_cache_for_articles(article_ids: List[str], reason: str = "批量操作"):
+    """批量清理多个文章的SEO缓存（异步，不影响主业务流程）
+
+    Args:
+        article_ids: 文章ID列表
+        reason: 清理原因，用于日志记录
+    """
+    try:
+        cleared_count = seo_cache_manager.clear_articles_cache(article_ids)
+        logger.info(f"SEO缓存批量清理成功 - 文章数量: {len(article_ids)}, 原因: {reason}, 清理条目: {cleared_count}")
+    except Exception as e:
+        logger.error(f"SEO缓存批量清理失败 - 文章数量: {len(article_ids)}, 原因: {reason}, 错误: {e}")
+
+async def clear_all_seo_cache(reason: str = "SEO配置变更"):
+    """清理所有SEO缓存（异步，不影响主业务流程）
+
+    Args:
+        reason: 清理原因，用于日志记录
+    """
+    try:
+        cleared_count = seo_cache_manager.clear_all_cache()
+        logger.info(f"SEO缓存全量清理成功 - 原因: {reason}, 清理条目: {cleared_count}")
+    except Exception as e:
+        logger.error(f"SEO缓存全量清理失败 - 原因: {reason}, 错误: {e}")
+
+async def preload_seo_cache_for_article(article_id: str, languages: List[str] = None):
+    """预热文章的SEO缓存（异步，新文章发布时可选使用）
+
+    Args:
+        article_id: 文章ID
+        languages: 要预热的语言列表
+    """
+    try:
+        if languages is None:
+            languages = ['zh', 'en']  # 默认预热中英文
+
+        logger.info(f"开始预热文章SEO缓存 - 文章ID: {article_id}, 语言: {languages}")
+
+        # 异步预热缓存，避免阻塞主流程
+        for lang in languages:
+            try:
+                await generate_article_meta_tags(article_id, lang)
+                logger.debug(f"预热成功 - 文章ID: {article_id}, 语言: {lang}")
+            except Exception as e:
+                logger.warning(f"预热失败 - 文章ID: {article_id}, 语言: {lang}, 错误: {e}")
+
+        logger.info(f"文章SEO缓存预热完成 - 文章ID: {article_id}")
+
+    except Exception as e:
+        logger.error(f"文章SEO缓存预热失败 - 文章ID: {article_id}, 错误: {e}")
 
 # 数据存储路径
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
@@ -168,11 +489,30 @@ def decrypt_data(encrypted_data):
 
 # 获取SEO配置
 async def get_seo_config():
-    """获取SEO配置"""
+    """获取SEO配置（带缓存）"""
     try:
-        # 直接读取配置文件
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        from cache_constants import CacheConstants
+        cached_config = cache_service.get(CacheConstants.SEO_CONFIG_KEY)
+        if cached_config:
+            logger.debug("从缓存获取SEO配置")
+            return cached_config
+
+        # 缓存不存在，从文件读取
         with open(SEO_CONFIG_FILE, 'r', encoding='utf-8') as f:
             config = json.load(f)
+
+        # 缓存配置
+        cache_service.set(
+            CacheConstants.SEO_CONFIG_KEY,
+            config,
+            CacheConstants.SEO_CONFIG_EXPIRE_TIME
+        )
+        logger.debug("SEO配置已缓存")
+
         return config
     except Exception as e:
         logger.error(f"获取SEO配置出错: {str(e)}")
@@ -197,9 +537,25 @@ def save_seo_config(config):
     try:
         logger.info(f"开始保存SEO配置，配置项数量: {len(config)}")
         logger.info(f"保存的SEO开关状态: {config.get('enable', False)}")
+
+        # 保存到文件
         with open(SEO_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
         logger.info(f"SEO配置保存成功: {SEO_CONFIG_FILE}")
+
+        # 使用统一的缓存刷新服务
+        try:
+            from cache_refresh_service import get_cache_refresh_service
+            refresh_service = get_cache_refresh_service()
+            refresh_result = refresh_service.refresh_seo_caches()
+
+            if refresh_result.get("success", False):
+                logger.info(f"SEO配置更新完成，成功清理 {refresh_result.get('cleared_count', 0)} 个相关缓存")
+            else:
+                logger.warning(f"SEO缓存清理部分失败: 成功 {refresh_result.get('cleared_count', 0)}, 失败 {refresh_result.get('failed_count', 0)}")
+        except Exception as cache_e:
+            logger.warning(f"清理SEO相关缓存失败: {cache_e}")
+
         return True
     except Exception as e:
         logger.error(f"保存SEO配置出错: {str(e)}")
@@ -209,13 +565,19 @@ def save_seo_config(config):
 # 生成文章的元数据
 async def generate_article_meta_tags(article_id, lang=None):
     """
-    生成文章页面的元标签
+    生成文章页面的元标签 - 优化版本（支持缓存）
     :param article_id: 文章ID
-    :param lang: 语言参数，支持'zh'或'en'
+    :param lang: 语言参数，支持多种语言
     :return: 包含元标签的字典
     """
     if not is_service_ready():
         return handle_service_not_ready("生成文章元标签")
+
+    # 检查缓存
+    cached_result = seo_cache_manager.get_cached_meta(article_id, lang)
+    if cached_result:
+        logger.info(f"使用缓存的文章元数据，文章ID: {article_id}, 语言: {lang}")
+        return cached_result
 
     # 加载SEO配置
     try:
@@ -224,15 +586,21 @@ async def generate_article_meta_tags(article_id, lang=None):
         logger.error(f"加载SEO配置失败: {e}")
         seo_config = {}
 
-    try:
-        logger.info(f"尝试获取文章元数据，文章ID: {article_id}")
-        logger.info(f"请求URL: {JAVA_BACKEND_URL}/article/getArticleById?id={article_id}")
+    # 获取文章数据（优先使用缓存）
+    article_data = seo_cache_manager.get_cached_article_data(article_id)
 
-        if not is_valid_url(JAVA_BACKEND_URL):
-            logger.error(f"后端URL无效: {JAVA_BACKEND_URL}")
-            return {"status": "error", "message": "后端URL无效"}
+    if not article_data:
+        # 缓存未命中，从Java后端获取数据
+        try:
+            logger.info(f"文章数据缓存未命中，从后端获取，文章ID: {article_id}")
+            logger.info(f"请求URL: {JAVA_BACKEND_URL}/article/getArticleById?id={article_id}")
 
-        async with httpx.AsyncClient() as client:
+            if not is_valid_url(JAVA_BACKEND_URL):
+                logger.error(f"后端URL无效: {JAVA_BACKEND_URL}")
+                return {"status": "error", "message": "后端URL无效"}
+
+            # 使用连接池优化网络请求性能
+            client = await http_client_pool.get_client()
             headers = get_auth_headers()
             headers.update({
                 'X-Internal-Service': 'poetize-python',
@@ -241,20 +609,30 @@ async def generate_article_meta_tags(article_id, lang=None):
             # 使用getArticleByIdNoCount避免增加浏览量，因为前端已经调用了getArticleById
             response = await client.get(
                 f"{JAVA_BACKEND_URL}/article/getArticleByIdNoCount?id={article_id}",
-                headers=headers,
-                timeout=DEFAULT_TIMEOUT
+                headers=headers
             )
-        
-        logger.info(f"获取文章信息响应状态码: {response.status_code}")
-        
-        if response.status_code != 200:
-            logger.error(f"API请求失败，状态码: {response.status_code}")
-            return {"status": "error", "message": f"API请求失败，状态码: {response.status_code}"}
 
-        article_data = response.json().get('data', {})
-        if not article_data:
-            logger.warning("API返回的数据为空")
-            return {"status": "error", "message": "未找到文章数据"}
+            logger.info(f"获取文章信息响应状态码: {response.status_code}")
+
+            if response.status_code != 200:
+                logger.error(f"API请求失败，状态码: {response.status_code}")
+                return {"status": "error", "message": f"API请求失败，状态码: {response.status_code}"}
+
+            article_data = response.json().get('data', {})
+            if not article_data:
+                logger.warning("API返回的数据为空")
+                return {"status": "error", "message": "未找到文章数据"}
+
+            # 缓存文章数据
+            seo_cache_manager.set_cached_article_data(article_id, article_data)
+
+        except Exception as e:
+            logger.exception(f"获取文章数据时发生错误: {e}")
+            return {"status": "error", "message": f"获取文章数据时发生错误: {str(e)}"}
+    else:
+        logger.info(f"使用缓存的文章数据，文章ID: {article_id}")
+
+    try:
 
         logger.info(f"成功获取文章信息，标题: {article_data.get('articleTitle', '无标题')}")
 
@@ -304,19 +682,34 @@ async def generate_article_meta_tags(article_id, lang=None):
             "author": article_data.get('username', seo_config.get('default_author', '')),
         })
 
-        # 添加hreflang标签
+        # 添加hreflang标签 - 支持更多语言
         article_url = f"{seo_config.get('site_address', FRONTEND_URL)}/{seo_config.get('article_url_format', 'article/{id}')}".replace('{id}', str(article_id))
-        
-        meta_tags["hreflang_zh"] = f'<link rel="alternate" hreflang="zh" href="{article_url}" />'
-        meta_tags["hreflang_en"] = f'<link rel="alternate" hreflang="en" href="{article_url}?lang=en" />'
-        
-        # 如果指定了语言，添加canonical标签
-        if lang:
-            if lang == 'en':
-                meta_tags["canonical"] = f"{article_url}?lang=en"
+
+        # 支持的语言列表
+        supported_languages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
+
+        # 为每种支持的语言添加hreflang标签
+        for supported_lang in supported_languages:
+            if supported_lang == 'zh':
+                # 中文是默认语言，不需要lang参数
+                meta_tags[f"hreflang_{supported_lang}"] = f'<link rel="alternate" hreflang="{supported_lang}" href="{article_url}" />'
             else:
+                # 其他语言需要lang参数
+                meta_tags[f"hreflang_{supported_lang}"] = f'<link rel="alternate" hreflang="{supported_lang}" href="{article_url}?lang={supported_lang}" />'
+
+        # 添加x-default hreflang（指向中文版本）
+        meta_tags["hreflang_x_default"] = f'<link rel="alternate" hreflang="x-default" href="{article_url}" />'
+
+        # 根据语言参数设置canonical标签
+        if lang and lang in supported_languages:
+            if lang == 'zh':
+                # 中文版本的canonical不包含lang参数
                 meta_tags["canonical"] = article_url
+            else:
+                # 其他语言版本的canonical包含lang参数
+                meta_tags["canonical"] = f"{article_url}?lang={lang}"
         else:
+            # 默认情况下指向中文版本
             meta_tags["canonical"] = article_url
 
         # 添加Pinterest标签
@@ -341,8 +734,13 @@ async def generate_article_meta_tags(article_id, lang=None):
         logger.info(f"生成文章元数据成功，元标签数量: {len(meta_tags)}")
         # 移除空值
         meta_tags = {k: v for k, v in meta_tags.items() if v}
-        
-        return {"status": "success", "data": meta_tags}
+
+        result = {"status": "success", "data": meta_tags}
+
+        # 设置缓存
+        seo_cache_manager.set_cached_meta(article_id, lang, result)
+
+        return result
     except Exception as e:
         logger.exception(f"生成文章元标签时发生错误: {e}")
         return {"status": "error", "message": f"生成文章元标签时发生错误: {str(e)}"}
@@ -430,12 +828,22 @@ async def get_article_keywords(article_data):
 # 生成网站地图（全量生成）
 async def generate_sitemap():
     try:
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        from cache_constants import CacheConstants
+        cached_sitemap = cache_service.get(CacheConstants.SEO_SITEMAP_KEY)
+        if cached_sitemap:
+            logger.debug("从缓存获取sitemap")
+            return cached_sitemap
+
         seo_config = await get_seo_config()
         # 如果SEO功能关闭，跳过生成
         if not seo_config.get('enable', False):
             logger.info("SEO功能已关闭，跳过生成网站地图")
             return None
-            
+
         if not seo_config.get('generate_sitemap', True):
             logger.info("网站地图生成功能已禁用")
             return None
@@ -653,7 +1061,7 @@ async def generate_sitemap():
                     if article_id and view_status:
                         article_url = f"{site_url}/{seo_config.get('article_url_format', 'article/{id}')}".replace('{id}', str(article_id))
                         
-                        # 添加中文URL
+                        # 添加默认源语言URL（通常是中文）
                         if article_url.rstrip('/') not in url_set:
                             url_set.add(article_url.rstrip('/'))
                             sitemap += f'  <url>\n'
@@ -663,12 +1071,22 @@ async def generate_sitemap():
                             sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
                             sitemap += f'  </url>\n'
 
-                        # 添加英文URL
-                        article_url_en = f"{article_url}?lang=en"
-                        if article_url_en.rstrip('/') not in url_set:
-                            url_set.add(article_url_en.rstrip('/'))
+                        # 获取翻译配置中的默认目标语言
+                        from translation_api import translation_manager
+                        config = translation_manager.load_config()
+                        
+                        if config and hasattr(config, 'default_target_lang'):
+                            target_lang = config.default_target_lang
+                        else:
+                            # 如果无法获取配置，使用默认值'en'
+                            target_lang = 'en'
+                            
+                        # 添加目标语言URL
+                        article_url_translated = f"{article_url}?lang={target_lang}"
+                        if article_url_translated.rstrip('/') not in url_set:
+                            url_set.add(article_url_translated.rstrip('/'))
                             sitemap += f'  <url>\n'
-                            sitemap += f'    <loc>{article_url_en}</loc>\n'
+                            sitemap += f'    <loc>{article_url_translated}</loc>\n'
                             sitemap += f'    <lastmod>{update_time}</lastmod>\n'
                             sitemap += f'    <changefreq>{seo_config.get("sitemap_change_frequency", "weekly")}</changefreq>\n'
                             sitemap += f'    <priority>{seo_config.get("sitemap_priority", "0.7")}</priority>\n'
@@ -739,12 +1157,23 @@ async def generate_sitemap():
         
         # 关闭sitemap
         sitemap += '</urlset>'
-        
+
         # 保存到文件
         sitemap_path = os.path.join(DATA_DIR, 'sitemap.xml')
         with open(sitemap_path, 'w', encoding='utf-8') as f:
             f.write(sitemap)
-            
+
+        # 缓存sitemap
+        try:
+            cache_service.set(
+                CacheConstants.SEO_SITEMAP_KEY,
+                sitemap,
+                CacheConstants.SEO_SITEMAP_EXPIRE_TIME
+            )
+            logger.debug("sitemap已缓存")
+        except Exception as cache_e:
+            logger.warning(f"缓存sitemap失败: {cache_e}")
+
         logger.info(f"网站地图生成成功，保存到: {sitemap_path}")
         return sitemap
     except Exception as e:
@@ -754,23 +1183,44 @@ async def generate_sitemap():
 # 生成robots.txt
 async def generate_robots_txt():
     try:
+        from cache_service import get_cache_service
+        from cache_constants import CacheConstants
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        cached_robots = cache_service.get(CacheConstants.SEO_ROBOTS_KEY)
+        if cached_robots:
+            logger.debug("从缓存获取robots.txt")
+            return cached_robots
+
         seo_config = await get_seo_config()
         # 如果SEO功能关闭，跳过生成
         if not seo_config.get('enable', False):
             logger.info("SEO功能已关闭，跳过生成robots.txt")
             return None
-        
+
         robots_content = seo_config.get('robots_txt', '')
-        
+
         # 替换占位符，优先使用SEO配置，如果没有则自动检测
         site_address = seo_config.get('site_address') or FRONTEND_URL
         robots_content = robots_content.replace('{site_address}', site_address)
-        
+
         # 保存到文件
         robots_path = os.path.join(DATA_DIR, 'robots.txt')
         with open(robots_path, 'w', encoding='utf-8') as f:
             f.write(robots_content)
-            
+
+        # 缓存robots.txt
+        try:
+            cache_service.set(
+                CacheConstants.SEO_ROBOTS_KEY,
+                robots_content,
+                CacheConstants.SEO_ROBOTS_EXPIRE_TIME
+            )
+            logger.debug("robots.txt已缓存")
+        except Exception as cache_e:
+            logger.warning(f"缓存robots.txt失败: {cache_e}")
+
         return robots_content
     except Exception as e:
         logger.error(f"生成robots.txt出错: {str(e)}")
@@ -779,6 +1229,11 @@ async def generate_robots_txt():
 # 百度搜索引擎自动推送函数
 async def baidu_push_urls(urls):
     try:
+        from cache_service import get_cache_service
+        import hashlib
+
+        cache_service = get_cache_service()
+
         seo_config = await get_seo_config()
         # 修正字段名：从baidu_push_token改为baidu_token
         baidu_push_token = seo_config.get('baidu_token', '')
@@ -804,9 +1259,39 @@ async def baidu_push_urls(urls):
         if response.status_code == 200:
             result = response.json()
             logger.info(f"百度推送成功: {result}")
+
+            # 缓存推送状态
+            try:
+                for url in urls:
+                    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+                    status_data = {
+                        "success": True,
+                        "result": result,
+                        "timestamp": datetime.now().isoformat(),
+                        "engine": "baidu"
+                    }
+                    cache_service.cache_seo_push_status(url_hash, "baidu", status_data)
+            except Exception as cache_e:
+                logger.warning(f"缓存百度推送状态失败: {cache_e}")
+
             return True, result
         else:
             logger.error(f"百度推送失败: {response.text}")
+
+            # 缓存失败状态
+            try:
+                for url in urls:
+                    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+                    status_data = {
+                        "success": False,
+                        "error": response.text,
+                        "timestamp": datetime.now().isoformat(),
+                        "engine": "baidu"
+                    }
+                    cache_service.cache_seo_push_status(url_hash, "baidu", status_data)
+            except Exception as cache_e:
+                logger.warning(f"缓存百度推送失败状态失败: {cache_e}")
+
             return False, response.text
     except Exception as e:
         logger.error(f"百度URL推送出错: {str(e)}")
@@ -1602,7 +2087,15 @@ def register_seo_api(app: FastAPI):
                 logger.info(f"SEO开关状态将变更: {old_enable} -> {new_enable}")
             
             if save_seo_config(current_config):
-                logger.info("SEO配置更新成功，开始更新网站地图和robots.txt")
+                logger.info("SEO配置更新成功，开始清理SEO缓存并更新网站地图和robots.txt")
+
+                # SEO配置变更时清理所有缓存
+                try:
+                    await clear_all_seo_cache("SEO配置更新")
+                except Exception as e:
+                    logger.error(f"清理SEO缓存失败，但不影响主流程: {e}")
+
+                logger.info("开始更新网站地图和robots.txt")
                 
                 # 如果网站标题被更新，同步更新Java后端的webInfo
                 if site_title_updated and new_site_title:
@@ -1727,7 +2220,13 @@ def register_seo_api(app: FastAPI):
             
             if save_seo_config(current_config):
                 logger.info(f"SEO开关状态已更新: {old_status} -> {enable_status}")
-                
+
+                # SEO开关变更时清理所有缓存
+                try:
+                    await clear_all_seo_cache(f"SEO开关切换: {old_status} -> {enable_status}")
+                except Exception as e:
+                    logger.error(f"清理SEO缓存失败，但不影响主流程: {e}")
+
                 try:
                     nginx_url = os.environ.get('NGINX_URL', 'http://localhost/flush_seo_cache')
                     # 发送清理请求
@@ -1764,33 +2263,165 @@ def register_seo_api(app: FastAPI):
     @app.get('/python/seo/getArticleMeta')
     async def get_article_meta(request: Request):
         """
-        获取文章元数据，用于SEO优化
-        支持从URL参数或请求头中检测语言偏好
+        获取文章元数据，用于SEO优化 - 优化版本
+        支持多语言和缓存机制，提升性能
         """
         try:
             article_id = request.query_params.get('id')
-            
-            # 获取语言参数，优先级：URL参数 > Accept-Language头
-            lang = request.query_params.get('lang')
-            
-            # 如果URL中没有指定语言，尝试从Accept-Language头判断
-            if not lang:
-                accept_language = request.headers.get('Accept-Language', '')
-                # 简单解析Accept-Language头，例如：en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7
-                if accept_language and accept_language.lower().startswith('en'):
-                    lang = 'en'
-                else:
-                    lang = 'zh'  # 默认中文
-            
+
             if not article_id:
                 return JSONResponse({"status": "error", "message": "缺少文章ID参数"})
-            
+
+            # 获取语言参数，优先级：URL参数 > Accept-Language头
+            lang = request.query_params.get('lang')
+
+            # 支持的语言列表
+            supported_languages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
+
+            # 语言参数验证和处理
+            if lang:
+                # 如果指定了语言参数，验证是否支持
+                if lang not in supported_languages:
+                    logger.warning(f"不支持的语言参数: {lang}，使用默认语言 zh")
+                    lang = 'zh'
+            else:
+                # 如果没有指定语言，尝试从Accept-Language头判断
+                accept_language = request.headers.get('Accept-Language', '')
+                if accept_language:
+                    # 解析Accept-Language头，支持更多语言检测
+                    accept_lang_lower = accept_language.lower()
+                    if 'en' in accept_lang_lower:
+                        lang = 'en'
+                    elif 'ja' in accept_lang_lower:
+                        lang = 'ja'
+                    elif 'ko' in accept_lang_lower:
+                        lang = 'ko'
+                    elif 'fr' in accept_lang_lower:
+                        lang = 'fr'
+                    elif 'de' in accept_lang_lower:
+                        lang = 'de'
+                    elif 'es' in accept_lang_lower:
+                        lang = 'es'
+                    elif 'ru' in accept_lang_lower:
+                        lang = 'ru'
+                    else:
+                        lang = 'zh'  # 默认中文
+                else:
+                    lang = 'zh'  # 默认中文
+
+            logger.info(f"处理文章元数据请求 - ID: {article_id}, 语言: {lang}")
+
             meta_tags = await generate_article_meta_tags(article_id, lang)
             return JSONResponse(meta_tags)
         except Exception as e:
             logger.exception(f"获取文章元数据时发生错误: {e}")
             return JSONResponse({"status": "error", "message": f"获取文章元数据时发生错误: {str(e)}"})
-    
+
+    # SEO缓存清理API（仅供手动调用或调试使用）
+    @app.post('/python/seo/clearCache')
+    async def clear_seo_cache():
+        """手动清空所有SEO缓存"""
+        try:
+            cleared_count = seo_cache_manager.clear_all_cache()
+            logger.info(f"手动清空SEO缓存成功，清理了 {cleared_count} 个缓存条目")
+            return JSONResponse({
+                "status": "success",
+                "message": f"缓存清空成功，清理了 {cleared_count} 个条目"
+            })
+        except Exception as e:
+            logger.error(f"清空缓存失败: {e}")
+            return JSONResponse({
+                "status": "error",
+                "message": f"清空缓存失败: {str(e)}"
+            })
+
+    # 文章SEO缓存清理API（供Java后端调用）
+    @app.post('/python/seo/clearArticleCache')
+    async def clear_article_seo_cache(request: Request):
+        """清理指定文章的SEO缓存（供Java后端在文章CRUD时调用）"""
+        try:
+            data = await request.json()
+            if not data:
+                return JSONResponse({
+                    "status": "error",
+                    "message": "请求参数为空"
+                })
+
+            article_id = data.get('articleId')
+            reason = data.get('reason', '文章操作')
+
+            if not article_id:
+                return JSONResponse({
+                    "status": "error",
+                    "message": "缺少文章ID参数"
+                })
+
+            # 清理指定文章的缓存
+            cleared_count = seo_cache_manager.clear_article_cache(str(article_id))
+
+            logger.info(f"文章SEO缓存清理成功 - 文章ID: {article_id}, 原因: {reason}, 清理条目: {cleared_count}")
+
+            return JSONResponse({
+                "status": "success",
+                "message": f"文章缓存清理成功，清理了 {cleared_count} 个条目",
+                "data": {
+                    "articleId": article_id,
+                    "clearedCount": cleared_count,
+                    "reason": reason
+                }
+            })
+
+        except Exception as e:
+            logger.error(f"清理文章SEO缓存失败: {e}")
+            return JSONResponse({
+                "status": "error",
+                "message": f"清理文章缓存失败: {str(e)}"
+            })
+
+    # 批量文章SEO缓存清理API（供Java后端调用）
+    @app.post('/python/seo/clearArticlesCache')
+    async def clear_articles_seo_cache(request: Request):
+        """批量清理多个文章的SEO缓存（供Java后端在批量操作时调用）"""
+        try:
+            data = await request.json()
+            if not data:
+                return JSONResponse({
+                    "status": "error",
+                    "message": "请求参数为空"
+                })
+
+            article_ids = data.get('articleIds', [])
+            reason = data.get('reason', '批量文章操作')
+
+            if not article_ids or not isinstance(article_ids, list):
+                return JSONResponse({
+                    "status": "error",
+                    "message": "文章ID列表不能为空"
+                })
+
+            # 批量清理文章缓存
+            cleared_count = seo_cache_manager.clear_articles_cache([str(aid) for aid in article_ids])
+
+            logger.info(f"批量文章SEO缓存清理成功 - 文章数量: {len(article_ids)}, 原因: {reason}, 清理条目: {cleared_count}")
+
+            return JSONResponse({
+                "status": "success",
+                "message": f"批量文章缓存清理成功，清理了 {cleared_count} 个条目",
+                "data": {
+                    "articleIds": article_ids,
+                    "articleCount": len(article_ids),
+                    "clearedCount": cleared_count,
+                    "reason": reason
+                }
+            })
+
+        except Exception as e:
+            logger.error(f"批量清理文章SEO缓存失败: {e}")
+            return JSONResponse({
+                "status": "error",
+                "message": f"批量清理文章缓存失败: {str(e)}"
+            })
+
     # 网站地图API
     @app.get('/sitemap.xml')
     async def get_sitemap_api(request: Request):
@@ -2076,6 +2707,12 @@ def register_seo_api(app: FastAPI):
             
             if not article_id:
                 return JSONResponse({"code": 400, "message": "缺少文章ID", "data": None})
+
+            # 文章sitemap更新时清理该文章的SEO缓存
+            try:
+                await clear_seo_cache_for_article(str(article_id), f"文章sitemap{action}")
+            except Exception as e:
+                logger.error(f"清理文章SEO缓存失败，但不影响主流程: {e}")
             
             # 获取SEO配置
             seo_config = await get_seo_config()
@@ -2086,8 +2723,16 @@ def register_seo_api(app: FastAPI):
             if action == 'add_or_update':
                 # 添加或更新sitemap条目
                 last_mod_time = time.strftime('%Y-%m-%d')
+                from translation_api import translation_manager
+                config = translation_manager.load_config()
+                
+                # 默认目标语言
+                if config and hasattr(config, 'default_target_lang'):
+                    target_lang = config.default_target_lang
+                else:
+                    target_lang = 'en'
                 await add_or_update_sitemap_url(article_url, last_mod_time)
-                await add_or_update_sitemap_url(f"{article_url}?lang=en", last_mod_time)
+                await add_or_update_sitemap_url(f"{article_url}?lang={target_lang}", last_mod_time)
                 
                 logger.info(f"成功更新文章sitemap条目: {article_url}")
                 return JSONResponse({
@@ -3064,35 +3709,63 @@ def save_ai_api_config(config):
 # AI分析 - 通用函数
 async def analyze_with_ai(site_info, api_config):
     """
-    通用AI分析函数，支持多种AI服务商
+    通用AI分析函数，支持多种AI服务商（带缓存）
     """
     try:
+        from cache_service import get_cache_service
+        import hashlib
+
+        cache_service = get_cache_service()
+
+        # 生成缓存键
+        site_info_str = json.dumps(site_info, sort_keys=True, ensure_ascii=False)
+        api_config_str = json.dumps({k: v for k, v in api_config.items() if k != 'api_key'}, sort_keys=True)
+        cache_key_data = f"{site_info_str}:{api_config_str}"
+        cache_key_hash = hashlib.md5(cache_key_data.encode('utf-8')).hexdigest()
+
+        # 先尝试从缓存获取
+        cached_analysis = cache_service.get_cached_seo_ai_analysis(cache_key_hash)
+        if cached_analysis:
+            logger.debug("从缓存获取AI SEO分析结果")
+            return cached_analysis
+
         provider = api_config.get('provider', 'openai')
         api_key = api_config.get('api_key')
         model = api_config.get('model', 'gpt-4o')
         api_base = api_config.get('api_base', '')
-        
+
         # 构建简化的提示词
         prompt = build_seo_analysis_prompt(site_info)
         
         # 根据不同AI服务商处理
+        result = None
         if provider == 'openai':
-            return await analyze_with_openai_api(prompt, api_key, model, api_base)
+            result = await analyze_with_openai_api(prompt, api_key, model, api_base)
         elif provider == 'deepseek':
-            return await analyze_with_deepseek_api(prompt, api_key, model)
+            result = await analyze_with_deepseek_api(prompt, api_key, model)
         elif provider == 'baidu':
-            return await analyze_with_baidu_api(prompt, api_key, model)
+            result = await analyze_with_baidu_api(prompt, api_key, model)
         elif provider == 'zhipu':
-            return await analyze_with_zhipu_api(prompt, api_key, model)
+            result = await analyze_with_zhipu_api(prompt, api_key, model)
         elif provider == 'doubao':
-            return await analyze_with_doubao_api(prompt, api_key, model)
+            result = await analyze_with_doubao_api(prompt, api_key, model)
         elif provider == 'claude':
-            return await analyze_with_claude_api(prompt, api_key, model)
+            result = await analyze_with_claude_api(prompt, api_key, model)
         elif provider == 'custom':
-            return await analyze_with_custom_api(prompt, api_config)
+            result = await analyze_with_custom_api(prompt, api_config)
         else:
             raise ValueError(f"不支持的AI提供商: {provider}")
-            
+
+        # 缓存分析结果
+        if result:
+            try:
+                cache_service.cache_seo_ai_analysis(cache_key_hash, result)
+                logger.debug("AI SEO分析结果已缓存")
+            except Exception as cache_e:
+                logger.warning(f"缓存AI SEO分析结果失败: {cache_e}")
+
+        return result
+
     except Exception as e:
         logger.error(f"AI分析出错: {str(e)}")
         raise

@@ -13,14 +13,30 @@
             <div class="article-image"></div>
           </div>
         </el-image>
-        
-          <!-- 添加语言切换按钮 -->
-          <div class="article-language-switch">
+
+        <!-- 语言切换按钮容器 -->
+        <div class="language-switch-container">
+          <!-- 动态语言切换按钮 -->
+          <div class="article-language-switch" v-if="availableLanguageButtons.length > 1">
             <el-button-group>
-              <el-button size="mini" :type="currentLang === 'zh' ? 'primary' : 'default'" @click="switchLanguage('zh')">中文</el-button>
-              <el-button size="mini" :type="currentLang === 'en' ? 'primary' : 'default'" @click="switchLanguage('en')">English</el-button>
+              <el-button
+                v-for="langButton in availableLanguageButtons"
+                :key="langButton.code"
+                :ref="`langBtn_${langButton.code}`"
+                size="mini"
+                :type="currentLang === langButton.code ? 'primary' : 'default'"
+                @click.stop="handleLanguageSwitch(langButton.code)"
+                @mousedown.stop="handleMouseDown"
+                @touchstart.stop="handleTouchStart"
+                :disabled="isTranslating"
+                :title="`切换到${langButton.name}`"
+                :data-lang="langButton.code">
+                {{langButton.name}}
+                <i v-if="isTranslating && currentLang === langButton.code" class="el-icon-loading" style="margin-left: 5px;"></i>
+              </el-button>
             </el-button-group>
           </div>
+        </div>
         <!-- 文章信息 -->
         <div class="article-info-container">
           <div class="article-title">{{ articleTitle }}</div>
@@ -173,8 +189,10 @@
             </div>
           </blockquote>
           <!-- 订阅 -->
-          <div class="myCenter" id="article-like" @click="subscribeLabel()">
-            <i class="el-icon-thumb article-like-icon" :class="{'article-like': subscribe}"></i>
+          <div class="myCenter" id="article-like">
+            <div class="subscribe-button" :class="{'subscribed': subscribe}" @click="subscribeLabel()">
+              {{ subscribe ? '已订阅' : '订阅' }}
+            </div>
           </div>
 
           <!-- 评论 -->
@@ -191,9 +209,7 @@
       </div>
     </div>
 
-    <div id="toc-button" @click="clickTocButton()">
-      <i class="fa fa-align-justify" aria-hidden="true"></i>
-    </div>
+
 
     <el-dialog title="版权声明"
                :visible.sync="copyrightDialogVisible"
@@ -337,7 +353,14 @@
         translatedContent: '',
         tempComment: null, // 存储临时评论内容
         isTranslating: false, // 英文翻译进行中
-        pollTimer: null // 轮询翻译定时器
+        pollTimer: null, // 轮询翻译定时器
+        targetLanguage: 'en', // 目标语言
+        targetLanguageName: 'English', // 目标语言名称
+        sourceLanguage: 'zh', // 源语言
+        sourceLanguageName: '中文', // 源语言名称
+        languageMap: {}, // 语言映射
+        availableLanguages: [], // 文章实际可用的翻译语言
+        availableLanguageButtons: [] // 动态生成的语言按钮列表
       };
     },
 
@@ -370,53 +393,47 @@
       }
     },
 
-    created() {
+    async created() {
+      // 先初始化语言映射
+      this.languageMap = {
+        'zh': '中文',
+        'zh-TW': '繁體中文',
+        'en': 'English',
+        'ja': '日本語',
+        'ko': '한국어',
+        'fr': 'Français',
+        'de': 'Deutsch',
+        'es': 'Español',
+        'ru': 'Русский'
+      };
+
+      // 然后初始化语言设置，确保语言状态正确
+      await this.initializeLanguageSettings();
+
       if (!this.$common.isEmpty(this.id)) {
         // 首次加载时强制清空预渲染内容，确保Vue重新渲染
         this.articleContentHtml = "";
         this.articleContentKey = Date.now();
-        
+
+        console.log('Created钩子：语言初始化完成，开始加载文章，当前语言:', this.currentLang);
         this.getArticle(localStorage.getItem("article_password_" + this.id));
 
         if ("0" !== localStorage.getItem("showSubscribe")) {
-          this.$notify({
-            title: '文章订阅',
-            type: 'success',
-            message: '点击文章下方小手 - 订阅/取消订阅专栏（标签）',
-            duration: 3000,
-            onClose: () => localStorage.setItem("showSubscribe", "0")
-          });
+          this.$notify.success(
+            '文章订阅',
+            '点击文章下方订阅/取消订阅专栏（标签）',
+            3000
+          );
+          // 设置延时关闭提示
+          setTimeout(() => {
+            localStorage.setItem("showSubscribe", "0");
+          }, 3000);
         }
       }
 
-      // 获取顺序：URL参数 > 用户保存的偏好 > 浏览器语言
-      const urlParams = new URLSearchParams(window.location.search);
-      const langParam = urlParams.get('lang');
-      const savedLang = localStorage.getItem('preferredLanguage');
-      
-      if (langParam === 'en' || langParam === 'zh') {
-        // URL参数优先
-        this.currentLang = langParam;
-      } else if (savedLang === 'en' || savedLang === 'zh') {
-        // 其次是用户保存的偏好
-        this.currentLang = savedLang;
-        // 更新URL以反映语言选择
-        // this.updateUrlWithLanguage(savedLang);
-      } else {
-        // 最后是浏览器语言
-        const browserLang = navigator.language || navigator.userLanguage;
-        if (browserLang.toLowerCase().startsWith('en')) {
-          this.currentLang = 'en';
-          // 更新URL以反映语言选择
-          // this.updateUrlWithLanguage('en');
-        } else {
-          this.currentLang = 'zh'; // 默认中文
-        }
-      }
-      
-      // 设置HTML元素的lang属性
-      document.documentElement.setAttribute('lang', this.currentLang);
-      
+      // 检查是否有待执行的订阅操作
+      this.checkPendingSubscribe();
+
       // 文章页面加载时触发看板娘检查
       this.$nextTick(() => {
         // 延迟触发事件，确保页面元素已加载
@@ -432,6 +449,9 @@
     mounted() {
       window.addEventListener("scroll", this.onScrollPage);
       this.getTocbot();
+
+      // 添加全局事件委托处理语言切换按钮点击
+      this.setupLanguageSwitchEventDelegation();
       
       // 添加看板娘初始化检查
       this.$nextTick(() => {
@@ -489,7 +509,10 @@
       
       // 检查是否有临时保存的评论
       this.checkTempComment();
-      
+
+      // 🔧 新策略：检查是否有保存的页面状态
+      this.checkPageState();
+
       // 监听路由变化，检查是否从登录页面返回
       this.$watch(() => this.$route.query, (newQuery) => {
         if (newQuery.hasComment === 'true') {
@@ -498,22 +521,40 @@
             this.checkTempComment();
           });
         }
+
+        // 🔧 新策略：检查回复操作恢复标记
+        if (newQuery.hasReplyAction === 'true') {
+          // 从登录页面返回且带有回复操作标记
+          this.$nextTick(() => {
+            this.checkPageState();
+          });
+        }
       });
     },
 
     destroyed() {
       window.removeEventListener("scroll", this.onScrollPage);
       this.clearPollTimer();
+
+      // 清理语言切换事件监听器
+      if (this.languageSwitchHandler) {
+        document.removeEventListener('click', this.languageSwitchHandler, true);
+        document.removeEventListener('touchend', this.languageSwitchHandler, true);
+        document.removeEventListener('mousedown', this.languageSwitchHandler, true);
+        document.removeEventListener('touchstart', this.languageSwitchHandler, true);
+        this.languageSwitchHandler = null;
+      }
+
+      // 清理FAB点击外部区域事件监听器
+      if (this.fabClickOutsideHandler) {
+        document.removeEventListener('click', this.fabClickOutsideHandler, true);
+        this.fabClickOutsideHandler = null;
+      }
     },
 
     watch: {
       scrollTop(scrollTop, oldScrollTop) {
-        let isShow = scrollTop - window.innerHeight > 30;
-        if (isShow) {
-          $("#toc-button").css("bottom", "14.1vh");
-        } else {
-          $("#toc-button").css("bottom", "8vh");
-        }
+        // 滚动监听逻辑已移至home.vue的toolButton控制
       },
       '$route.params.id': function(newId, oldId) {
         // 如果新的文章ID和当前组件的ID不同，说明需要更新
@@ -521,12 +562,17 @@
           // 重置翻译内容
           this.translatedTitle = '';
           this.translatedContent = '';
-          
+
           // 更新组件的id数据
           this.id = newId;
-          
+
           // 获取文章
           this.getArticle();
+
+          // 检查是否有待执行的订阅操作
+          this.$nextTick(() => {
+            this.checkPendingSubscribe();
+          });
         }
       },
       '$route': function(newRoute, oldRoute) {
@@ -539,6 +585,20 @@
           if (newLang !== oldLang) {
             // 仅语言参数变化，不重新获取文章，避免增加热度计数
             console.log('仅语言参数变化，不重新获取文章');
+            
+            // 如果语言参数有效，切换到该语言
+            if (newLang && this.languageMap[newLang]) {
+              // 检查当前语言是否已经是该语言，避免无意义的切换
+              if (this.currentLang !== newLang) {
+                console.log('切换到URL指定的语言:', newLang);
+                this.switchLanguage(newLang);
+              }
+            } else if (newLang === null || newLang === undefined) {
+              // 如果语言参数被移除，切换到默认源语言
+              console.log('URL语言参数被移除，切换到默认源语言:', this.sourceLanguage);
+              this.switchLanguage(this.sourceLanguage);
+            }
+            
             return;
           }
         }
@@ -547,55 +607,126 @@
 
     computed: {
       articleTitle() {
-        return this.currentLang === 'en' && this.translatedTitle ? this.translatedTitle : this.article.articleTitle;
+        // 如果当前语言不是源语言且已有翻译标题，则显示翻译标题，否则显示原始标题
+        return (this.currentLang !== this.sourceLanguage && this.translatedTitle) ? this.translatedTitle : this.article.articleTitle;
       }
     },
 
     methods: {
-      clickTocButton() {
-        let display = $(".toc");
-        if ("none" === display.css("display")) {
-          display.css("display", "unset");
-        } else {
-          display.css("display", "none");
-        }
-      },
-      subscribeLabel() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
-          return;
-        }
 
-        this.$confirm('确认' + (this.subscribe ? '取消订阅' : '订阅') + '专栏【' + this.article.label.labelName + '】？' + (this.subscribe ? "" : "订阅专栏后，该专栏发布新文章将通过邮件通知订阅用户。"), this.subscribe ? "取消订阅" : "文章订阅", {
+      subscribeLabel() {
+        // 首先显示确认订阅对话框
+        const confirmMessage = this.subscribe
+          ? '确认取消订阅专栏【' + this.article.label.labelName + '】？'
+          : '确认订阅专栏【' + this.article.label.labelName + '】？订阅专栏后，该专栏发布新文章将通过邮件通知订阅用户。';
+
+        const confirmTitle = this.subscribe ? "取消订阅" : "文章订阅";
+
+        this.$confirm(confirmMessage, confirmTitle, {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           center: true
         }).then(() => {
-          this.$http.get(this.$constant.baseURL + "/user/subscribe", {
-            labelId: this.article.labelId,
-            flag: !this.subscribe
-          })
-            .then((res) => {
-              if (!this.$common.isEmpty(res.data)) {
-                this.$store.commit("loadCurrentUser", res.data);
-              }
-              this.subscribe = !this.subscribe;
-            })
-            .catch((error) => {
-              this.$message({
-                message: error.message,
-                type: "error"
-              });
+          // 用户确认订阅意图后，检查登录状态
+          if (this.$common.isEmpty(this.$store.state.currentUser)) {
+            // 未登录，显示登录提示并立即跳转到登录页面
+            this.$message({
+              message: "请先登录！",
+              type: "error"
             });
+
+            // 立即保存订阅意图并跳转到登录页面
+            this.saveSubscribeIntentAndRedirectToLogin();
+            return;
+          }
+
+          // 已登录，直接执行订阅操作
+          this.executeSubscribe();
         }).catch(() => {
           this.$message({
             type: 'success',
             message: '已取消!'
           });
         });
+      },
+
+      // 保存订阅意图并跳转到登录页面
+      saveSubscribeIntentAndRedirectToLogin() {
+        const subscribeIntent = {
+          articleId: this.id,
+          labelId: this.article.labelId,
+          labelName: this.article.label.labelName,
+          action: this.subscribe ? 'unsubscribe' : 'subscribe',
+          timestamp: Date.now()
+        };
+
+        // 保存订阅意图到localStorage
+        localStorage.setItem('pendingSubscribe', JSON.stringify(subscribeIntent));
+
+        // 跳转到登录页面，并设置重定向URL
+        const currentPath = this.$route.fullPath;
+        this.$router.push({
+          path: '/user',
+          query: { redirect: currentPath }
+        });
+      },
+
+      // 执行订阅操作
+      executeSubscribe() {
+        this.$http.get(this.$constant.baseURL + "/user/subscribe", {
+          labelId: this.article.labelId,
+          flag: !this.subscribe
+        })
+          .then((res) => {
+            if (!this.$common.isEmpty(res.data)) {
+              this.$store.commit("loadCurrentUser", res.data);
+            }
+            this.subscribe = !this.subscribe;
+
+            // 显示成功消息
+            const message = this.subscribe ? '订阅成功！' : '取消订阅成功！';
+            this.$message({
+              message: message,
+              type: "success"
+            });
+          })
+          .catch((error) => {
+            this.$message({
+              message: error.message,
+              type: "error"
+            });
+          });
+      },
+
+      // 检查并处理待执行的订阅操作
+      checkPendingSubscribe() {
+        const pendingSubscribe = localStorage.getItem('pendingSubscribe');
+        if (!pendingSubscribe) {
+          return;
+        }
+
+        try {
+          const subscribeIntent = JSON.parse(pendingSubscribe);
+
+          // 检查是否是当前文章的订阅意图
+          if (subscribeIntent.articleId === this.id) {
+            // 清除待执行的订阅意图
+            localStorage.removeItem('pendingSubscribe');
+
+            // 检查用户是否已登录
+            if (!this.$common.isEmpty(this.$store.state.currentUser)) {
+              // 延迟执行订阅操作，确保页面数据已加载完成
+              this.$nextTick(() => {
+                setTimeout(() => {
+                  this.executeSubscribe();
+                }, 500);
+              });
+            }
+          }
+        } catch (error) {
+          console.error('解析待执行订阅意图失败:', error);
+          localStorage.removeItem('pendingSubscribe');
+        }
       },
       submitPassword() {
         if (this.$common.isEmpty(this.password)) {
@@ -851,34 +982,50 @@
             this.translatedTitle = '';
             this.translatedContent = '';
             
-            // 始终重新渲染markdown内容，确保样式正确应用
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
-            this.articleContentHtml = md.render(this.article.articleContent);
-            this.articleContentKey = Date.now(); // 强制Vue重新渲染
-            
-            this.$nextTick(() => {
-              this.$common.imgShow(".entry-content img");
-              this.highlight();
-              this.addId();
-              this.getTocbot();
+            // 检查当前语言状态，决定显示内容
+            console.log('文章加载完成，当前语言:', this.currentLang, '源语言:', this.sourceLanguage);
 
-              // 如果当前语言为英文，获取翻译
-              if (this.currentLang === 'en') {
-                this.isTranslating = true;
-                this.articleContentHtml = '';
-                this.fetchTranslation();
-              }
-              
-              // 确保样式正确应用的保险措施
-              setTimeout(() => {
-                // 检查是否有代码块没有正确处理
-                const unprocessedBlocks = $(".entry-content pre:not(.highlight-wrap)");
-                if (unprocessedBlocks.length > 0) {
-                  console.log('Found unprocessed code blocks, retrying highlight...');
+            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+
+            // 如果当前语言不是源语言，需要获取翻译
+            if (this.currentLang !== this.sourceLanguage) {
+              console.log('当前语言非源语言，准备获取翻译');
+              this.isTranslating = true;
+              this.articleContentHtml = ''; // 先清空内容，显示加载状态
+
+              // 立即获取翻译，不等待nextTick
+              this.fetchTranslation().then(() => {
+                // 翻译获取完成后再处理样式
+                this.$nextTick(() => {
+                  this.$common.imgShow(".entry-content img");
                   this.highlight();
-                }
-              }, 1000);
-            });
+                  this.addId();
+                  this.getTocbot();
+                });
+              });
+            } else {
+              // 当前语言是源语言，直接显示原始内容
+              console.log('当前语言是源语言，显示原始内容');
+              this.articleContentHtml = md.render(this.article.articleContent);
+              this.articleContentKey = Date.now(); // 强制Vue重新渲染
+
+              this.$nextTick(() => {
+                this.$common.imgShow(".entry-content img");
+                this.highlight();
+                this.addId();
+                this.getTocbot();
+              });
+            }
+
+            // 确保样式正确应用的保险措施
+            setTimeout(() => {
+              // 检查是否有代码块没有正确处理
+              const unprocessedBlocks = $(".entry-content pre:not(.highlight-wrap)");
+              if (unprocessedBlocks.length > 0) {
+                console.log('Found unprocessed code blocks, retrying highlight...');
+                this.highlight();
+              }
+            }, 1000);
 
             if (!this.$common.isEmpty(password)) {
               localStorage.setItem("article_password_" + this.id, password);
@@ -887,6 +1034,9 @@
             if (!this.$common.isEmpty(this.$store.state.currentUser) && !this.$common.isEmpty(this.$store.state.currentUser.subscribe)) {
               this.subscribe = JSON.parse(this.$store.state.currentUser.subscribe).includes(this.article.labelId);
             }
+
+            // 获取文章可用的翻译语言并生成动态按钮
+            this.getArticleAvailableLanguages();
           }
 
           // 处理"最新进展"数据
@@ -1075,21 +1225,128 @@
             .wrap("<div class='table-wrapper'></div>");
         }
       },
+
+      // 设置语言切换按钮的事件委托
+      setupLanguageSwitchEventDelegation() {
+        // 移除可能存在的旧事件监听器
+        if (this.languageSwitchHandler) {
+          document.removeEventListener('click', this.languageSwitchHandler, true);
+          document.removeEventListener('touchend', this.languageSwitchHandler, true);
+          document.removeEventListener('mousedown', this.languageSwitchHandler, true);
+          document.removeEventListener('touchstart', this.languageSwitchHandler, true);
+        }
+
+        // 创建事件处理器
+        this.languageSwitchHandler = (event) => {
+          // 查找最近的语言切换按钮
+          const button = event.target.closest('.article-language-switch .el-button[data-lang]');
+          if (button && !button.disabled) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+
+            const langCode = button.getAttribute('data-lang');
+            if (langCode) {
+              this.handleLanguageSwitch(langCode);
+            }
+            return false;
+          }
+        };
+
+        // 使用捕获阶段监听多种事件类型
+        document.addEventListener('click', this.languageSwitchHandler, true);
+        document.addEventListener('touchend', this.languageSwitchHandler, true);
+        document.addEventListener('mousedown', this.languageSwitchHandler, true);
+        document.addEventListener('touchstart', this.languageSwitchHandler, true);
+
+        // 添加直接的DOM事件监听器
+        this.$nextTick(() => {
+          const buttons = document.querySelectorAll('.article-language-switch .el-button[data-lang]');
+          buttons.forEach(button => {
+            button.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const langCode = button.getAttribute('data-lang');
+              if (langCode) {
+                this.handleLanguageSwitch(langCode);
+              }
+            }, true);
+          });
+        });
+      },
+
+      // 原生事件处理方法
+      handleMouseDown(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const langCode = event.target.closest('[data-lang]')?.getAttribute('data-lang');
+        if (langCode) {
+          this.handleLanguageSwitch(langCode);
+        }
+      },
+
+      handleTouchStart(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const langCode = event.target.closest('[data-lang]')?.getAttribute('data-lang');
+        if (langCode) {
+          this.handleLanguageSwitch(langCode);
+        }
+      },
+
+      handleLanguageSwitch(lang) {
+        // 防止重复点击
+        if (lang === this.currentLang) {
+          return;
+        }
+
+        // 防止在翻译过程中点击
+        if (this.isTranslating) {
+          this.$message.warning('正在翻译中，请稍候...');
+          return;
+        }
+
+        // 验证语言是否在可用列表中
+        const isLanguageAvailable = this.availableLanguageButtons.some(btn => btn.code === lang);
+        if (!isLanguageAvailable) {
+          this.$message.warning('该语言版本暂不可用');
+          return;
+        }
+        try {
+          this.switchLanguage(lang);
+        } catch (error) {
+          this.$message.error('语言切换失败，请重试');
+        }
+      },
+
       switchLanguage(lang) {
-        if (this.currentLang === lang) return;
-        
+        if (lang === this.currentLang) return;
+
+        // 验证语言是否可用
+        const isLanguageAvailable = this.availableLanguageButtons.some(btn => btn.code === lang);
+        if (!isLanguageAvailable) {
+          this.$message.warning('该语言版本暂不可用');
+          return;
+        }
+
         this.currentLang = lang;
-        
-        // 保存用户语言偏好
-        localStorage.setItem('preferredLanguage', lang);
-        
+
+        // 只有在选择非源语言时才保存用户偏好
+        // 这样可以避免在首次访问时自动添加语言参数
+        if (lang !== this.sourceLanguage) {
+          localStorage.setItem('preferredLanguage', lang);
+        } else {
+          // 如果切换回源语言，清除保存的偏好
+          localStorage.removeItem('preferredLanguage');
+        }
+
         // 更新URL参数，不刷新页面
         this.updateUrlWithLanguage(lang);
-        
+
         // 设置HTML元素的lang属性
         document.documentElement.setAttribute('lang', lang);
         
-        if (lang === 'en') {
+        if (lang !== this.sourceLanguage) {
           // 如果已有翻译内容，直接显示
           if (this.translatedContent) {
             // 强制更新显示翻译内容
@@ -1110,8 +1367,8 @@
             this.articleContentHtml = '';
             this.fetchTranslation();
           }
-        } else if (lang === 'zh') {
-          // 切换到中文，确保显示原始内容
+        } else if (lang === this.sourceLanguage) {
+          // 切换到源语言，确保显示原始内容
           const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
           this.articleContentHtml = md.render(this.article.articleContent);
           this.articleContentKey = Date.now(); // 强制Vue重新渲染
@@ -1133,38 +1390,35 @@
           return;
         }
         
-        console.log('开始获取翻译，文章ID:', this.article.id);
+        console.log('开始获取翻译，文章ID:', this.article.id, '目标语言:', this.currentLang);
         this.isLoading = true;
         try {
+          // 直接使用当前语言获取翻译
           const response = await this.$http.get(this.$constant.baseURL + "/article/getTranslation", {
             id: this.article.id,
-            language: "en"
+            language: this.currentLang
           });
-          
+
           if (response.code === 200 && response.data) {
             console.log('获取翻译成功');
             this.translatedTitle = response.data.title;
             this.translatedContent = response.data.content;
-            
+
             // 更新文章内容显示
-            if (this.currentLang === 'en') {
-              console.log('当前为英文模式，更新显示翻译内容');
-              // 使用与原文相同的渲染方法
-              const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
-              this.articleContentHtml = md.render(this.translatedContent);
-              this.articleContentKey = Date.now(); // 强制Vue重新渲染
-              
-              // 重新应用文章内容处理
-              this.$nextTick(() => {
-                this.$common.imgShow(".entry-content img");
-                this.highlight();
-                this.addId();
-                this.getTocbot();
-              });
-              this.isTranslating = false;
-            } else {
-              console.log('当前非英文模式，翻译内容已缓存但不显示');
-            }
+            console.log('当前为' + this.currentLang + '模式，更新显示翻译内容');
+            // 使用与原文相同的渲染方法
+            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            this.articleContentHtml = md.render(this.translatedContent);
+            this.articleContentKey = Date.now(); // 强制Vue重新渲染
+
+            // 重新应用文章内容处理
+            this.$nextTick(() => {
+              this.$common.imgShow(".entry-content img");
+              this.highlight();
+              this.addId();
+              this.getTocbot();
+            });
+            this.isTranslating = false;
           } else if (response.code === 200 && response.data && response.data.status === 'not_found') {
             // 翻译未完成，10 秒后重试
             console.log('请稍后重试');
@@ -1180,17 +1434,44 @@
           }
         } catch (error) {
           console.error('Translation error:', error);
-          this.$message.error('获取翻译失败');
+        
         } finally {
           this.isLoading = false;
           // 如果翻译成功则 isTranslating 已在成功分支关闭；失败则保持占位提示
         }
       },
       updateUrlWithLanguage(lang) {
-        // 无论是什么语言，都在URL中添加对应的lang参数，使用replaceState而不是pushState，避免触发路由监听
+        // 保留原始URL参数，更新或移除lang参数
         const url = new URL(window.location);
-        url.searchParams.set('lang', lang);
+
+        // 如果是源语言，移除lang参数以保持URL干净
+        if (lang === this.sourceLanguage) {
+          url.searchParams.delete('lang');
+        } else {
+          url.searchParams.set('lang', lang);
+        }
+
+        // 使用replaceState而不是pushState，避免触发路由监听和影响浏览器历史
         window.history.replaceState({}, '', url);
+
+        // 如果当前在文章详情页，也更新路由对象的查询参数
+        if (this.$route.name === 'article') {
+          // 通过编程方式导航，保持相同的路径但更新查询参数
+          const query = { ...this.$route.query };
+
+          // 如果是源语言，移除lang参数；否则设置lang参数
+          if (lang === this.sourceLanguage) {
+            delete query.lang;
+          } else {
+            query.lang = lang;
+          }
+
+          this.$router.replace({ path: this.$route.path, query }).catch(err => {
+            if (err.name !== 'NavigationDuplicated') {
+              throw err;
+            }
+          });
+        }
       },
       /**
        * 检查是否有临时保存的评论
@@ -1198,30 +1479,30 @@
       checkTempComment() {
         const articleId = this.id;
         const tempCommentKey = `tempComment_${articleId}`;
-        
+
         try {
           const savedComment = localStorage.getItem(tempCommentKey);
           if (savedComment) {
             const commentData = JSON.parse(savedComment);
-            
+
             // 检查是否过期(24小时)
             const now = Date.now();
             const commentAge = now - commentData.timestamp;
-            
+
             if (commentAge < 24 * 60 * 60 * 1000) {
               this.tempComment = commentData.content;
-              
+
               // 延迟一点时间确保评论组件已加载
               setTimeout(() => {
                 // 使用事件总线将评论内容发送到评论框组件
                 this.$bus.$emit('restore-comment', this.tempComment);
-                
+
                 // 提示用户
                 this.$message({
                   message: "已恢复您之前的评论内容",
                   type: "success"
                 });
-                
+
                 // 滚动到评论区
                 this.$nextTick(() => {
                   const commentElement = document.querySelector('.comment-head');
@@ -1229,7 +1510,7 @@
                     commentElement.scrollIntoView({ behavior: 'smooth' });
                   }
                 });
-                
+
                 // 清除临时评论
                 localStorage.removeItem(tempCommentKey);
               }, 500);
@@ -1243,10 +1524,239 @@
           localStorage.removeItem(tempCommentKey);
         }
       },
+
+      /**
+       * 🔧 新方法：检查是否有保存的页面状态
+       */
+      checkPageState() {
+        const articleId = this.id;
+        const pageStateKey = `pageState_${articleId}`;
+
+        try {
+          const savedState = localStorage.getItem(pageStateKey);
+          if (savedState) {
+            const stateData = JSON.parse(savedState);
+
+            // 检查是否过期(1小时)
+            const now = Date.now();
+            const stateAge = now - stateData.timestamp;
+
+            if (stateAge < 60 * 60 * 1000) {
+              // 延迟一点时间确保评论组件已加载
+              setTimeout(() => {
+                // 使用事件总线将状态数据发送到评论组件
+                this.$bus.$emit('restore-page-state', stateData);
+
+                // 恢复滚动位置
+                if (stateData.scrollPosition) {
+                  window.scrollTo({
+                    top: stateData.scrollPosition,
+                    behavior: 'smooth'
+                  });
+                }
+
+                // 提示用户
+                this.$message({
+                  message: "已恢复您的操作状态",
+                  type: "success"
+                });
+
+                // 清除保存的状态
+                localStorage.removeItem(pageStateKey);
+              }, 1000); // 延迟确保评论组件完全加载
+            } else {
+              // 过期则删除
+              localStorage.removeItem(pageStateKey);
+            }
+          }
+        } catch (error) {
+          console.error('恢复页面状态出错:', error);
+          localStorage.removeItem(pageStateKey);
+        }
+      },
       clearPollTimer() {
         if (this.pollTimer) {
           clearTimeout(this.pollTimer);
           this.pollTimer = null;
+        }
+      },
+
+      /**
+       * 初始化语言设置
+       * 修复重复调用 /api/translation/default-lang 接口的问题
+       * 统一处理语言配置获取和语言设置逻辑
+       */
+      async initializeLanguageSettings() {
+        try {
+          // 先获取默认语言配置（只调用一次API）
+          await this.getDefaultTargetLanguage();
+
+          // 获取顺序：URL参数 > 用户保存的偏好 > 浏览器语言 > 默认源语言
+          const urlParams = new URLSearchParams(window.location.search);
+          const langParam = urlParams.get('lang') || this.$route.query.lang; // 备用方案：从Vue路由获取
+          const savedLang = localStorage.getItem('preferredLanguage');
+
+          console.log('语言初始化调试信息:', {
+            'window.location.search': window.location.search,
+            'window.location.href': window.location.href,
+            'urlParams': urlParams.toString(),
+            'langParam': langParam,
+            'savedLang': savedLang,
+            'languageMap': this.languageMap,
+            'route.query': this.$route.query,
+            'route.query.lang': this.$route.query.lang,
+            'route.fullPath': this.$route.fullPath
+          });
+
+          if (langParam && this.languageMap[langParam]) {
+            // URL参数优先，但必须是支持的语言
+            console.log('使用URL参数设置语言:', langParam);
+            this.currentLang = langParam;
+
+            // 确保URL中的lang参数与当前设置一致
+            if (this.$route.query.lang !== langParam) {
+              console.log('更新路由查询参数:', langParam);
+              // 静默更新URL，不触发路由变化
+              const query = { ...this.$route.query, lang: langParam };
+              this.$router.replace({ query }).catch(err => {
+                if (err.name !== 'NavigationDuplicated') {
+                  throw err;
+                }
+              });
+            }
+          } else if (savedLang && this.languageMap[savedLang] && savedLang !== this.sourceLanguage) {
+            // 只有当用户偏好不是源语言时才添加到URL
+            // 这样可以避免在首次访问时自动添加语言参数
+            console.log('使用保存的用户偏好语言:', savedLang);
+            this.currentLang = savedLang;
+            this.updateUrlWithLanguage(savedLang);
+          } else {
+            // 使用默认源语言，但不添加到URL中
+            // 这样保持URL的干净，只有在用户明确选择其他语言时才添加参数
+            console.log('URL参数无效或不存在，使用默认源语言:', this.sourceLanguage);
+            const browserLang = navigator.language || navigator.userLanguage;
+            if (browserLang && browserLang.toLowerCase().startsWith('en') && this.sourceLanguage !== 'en') {
+              // 即使浏览器是英文，也不自动添加到URL，让用户主动选择
+              this.currentLang = this.sourceLanguage;
+            } else {
+              this.currentLang = this.sourceLanguage; // 默认使用源语言
+            }
+            // 不调用updateUrlWithLanguage，保持URL干净
+          }
+
+          // 设置HTML元素的lang属性
+          document.documentElement.setAttribute('lang', this.currentLang);
+
+          console.log('语言设置初始化完成:', {
+            currentLang: this.currentLang,
+            sourceLanguage: this.sourceLanguage,
+            targetLanguage: this.targetLanguage
+          });
+
+        } catch (error) {
+          console.error('语言设置初始化失败:', error);
+          // 设置默认值，确保页面能正常工作
+          this.currentLang = 'zh';
+          this.sourceLanguage = 'zh';
+          this.targetLanguage = 'en';
+          document.documentElement.setAttribute('lang', this.currentLang);
+        }
+      },
+
+      async getDefaultTargetLanguage() {
+        try {
+          // 从Python后端获取默认语言配置
+          const response = await this.$http.get(this.$constant.pythonBaseURL + "/api/translation/default-lang");
+
+          if (response.code === 200 && response.data) {
+            // 设置默认目标语言
+            this.targetLanguage = response.data.default_target_lang || 'en';
+            this.targetLanguageName = this.languageMap[this.targetLanguage] || 'English';
+
+            // 设置默认源语言
+            this.sourceLanguage = response.data.default_source_lang || 'zh';
+            this.sourceLanguageName = this.languageMap[this.sourceLanguage] || '中文';
+
+            console.log('获取默认语言配置成功：',
+                      '源语言:', this.sourceLanguage, this.sourceLanguageName,
+                      '目标语言:', this.targetLanguage, this.targetLanguageName);
+          } else {
+            console.warn('获取默认语言配置失败，使用默认值');
+            this.targetLanguage = 'en';
+            this.targetLanguageName = 'English';
+            this.sourceLanguage = 'zh';
+            this.sourceLanguageName = '中文';
+          }
+        } catch (error) {
+          console.error('获取默认语言配置出错:', error);
+          this.targetLanguage = 'en';
+          this.targetLanguageName = 'English';
+          this.sourceLanguage = 'zh';
+          this.sourceLanguageName = '中文';
+        }
+      },
+
+      async getArticleAvailableLanguages() {
+        if (!this.article || !this.article.id) {
+          console.warn('无法获取可用翻译语言：文章ID不存在');
+          return;
+        }
+
+        try {
+          console.log('开始获取文章可用翻译语言，文章ID:', this.article.id);
+          const response = await this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {
+            id: this.article.id
+          });
+
+          if (response.code === 200 && response.data) {
+            this.availableLanguages = response.data || [];
+            console.log('获取文章可用翻译语言成功:', this.availableLanguages);
+
+            // 生成动态语言按钮
+            this.generateLanguageButtons();
+          } else {
+            console.warn('获取文章可用翻译语言失败:', response.message);
+            this.availableLanguages = [];
+            this.generateLanguageButtons();
+          }
+        } catch (error) {
+          console.error('获取文章可用翻译语言出错:', error);
+          this.availableLanguages = [];
+          this.generateLanguageButtons();
+        }
+      },
+
+      generateLanguageButtons() {
+        this.availableLanguageButtons = [];
+
+        // 始终添加原文语言按钮（通常是中文）
+        this.availableLanguageButtons.push({
+          code: this.sourceLanguage,
+          name: this.sourceLanguageName
+        });
+
+        // 添加实际存在翻译的语言按钮
+        if (this.availableLanguages && this.availableLanguages.length > 0) {
+          this.availableLanguages.forEach(langCode => {
+            // 避免重复添加源语言
+            if (langCode !== this.sourceLanguage) {
+              const langName = this.languageMap[langCode] || langCode;
+              this.availableLanguageButtons.push({
+                code: langCode,
+                name: langName
+              });
+            }
+          });
+        }
+
+        console.log('生成语言按钮:', this.availableLanguageButtons);
+
+        // 如果当前语言不在可用语言列表中，切换到源语言
+        const currentLangAvailable = this.availableLanguageButtons.some(btn => btn.code === this.currentLang);
+        if (!currentLangAvailable) {
+          console.log('当前语言不可用，切换到源语言:', this.sourceLanguage);
+          this.currentLang = this.sourceLanguage;
+          this.updateUrlWithLanguage(this.sourceLanguage);
         }
       }
     }
@@ -1260,12 +1770,27 @@
     position: relative;
   }
 
+  /* 确保article-head内的所有绝对定位元素不会覆盖语言切换按钮 */
+  .article-head > * {
+    pointer-events: auto;
+  }
+
+  .article-head .el-image {
+    pointer-events: none;
+  }
+
+  .article-head .el-image * {
+    pointer-events: none;
+  }
+
   .article-image::before {
     position: absolute;
     width: 100%;
     height: 100%;
     background-color: var(--miniMask);
     content: "";
+    z-index: 1;
+    pointer-events: none;
   }
 
   .article-info-container {
@@ -1274,6 +1799,8 @@
     left: 20%;
     color: var(--white);
   }
+
+
 
   .article-info-news {
     position: absolute;
@@ -1370,6 +1897,34 @@
     transform: rotate(360deg);
   }
 
+  .subscribe-button {
+    background: rgb(119, 48, 152);
+    width: 110px;
+    padding: 8px 0;
+    font-size: 16px;
+    text-align: center;
+    color: var(--white);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    user-select: none;
+  }
+
+  .subscribe-button:hover {
+    background: rgb(99, 28, 132);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(119, 48, 152, 0.3);
+  }
+
+  .subscribe-button.subscribed {
+    background: rgb(76, 175, 80);
+  }
+
+  .subscribe-button.subscribed:hover {
+    background: rgb(56, 155, 60);
+    box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+  }
+
   .process-wrap {
     margin: 0 0 40px;
   }
@@ -1422,20 +1977,7 @@
     line-height: 1.5;
   }
 
-  #toc-button {
-    position: fixed;
-    right: 3vh;
-    bottom: 8vh;
-    animation: slide-bottom 0.5s ease-in-out both;
-    z-index: 100;
-    cursor: pointer;
-    font-size: 23px;
-    width: 30px;
-  }
 
-  #toc-button:hover {
-    color: var(--themeBackground);
-  }
 
   .copyright-container {
     color: var(--black);
@@ -1455,33 +1997,147 @@
     }
   }
 
-  @media screen and (max-width: 400px) {
-    #toc-button {
-      right: 0.5vh;
+  /* 语言切换按钮容器样式 */
+  .language-switch-container {
+    position: relative;
+    z-index: 9999;
+    width: 100%;
+    pointer-events: none;
+    margin-bottom: 15px;
+    clear: both;
+    isolation: isolate;
+    transform: translateZ(0);
+  }
+
+  /* 确保容器内的按钮可以接收点击事件 */
+  .language-switch-container * {
+    pointer-events: auto;
+  }
+
+  /* 语言切换按钮样式 */
+  .article-language-switch {
+    position: relative;
+    z-index: 10000;
+    margin-bottom: 20px;
+    pointer-events: auto;
+    transform: translateZ(0);
+    will-change: transform;
+  }
+
+  .article-language-switch .el-button-group {
+    position: relative;
+    z-index: 10001;
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    pointer-events: auto;
+    transform: translateZ(0);
+    isolation: isolate;
+  }
+
+  .article-language-switch .el-button {
+    position: relative;
+    z-index: 10002;
+    padding: 8px 15px;
+    font-weight: 500;
+    font-size: 13px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.9);
+    color: var(--fontColor);
+    cursor: pointer;
+    user-select: none;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+    transform: translateZ(0);
+    isolation: isolate;
+  }
+
+  /* 强制确保按钮及其子元素可点击 */
+  .article-language-switch .el-button,
+  .article-language-switch .el-button *,
+  .article-language-switch .el-button::before,
+  .article-language-switch .el-button::after {
+    pointer-events: auto !important;
+  }
+
+  .article-language-switch .el-button:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(255, 255, 255, 1);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .article-language-switch .el-button--primary {
+    background-color: var(--themeBackground) !important;
+    border-color: var(--themeBackground) !important;
+    color: var(--white) !important;
+  }
+
+  .article-language-switch .el-button--primary:hover {
+    background-color: var(--themeBackground) !important;
+    border-color: var(--themeBackground) !important;
+    opacity: 0.9;
+  }
+
+  .article-language-switch .el-button.is-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+
+
+  /* 中等屏幕适配 - 隐藏原有语言切换按钮 */
+  @media (max-width: 1050px) {
+    .language-switch-container {
+      display: none !important;
+    }
+
+    .article-language-switch {
+      display: none !important;
     }
   }
 
-  /* 添加语言切换按钮样式 */
-  .article-language-switch {
-    margin-bottom: 20px;
-    z-index: 10;
-  }
-  
-  .article-language-switch .el-button-group {
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  
-  .article-language-switch .el-button {
-    padding: 8px 15px;
-    font-weight: 500;
-    transition: all 0.3s;
-  }
-  
-  .article-language-switch .el-button--primary {
-    background-color: var(--themeBackground);
-    border-color: var(--themeBackground);
+  /* 移动端适配 */
+  @media (max-width: 768px) {
+    .language-switch-container {
+      position: relative;
+      z-index: 9999;
+      margin-bottom: 10px;
+      pointer-events: none;
+      isolation: isolate;
+      transform: translateZ(0);
+    }
+
+    .article-language-switch {
+      position: relative;
+      z-index: 10000;
+      margin-bottom: 10px;
+      pointer-events: auto;
+      transform: translateZ(0);
+      will-change: transform;
+    }
+
+    .article-language-switch .el-button {
+      position: relative;
+      z-index: 10002;
+      padding: 6px 12px;
+      font-size: 12px;
+      min-height: 32px;
+      pointer-events: auto;
+      touch-action: manipulation;
+      transform: translateZ(0);
+      isolation: isolate;
+    }
+
+    .article-language-switch .el-button-group {
+      position: relative;
+      z-index: 10001;
+      pointer-events: auto;
+      transform: translateZ(0);
+      isolation: isolate;
+    }
   }
 
   /* 翻译加载动画 */

@@ -6,6 +6,7 @@ import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.handle.PoetryRuntimeException;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.utils.cache.UserCacheManager;
 import com.ld.poetry.utils.IpUtil;
@@ -30,11 +31,16 @@ public class PoetryUtil {
     @Autowired
     private UserCacheManager userCacheManager;
 
+    @Autowired
+    private CacheService cacheService;
+
     private static UserCacheManager staticUserCacheManager;
+    private static CacheService staticCacheService;
 
     @PostConstruct
     public void init() {
         staticUserCacheManager = userCacheManager;
+        staticCacheService = cacheService;
     }
 
     public static HttpServletRequest getRequest() {
@@ -48,8 +54,27 @@ public class PoetryUtil {
     }
 
     public static void checkEmail() {
-        User user = (User) PoetryCache.get(PoetryUtil.getToken());
-        if (!StringUtils.hasText(user.getEmail())) {
+        // 优先从UserCacheManager获取，降级到Redis缓存
+        User user = null;
+        String token = PoetryUtil.getToken();
+
+        if (staticUserCacheManager != null) {
+            user = staticUserCacheManager.getUserByToken(token);
+        }
+
+        if (user == null && staticCacheService != null) {
+            Integer userId = staticCacheService.getUserIdFromSession(token);
+            if (userId != null) {
+                user = staticCacheService.getCachedUser(userId);
+            }
+        }
+
+        // 最后降级到PoetryCache
+        if (user == null) {
+            user = (User) PoetryCache.get(token);
+        }
+
+        if (user != null && !StringUtils.hasText(user.getEmail())) {
             throw new PoetryRuntimeException("请先绑定邮箱！");
         }
     }
@@ -112,7 +137,18 @@ public class PoetryUtil {
                     }
                 }
                 
-                // 降级到直接从PoetryCache获取
+                // 降级到Redis缓存获取
+                if (staticCacheService != null) {
+                    Integer userId = staticCacheService.getUserIdFromSession(token);
+                    if (userId != null) {
+                        User user = staticCacheService.getCachedUser(userId);
+                        if (user != null) {
+                            return user;
+                        }
+                    }
+                }
+
+                // 最后降级到PoetryCache获取
                 User user = (User) PoetryCache.get(token);
                 if (user != null) {
                     return user;
@@ -138,6 +174,15 @@ public class PoetryUtil {
     }
 
     public static User getAdminUser() {
+        // 优先从Redis缓存获取管理员信息
+        if (staticCacheService != null) {
+            User admin = staticCacheService.getCachedAdminUser();
+            if (admin != null) {
+                return admin;
+            }
+        }
+
+        // 降级到PoetryCache获取
         User admin = (User) PoetryCache.get(CommonConst.ADMIN);
         return admin;
     }
@@ -174,7 +219,15 @@ public class PoetryUtil {
                         }
                     }
                     
-                    // 降级到直接从PoetryCache获取
+                    // 降级到Redis缓存获取
+                    if (staticCacheService != null) {
+                        Integer userId = staticCacheService.getUserIdFromSession(tokenWithoutBearer);
+                        if (userId != null) {
+                            return userId;
+                        }
+                    }
+
+                    // 最后降级到PoetryCache获取
                     User user = (User) PoetryCache.get(tokenWithoutBearer);
                     if (user != null) {
                         return user.getId();
@@ -250,7 +303,18 @@ public class PoetryUtil {
                     }
                 }
                 
-                // 降级到直接从PoetryCache获取
+                // 降级到Redis缓存获取
+                if (staticCacheService != null) {
+                    Integer userId = staticCacheService.getUserIdFromSession(token);
+                    if (userId != null) {
+                        User user = staticCacheService.getCachedUser(userId);
+                        if (user != null && StringUtils.hasText(user.getUsername())) {
+                            return user.getUsername();
+                        }
+                    }
+                }
+
+                // 最后降级到PoetryCache获取
                 User user = (User) PoetryCache.get(token);
                 if (user != null && StringUtils.hasText(user.getUsername())) {
                     return user.getUsername();
@@ -262,7 +326,16 @@ public class PoetryUtil {
     }
 
     public static String getRandomAvatar(String key) {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        // 优先从Redis缓存获取网站信息
+        WebInfo webInfo = null;
+        if (staticCacheService != null) {
+            webInfo = staticCacheService.getCachedWebInfo();
+        }
+
+        // 降级到PoetryCache获取
+        if (webInfo == null) {
+            webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        }
         if (webInfo != null) {
             String randomAvatar = webInfo.getRandomAvatar();
             List<String> randomAvatars = JSON.parseArray(randomAvatar, String.class);
@@ -283,7 +356,16 @@ public class PoetryUtil {
     }
 
     public static String getRandomName(String key) {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        // 优先从Redis缓存获取网站信息
+        WebInfo webInfo = null;
+        if (staticCacheService != null) {
+            webInfo = staticCacheService.getCachedWebInfo();
+        }
+
+        // 降级到PoetryCache获取
+        if (webInfo == null) {
+            webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        }
         if (webInfo != null) {
             String randomName = webInfo.getRandomName();
             List<String> randomNames = JSON.parseArray(randomName, String.class);
@@ -304,7 +386,16 @@ public class PoetryUtil {
     }
 
     public static String getRandomCover(String key) {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        // 优先从Redis缓存获取网站信息
+        WebInfo webInfo = null;
+        if (staticCacheService != null) {
+            webInfo = staticCacheService.getCachedWebInfo();
+        }
+
+        // 降级到PoetryCache获取
+        if (webInfo == null) {
+            webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        }
         if (webInfo != null) {
             String randomCover = webInfo.getRandomCover();
             List<String> randomCovers = JSON.parseArray(randomCover, String.class);

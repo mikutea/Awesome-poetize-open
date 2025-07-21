@@ -136,3 +136,27 @@ yarn-error.log*
 *.log
 logs/
 log/
+
+### 安全敏感文件 ###
+# 加密密钥文件
+*.key
+*encryption*.key
+py/data/*.key
+py/data/*encryption*
+py/data/.encryption_key
+
+# API密钥和配置文件
+*api_key*
+*secret*
+*.pem
+*.p12
+*.pfx
+
+# 环境变量文件
+.env
+.env.*
+!.env.example
+
+# 数据库连接字符串
+*connection_string*
+*database_url*

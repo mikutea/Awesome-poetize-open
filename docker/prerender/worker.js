@@ -577,6 +577,49 @@ const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://poetize-pyt
 
 const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
 
+/**
+ * 获取系统配置的源语言
+ * @returns {Promise<string>} 源语言代码，默认为'zh'
+ */
+async function getSourceLanguage() {
+  try {
+    logger.debug('Fetching source language configuration from Java backend');
+    const res = await axios.get(`${JAVA_BACKEND_URL}/article/getTranslationConfig`, {
+      timeout: 5000,
+      headers: INTERNAL_SERVICE_HEADERS
+    });
+
+    if (res.data && res.data.code === 200 && res.data.data) {
+      const sourceLanguage = res.data.data.source || 'zh';
+
+      logger.debug('Source language configuration fetched from Java backend', {
+        sourceLanguage,
+        responseCode: res.data.code,
+        fullConfig: res.data.data
+      });
+
+      return sourceLanguage;
+    } else {
+      logger.warn('Invalid response format from Java translation config API', {
+        responseCode: res.data?.code,
+        hasData: !!res.data?.data
+      });
+    }
+  } catch (error) {
+    logger.warn('Failed to fetch source language configuration from Java backend, using default', {
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      url: `${JAVA_BACKEND_URL}/article/getTranslationConfig`
+    });
+  }
+
+  // 返回默认源语言
+  const defaultSourceLanguage = 'zh';
+  logger.info('Using default source language', { sourceLanguage: defaultSourceLanguage });
+  return defaultSourceLanguage;
+}
+
 // 完整版：先尝试 manifest.json，失败则解析 index.html，结果缓存 10 分钟
 const assetCache = { assets: null, lastFetch: 0 };
 async function getFrontEndAssets(host = 'nginx') {
@@ -655,22 +698,56 @@ async function fetchArticle(id) {
 }
 
 async function fetchTranslation(id, lang) {
-  if (lang === 'zh') return null;
+  // 动态获取源语言配置，而不是硬编码'zh'
+  const sourceLanguage = await getSourceLanguage();
+
+  // 如果请求的语言与源语言相同，不需要翻译
+  if (lang === sourceLanguage) {
+    logger.debug('Requested language matches source language, no translation needed', {
+      id,
+      requestedLang: lang,
+      sourceLanguage
+    });
+    return null;
+  }
+
   try {
-    logger.debug('Fetching translation', { id, lang });
-    const res = await axios.get(`${JAVA_BACKEND_URL}/article/getTranslation`, { 
-      params: { id },
+    logger.debug('Fetching translation', {
+      id,
+      lang,
+      sourceLanguage,
+      needsTranslation: true
+    });
+
+    const res = await axios.get(`${JAVA_BACKEND_URL}/article/getTranslation`, {
+      params: {
+        id: id,
+        language: lang
+      },
       timeout: 8000,
       headers: INTERNAL_SERVICE_HEADERS
     });
-    const translation = (res.data && res.data.code === 200) ? res.data.data : null;
-    logger.debug('Translation fetched', { id, lang, found: !!translation });
+
+    // 增强响应解析，检查status字段
+    const translation = (res.data && res.data.code === 200 && res.data.data && res.data.data.status === 'success')
+      ? res.data.data
+      : null;
+
+    logger.debug('Translation fetched', {
+      id,
+      lang,
+      sourceLanguage,
+      found: !!translation,
+      responseCode: res.data?.code,
+      responseStatus: res.data?.data?.status
+    });
     return translation;
   } catch (error) {
-    logger.warn('Failed to fetch translation, using original content', { 
-      id, 
-      lang, 
-      error: error.message 
+    logger.warn('Failed to fetch translation, using original content', {
+      id,
+      lang,
+      sourceLanguage,
+      error: error.message
     });
     return null;
   }
@@ -1807,10 +1884,26 @@ async function renderIds(ids = [], options = {}) {
   monitor.recordRenderStart(taskId, 'article', { ids, options });
 
   const OUTPUT_ROOT = options.outputRoot || process.env.PRERENDER_OUTPUT || path.resolve(__dirname, './dist/prerender');
-  const langs = ['zh', 'en'];
+
+  // 使用调用方传入的语言列表，如果没有则默认为中文
+  const languagesToRender = options.languages || ['zh'];
+
+  // 支持的语言列表（用于验证）
+  const ALL_SUPPORTED_LANGUAGES = ['zh', 'en', 'ja', 'zh-TW', 'ko', 'fr', 'de', 'es', 'ru'];
+
+  // 验证传入的语言是否支持
+  const validLanguages = languagesToRender.filter(lang => ALL_SUPPORTED_LANGUAGES.includes(lang));
+  if (validLanguages.length === 0) {
+    throw new Error(`No supported languages found in: ${languagesToRender.join(', ')}. Supported: ${ALL_SUPPORTED_LANGUAGES.join(', ')}`);
+  }
 
   try {
-    logger.info('Starting article rendering', { taskId, articleCount: ids.length, langs });
+    logger.info('Starting article rendering', {
+      taskId,
+      articleCount: ids.length,
+      requestedLanguages: languagesToRender,
+      validLanguages: validLanguages
+    });
 
     const assets = await getFrontEndAssets(options.frontendHost || 'nginx');
     logger.debug('Frontend assets loaded', { taskId, assets });
@@ -1846,7 +1939,7 @@ async function renderIds(ids = [], options = {}) {
     const errors = [];
 
     for (const id of ids) {
-      for (const lang of langs) {
+      for (const lang of validLanguages) {
         try {
           logger.debug('Rendering article', { taskId, articleId: id, lang });
 
@@ -1944,17 +2037,18 @@ async function renderIds(ids = [], options = {}) {
       throw new Error(`All renders failed. Errors: ${JSON.stringify(errors)}`);
     }
 
-    monitor.recordRenderSuccess(taskId, { 
-      count: ids.length, 
-      successCount, 
-      failCount, 
-      langs: langs.length 
+    monitor.recordRenderSuccess(taskId, {
+      count: ids.length,
+      successCount,
+      failCount,
+      languages: validLanguages.length
     });
 
-    logger.info('Article rendering completed', { 
-      taskId, 
+    logger.info('Article rendering completed', {
+      taskId,
       totalArticles: ids.length,
-      successCount, 
+      renderedLanguages: validLanguages,
+      successCount,
       failCount,
       errorCount: errors.length
     });
@@ -2141,16 +2235,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// 原有文章渲染API - 增强版
+// 原有文章渲染API - 增强版（支持指定语言）
 app.post('/render', async (req, res) => {
   const requestId = req.requestId;
-  const ids = req.body.ids;
-  
-  logger.info('Render request received', { requestId, ids });
-  
+  const { ids, languages } = req.body;
+
+  logger.info('Render request received', { requestId, ids, languages });
+
   if (!Array.isArray(ids) || ids.length === 0) {
     logger.warn('Invalid render request - ids array required', { requestId, body: req.body });
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'ids array required',
       requestId,
       timestamp: new Date().toISOString()
@@ -2159,7 +2253,7 @@ app.post('/render', async (req, res) => {
 
   if (ids.length > 50) {
     logger.warn('Too many articles in single request', { requestId, count: ids.length });
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Too many articles. Maximum 50 per request.',
       requestId,
       received: ids.length,
@@ -2167,32 +2261,112 @@ app.post('/render', async (req, res) => {
     });
   }
 
+  // 验证languages参数
+  let languagesToRender = languages;
+  if (!Array.isArray(languagesToRender) || languagesToRender.length === 0) {
+    // 如果没有指定语言，默认渲染中文
+    languagesToRender = ['zh'];
+    logger.warn('No languages specified, defaulting to Chinese', {
+      requestId,
+      articleIds: ids
+    });
+  }
+
   try {
     const startTime = Date.now();
-    await renderIds(ids);
+    await renderIds(ids, { languages: languagesToRender });
     const duration = Date.now() - startTime;
-    
-    logger.info('Render request completed successfully', { 
-      requestId, 
-      articleCount: ids.length, 
-      duration: `${duration}ms` 
+
+    logger.info('Render request completed successfully', {
+      requestId,
+      articleCount: ids.length,
+      languages: languagesToRender,
+      duration: `${duration}ms`
     });
-    
-    res.json({ 
-      status: 'ok', 
+
+    res.json({
+      status: 'ok',
       rendered: ids.length,
+      renderedLanguages: languagesToRender,
       requestId,
       duration: `${duration}ms`,
       timestamp: new Date().toISOString()
     });
   } catch (e) {
-    logger.error('Render request failed', { 
-      requestId, 
-      error: e.message, 
+    logger.error('Render request failed', {
+      requestId,
+      error: e.message,
       stack: e.stack,
-      ids 
+      ids,
+      languages: languagesToRender
     });
-    res.status(500).json({ 
+    res.status(500).json({
+      message: e.message,
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 新增：专门的文章渲染API
+app.post('/render/article', async (req, res) => {
+  const requestId = req.requestId;
+  const { id, languages } = req.body;
+
+  logger.info('Article render request received', { requestId, articleId: id, languages });
+
+  if (!id) {
+    logger.warn('Invalid article render request - id required', { requestId, body: req.body });
+    return res.status(400).json({
+      message: 'Article id is required',
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // 验证languages参数
+  let languagesToRender = languages;
+  if (!Array.isArray(languagesToRender) || languagesToRender.length === 0) {
+    // 如果没有指定语言，默认渲染中文
+    languagesToRender = ['zh'];
+    logger.warn('No languages specified for article, defaulting to Chinese', {
+      requestId,
+      articleId: id
+    });
+  }
+
+  try {
+    const startTime = Date.now();
+    await renderIds([id], { languages: languagesToRender });
+    const duration = Date.now() - startTime;
+
+    logger.info('Article render completed successfully', {
+      requestId,
+      articleId: id,
+      languages: languagesToRender,
+      duration: `${duration}ms`
+    });
+
+    res.json({
+      success: true,
+      message: `Article ${id} rendered successfully in languages: ${languagesToRender.join(', ')}`,
+      articleId: id,
+      renderedLanguages: languagesToRender,
+      requestId,
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    logger.error('Article render failed', {
+      requestId,
+      articleId: id,
+      languages: languagesToRender,
+      error: e.message,
+      stack: e.stack
+    });
+
+    res.status(500).json({
+      success: false,
       message: e.message,
       requestId,
       timestamp: new Date().toISOString()
@@ -2634,25 +2808,54 @@ app.post('/logs/cleanup', (req, res) => {
 // 新增：清理SEO配置缓存API
 app.post('/cache/seo/clear', (req, res) => {
   const requestId = req.requestId;
-  
+
   logger.info('SEO config cache clear request', { requestId });
-  
+
   try {
     // 清理SEO配置缓存
     seoConfigCache.data = null;
     seoConfigCache.lastFetch = 0;
-    
+
     logger.info('SEO config cache cleared successfully', { requestId });
-    
+
     res.json({
       success: true,
       message: 'SEO config cache cleared successfully',
       requestId,
       timestamp: new Date().toISOString()
     });
-    
+
   } catch (error) {
     logger.error('Failed to clear SEO config cache', { requestId, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 新增：获取当前源语言配置API
+app.get('/config/source-language', async (req, res) => {
+  const requestId = req.requestId;
+
+  logger.info('Source language config request', { requestId });
+
+  try {
+    const sourceLanguage = await getSourceLanguage();
+
+    res.json({
+      success: true,
+      data: {
+        sourceLanguage
+      },
+      requestId,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Failed to get source language config', { requestId, error: error.message });
     res.status(500).json({
       success: false,
       error: error.message,

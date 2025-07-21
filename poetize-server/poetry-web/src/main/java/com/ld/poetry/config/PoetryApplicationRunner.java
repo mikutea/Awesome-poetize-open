@@ -6,11 +6,12 @@ import com.ld.poetry.dao.WebInfoMapper;
 import com.ld.poetry.entity.*;
 import com.ld.poetry.im.websocket.TioUtil;
 import com.ld.poetry.im.websocket.TioWebsocketStarter;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.FamilyService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.constants.CommonConst;
-import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.enums.PoetryEnum;
+import com.ld.poetry.utils.cache.PoetryCache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -46,6 +47,9 @@ public class PoetryApplicationRunner implements ApplicationRunner {
     @Autowired
     private HistoryInfoMapper historyInfoMapper;
 
+    @Autowired
+    private CacheService cacheService;
+
     @Override
     public void run(ApplicationArguments args) throws Exception {
         // 初始化网站信息缓存
@@ -54,15 +58,24 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         if (!CollectionUtils.isEmpty(list)) {
             WebInfo webInfo = list.get(0);
             webInfo.setDefaultStoreType(defaultType);
-            
+
             // 确保启用看板娘字段有默认值
             if (webInfo.getEnableWaifu() == null) {
                 webInfo.setEnableWaifu(false);
             }
-            
-            // 更新到缓存
+
+            // 确保status字段有默认值
+            if (webInfo.getStatus() == null) {
+                webInfo.setStatus(true);
+                log.info("WebInfo status字段为null，设置为默认值true");
+            }
+
+            // 同时更新到Redis缓存和内存缓存
+            cacheService.cacheWebInfo(webInfo);
             PoetryCache.put(CommonConst.WEB_INFO, webInfo);
-            log.info("网站基本信息已加载到缓存 - WebName: {}, EnableWaifu: {}", webInfo.getWebName(), webInfo.getEnableWaifu());
+
+            log.info("网站基本信息已加载到缓存 - WebName: {}, EnableWaifu: {}, Status: {}",
+                    webInfo.getWebName(), webInfo.getEnableWaifu(), webInfo.getStatus());
         } else {
             log.warn("未找到网站基本信息，请检查数据库");
         }
@@ -70,7 +83,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         // 初始化管理员用户缓存
         User admin = userService.lambdaQuery().eq(User::getUserType, PoetryEnum.USER_TYPE_ADMIN.getCode()).one();
         if (admin != null) {
-            PoetryCache.put(CommonConst.ADMIN, admin);
+            cacheService.cacheAdminUser(admin);
             log.info("管理员用户信息已加载到缓存 - Username: {}, ID: {}", admin.getUsername(), admin.getId());
         } else {
             log.warn("未找到管理员用户，请检查数据库");
@@ -80,7 +93,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         if (admin != null) {
             Family family = familyService.lambdaQuery().eq(Family::getUserId, admin.getId()).one();
             if (family != null) {
-                PoetryCache.put(CommonConst.ADMIN_FAMILY, family);
+                cacheService.cacheAdminFamily(family);
                 log.info("管理员家庭信息已加载到缓存");
             }
         }
@@ -91,7 +104,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
                 .ge(HistoryInfo::getCreateTime, LocalDateTime.now().with(LocalTime.MIN))
                 .list();
 
-        PoetryCache.put(CommonConst.IP_HISTORY, new CopyOnWriteArraySet<>(infoList.stream().map(info -> info.getIp() + (info.getUserId() != null ? "_" + info.getUserId().toString() : "")).collect(Collectors.toList())));
+        cacheService.cacheIpHistory(new CopyOnWriteArraySet<>(infoList.stream().map(info -> info.getIp() + (info.getUserId() != null ? "_" + info.getUserId().toString() : "")).collect(Collectors.toList())));
 
         // 初始化访问统计缓存
         Map<String, Object> history = new HashMap<>();
@@ -99,7 +112,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         history.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
         history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour());
         history.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount());
-        PoetryCache.put(CommonConst.IP_HISTORY_STATISTICS, history);
+        cacheService.cacheIpHistoryStatistics(history);
 
         // 初始化Tio
         TioUtil.buildTio();

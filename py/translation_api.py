@@ -7,6 +7,7 @@ import os
 import json
 import httpx
 import asyncio
+import hashlib
 from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ import time
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 from config import JAVA_BACKEND_URL
+from cache_service import get_cache_service
 logger = logging.getLogger(__name__)
 
 # 翻译配置存储文件
@@ -126,24 +128,216 @@ class SummaryResponse(BaseModel):
 
 class TranslationManager:
     """翻译管理器"""
-    
+
     def __init__(self):
         self.config_file = TRANSLATION_CONFIG_FILE
         self.ensure_data_dir()
+        # 集成Redis缓存服务
+        self.cache_service = get_cache_service()
+        # 保留文件修改时间检测机制
+        self._file_mtime = 0
+        # 缓存键定义
+        self._config_cache_key = "translation:config:full"
+        self._default_lang_cache_key = "translation:config:default_lang"
     
     def ensure_data_dir(self):
         """确保数据目录存在"""
         data_dir = os.path.dirname(self.config_file)
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
+
+    def _get_file_mtime(self) -> float:
+        """获取配置文件的修改时间"""
+        try:
+            if os.path.exists(self.config_file):
+                return os.path.getmtime(self.config_file)
+            return 0
+        except Exception:
+            return 0
+
+    def _is_cache_valid(self, file_mtime: float) -> bool:
+        """检查缓存是否有效 - 基于文件修改时间的精确检测
+
+        优化策略说明：
+        - 对于系统配置数据，采用基于文件修改时间的缓存失效机制
+        - 只有当配置文件实际被修改时才失效Redis缓存，避免不必要的重新加载
+        - 配合永久Redis缓存，提供最佳性能和数据一致性
+        - 文件系统的mtime检测极其可靠，确保配置变更能够立即生效
+
+        缓存策略：
+        - Redis缓存：永久存储，不设置过期时间
+        - 缓存失效：基于文件修改时间主动清理
+        - 数据一致性：文件修改 → 清除Redis缓存 → 重新加载并缓存
+
+        参数:
+            file_mtime: 当前文件的修改时间
+
+        返回:
+            bool: 如果文件未被修改则返回True（缓存有效），否则返回False
+        """
+        is_valid = file_mtime == self._file_mtime
+        if not is_valid:
+            logger.debug(f"检测到配置文件修改: 当前mtime={file_mtime}, 缓存mtime={self._file_mtime}")
+        return is_valid
+
+    def _clear_cache_if_file_changed(self, current_file_mtime: float) -> bool:
+        """如果文件被修改，主动清除Redis缓存
+
+        参数:
+            current_file_mtime: 当前文件的修改时间
+
+        返回:
+            bool: 如果清除了缓存返回True，否则返回False
+        """
+        if not self._is_cache_valid(current_file_mtime):
+            try:
+                # 检查缓存键是否存在
+                config_exists = self.cache_service.exists(self._config_cache_key)
+                default_lang_exists = self.cache_service.exists(self._default_lang_cache_key)
+
+                # 文件已修改，清除Redis缓存
+                config_deleted = self.cache_service.delete(self._config_cache_key)
+                default_lang_deleted = self.cache_service.delete(self._default_lang_cache_key)
+
+                # 改进日志记录：区分"键不存在"和"删除失败"
+                config_status = self._get_cache_clear_status(config_exists, config_deleted)
+                default_lang_status = self._get_cache_clear_status(default_lang_exists, default_lang_deleted)
+
+                logger.info(f"检测到配置文件修改，主动清除Redis缓存: "
+                          f"完整配置={config_status}, "
+                          f"默认语言={default_lang_status}")
+                return True
+            except Exception as e:
+                logger.warning(f"主动清除Redis缓存失败: {e}")
+                return False
+        return False
+
+    def _get_cache_clear_status(self, existed: bool, deleted_count: int) -> str:
+        """获取缓存清理状态描述
+
+        参数:
+            existed: 缓存键是否存在
+            deleted_count: 删除操作返回的计数
+
+        返回:
+            str: 状态描述
+        """
+        if not existed:
+            return "键不存在(正常)"
+        elif deleted_count > 0:
+            return "成功删除"
+        else:
+            return "删除失败"
+
+    def get_default_languages(self) -> dict:
+        """快速获取默认语言配置，专门用于 /api/translation/default-lang 接口
+
+        缓存策略：
+        - Redis永久缓存 + 基于文件修改时间的主动失效
+        - 配置文件修改时立即清除Redis缓存，确保数据一致性
+        """
+        import time
+        current_time = time.time()
+        current_file_mtime = self._get_file_mtime()
+
+        # 检查文件是否被修改，如果是则主动清除Redis缓存
+        self._clear_cache_if_file_changed(current_file_mtime)
+
+        # 优先从Redis缓存获取
+        try:
+            cached_default_lang = self.cache_service.get(self._default_lang_cache_key)
+            if cached_default_lang and self._is_cache_valid(current_file_mtime):
+                logger.debug("从Redis缓存获取默认语言配置")
+                return cached_default_lang
+        except Exception as e:
+            logger.warning(f"从Redis获取默认语言配置失败: {e}")
+
+        try:
+            # 如果配置文件不存在，返回默认值
+            if not os.path.exists(self.config_file):
+                default_config = {
+                    'default_source_lang': 'zh',
+                    'default_target_lang': 'en'
+                }
+                self._default_lang_cache = default_config
+                self._default_lang_cache_timestamp = current_time
+                self._file_mtime = current_file_mtime
+                return default_config
+
+            # 只读取配置文件中的默认语言部分，不进行解密操作
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if data is None:
+                data = {}
+
+            # 只提取默认语言配置，不涉及敏感信息解密
+            default_config = {
+                'default_source_lang': data.get('default_source_lang', 'zh'),
+                'default_target_lang': data.get('default_target_lang', 'en')
+            }
+
+            # 更新Redis缓存（永久存储，不设置过期时间）
+            try:
+                self.cache_service.set(
+                    self._default_lang_cache_key,
+                    default_config
+                    # 移除expire_time参数，使用永久缓存
+                )
+                logger.debug("默认语言配置已永久缓存到Redis")
+            except Exception as e:
+                logger.warning(f"缓存默认语言配置到Redis失败: {e}")
+
+            self._file_mtime = current_file_mtime
+            return default_config
+
+        except Exception as e:
+            logger.error(f"获取默认语言配置失败: {e}")
+            # 返回默认值
+            default_config = {
+                'default_source_lang': 'zh',
+                'default_target_lang': 'en'
+            }
+            # 缓存默认值到Redis（永久存储）
+            try:
+                self.cache_service.set(
+                    self._default_lang_cache_key,
+                    default_config
+                    # 移除expire_time参数，使用永久缓存
+                )
+                logger.debug("默认语言配置（默认值）已永久缓存到Redis")
+            except Exception as e:
+                logger.warning(f"缓存默认语言配置（默认值）到Redis失败: {e}")
+            return default_config
     
     def load_config(self) -> Optional[TranslationConfig]:
-        """加载翻译配置"""
+        """加载翻译配置
+
+        缓存策略：
+        - Redis永久缓存 + 基于文件修改时间的主动失效
+        - 配置文件修改时立即清除Redis缓存，确保数据一致性
+        """
+        import time
+        current_time = time.time()
+        current_file_mtime = self._get_file_mtime()
+
+        # 检查文件是否被修改，如果是则主动清除Redis缓存
+        self._clear_cache_if_file_changed(current_file_mtime)
+
+        # 优先从Redis缓存获取完整配置
+        try:
+            cached_config = self.cache_service.get(self._config_cache_key)
+            if cached_config and self._is_cache_valid(current_file_mtime):
+                logger.debug("从Redis缓存获取翻译配置")
+                return TranslationConfig(**cached_config)
+        except Exception as e:
+            logger.warning(f"从Redis获取翻译配置失败: {e}")
+
         try:
             if not os.path.exists(self.config_file):
                 logger.warning("翻译配置文件不存在")
                 return None
-            
+
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
@@ -185,7 +379,21 @@ class TranslationManager:
                         logger.error(f"解密LLM API密钥失败: {e}")
                         data['llm']['api_key'] = None
             
-            return TranslationConfig(**data)
+            config = TranslationConfig(**data)
+
+            # 更新Redis缓存（永久存储，不设置过期时间）
+            try:
+                self.cache_service.set(
+                    self._config_cache_key,
+                    config.dict()
+                    # 移除expire_time参数，使用永久缓存
+                )
+                logger.debug("翻译配置已永久缓存到Redis")
+            except Exception as e:
+                logger.warning(f"缓存翻译配置到Redis失败: {e}")
+
+            self._file_mtime = current_file_mtime
+            return config
         except Exception as e:
             logger.error(f"加载翻译配置失败: {e}")
             return None
@@ -245,6 +453,31 @@ class TranslationManager:
             
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+
+            # 立即清除Redis缓存，确保配置修改后的数据一致性
+            try:
+                # 检查缓存键是否存在
+                config_exists = self.cache_service.exists(self._config_cache_key)
+                default_lang_exists = self.cache_service.exists(self._default_lang_cache_key)
+
+                # 清除完整配置缓存
+                config_deleted = self.cache_service.delete(self._config_cache_key)
+                # 清除默认语言配置缓存
+                default_lang_deleted = self.cache_service.delete(self._default_lang_cache_key)
+
+                # 改进日志记录
+                config_status = self._get_cache_clear_status(config_exists, config_deleted)
+                default_lang_status = self._get_cache_clear_status(default_lang_exists, default_lang_deleted)
+
+                logger.info(f"配置保存后立即清除Redis缓存: "
+                          f"完整配置={config_status}, "
+                          f"默认语言={default_lang_status}")
+            except Exception as e:
+                logger.error(f"清除Redis缓存失败: {e}")
+
+            # 重置文件修改时间，强制下次访问时重新检查文件
+            self._file_mtime = 0
+
             logger.info("翻译配置保存成功")
             return True
         except Exception as e:
@@ -253,25 +486,57 @@ class TranslationManager:
     
     async def translate_text(self, request: TranslationRequest) -> TranslationResponse:
         """执行翻译"""
+        # 首先检查Redis缓存
+        cache_service = get_cache_service()
+        cached_translation = cache_service.get_cached_translation(
+            request.text,
+            request.source_lang,
+            request.target_lang
+        )
+
+        if cached_translation:
+            logger.info(f"从缓存获取翻译结果: {request.text[:50]}...")
+            return TranslationResponse(
+                success=True,
+                translated_text=cached_translation,
+                provider="cache"
+            )
+
         config = self.load_config()
         if not config:
             return TranslationResponse(
                 success=False,
                 error_message="翻译配置未设置"
             )
-        
+
         try:
+            # 执行翻译
+            result = None
             if config.type == "baidu":
-                return await self._baidu_translate(config, request)
+                result = await self._baidu_translate(config, request)
             elif config.type == "custom":
-                return await self._custom_api_translate(config, request)
+                result = await self._custom_api_translate(config, request)
             elif config.type == "llm":
-                return await self._translate_with_llm(config, request)
+                result = await self._translate_with_llm(config, request)
             else:
                 return TranslationResponse(
                     success=False,
                     error_message="不支持的翻译类型"
                 )
+
+            # 如果翻译成功，缓存结果
+            if result and result.success and result.translated_text:
+                cache_service.cache_translation(
+                    request.text,
+                    request.source_lang,
+                    request.target_lang,
+                    result.translated_text,
+                    config.type
+                )
+                logger.info(f"翻译结果已缓存: {request.text[:50]}...")
+
+            return result
+
         except Exception as e:
             logger.error(f"翻译失败: {e}")
             return TranslationResponse(
@@ -413,6 +678,7 @@ class TranslationManager:
         # 语言映射和默认设置
         lang_map = {
             'zh': '中文',
+            'zh-TW': '繁体中文',
             'en': '英文',
             'ja': '日文',
             'ko': '韩文',
@@ -934,6 +1200,39 @@ translation_manager = TranslationManager()
 
 def register_translation_api(app):
     """注册翻译API路由"""
+    
+    @app.get("/api/translation/default-lang")
+    async def get_default_language():
+        """获取默认翻译语言设置（面向前端，无需管理员权限）
+
+        优化说明：
+        - 使用专门的 get_default_languages() 方法，避免不必要的解密操作
+        - 实现了缓存机制，减少文件读取次数
+        - 只读取默认语言配置，不涉及敏感信息处理
+        """
+        try:
+            # 使用优化的方法获取默认语言配置，避免解密操作
+            default_config = translation_manager.get_default_languages()
+
+            return {
+                'code': 200,
+                'message': '获取成功',
+                'data': {
+                    'default_source_lang': default_config['default_source_lang'],
+                    'default_target_lang': default_config['default_target_lang']
+                }
+            }
+        except Exception as e:
+            logger.error(f"获取默认翻译语言失败: {e}")
+            # 即使出错也返回默认值，确保接口可用性
+            return {
+                'code': 200,
+                'message': '获取成功（使用默认值）',
+                'data': {
+                    'default_source_lang': 'zh',
+                    'default_target_lang': 'en'
+                }
+            }
     
     @app.get("/api/translation/config")
     async def get_translation_config(admin_user = Depends(admin_required)):

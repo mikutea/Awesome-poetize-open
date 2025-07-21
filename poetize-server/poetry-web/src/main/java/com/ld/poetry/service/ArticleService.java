@@ -60,11 +60,29 @@ public interface ArticleService extends IService<Article> {
     PoetryResult<String> saveArticleAsync(ArticleVO articleVO);
 
     /**
+     * 异步保存文章（快速响应版本，支持翻译参数）
+     * @param articleVO 文章信息
+     * @param skipAiTranslation 是否跳过AI翻译
+     * @param pendingTranslation 暂存的翻译数据
+     * @return 任务ID
+     */
+    PoetryResult<String> saveArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
+
+    /**
      * 异步更新文章（快速响应版本）
      * @param articleVO 文章信息
      * @return 任务ID
      */
     PoetryResult<String> updateArticleAsync(ArticleVO articleVO);
+
+    /**
+     * 异步更新文章（快速响应版本，支持翻译参数）
+     * @param articleVO 文章信息
+     * @param skipAiTranslation 是否跳过AI翻译
+     * @param pendingTranslation 暂存的翻译数据
+     * @return 任务ID
+     */
+    PoetryResult<String> updateArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
 
     /**
      * 查询文章保存状态

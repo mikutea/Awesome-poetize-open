@@ -1,6 +1,8 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import store from '../store'
+import constant from '../utils/constant'
+import common from '../utils/common'
 import translationModelManage from "../components/admin/translationModelManage";
 
 const originalPush = VueRouter.prototype.push;
@@ -54,6 +56,10 @@ const routes = [
       path: "/user",
       name: "user",
       component: () => import('../components/user')
+    }, {
+      path: "/oauth-callback",
+      name: "oauth-callback",
+      component: () => import('../components/oauth-callback')
     }, {
       path: "/letter",
       name: "letter",
@@ -173,7 +179,7 @@ const routes = [
   },
   {
     path: '*',
-    name: 'notFound', 
+    name: 'notFound',
     component: () => import('../components/NotFound')
   }
 ]
@@ -191,6 +197,110 @@ router.beforeEach((to, from, next) => {
   if (to.query.redirect === '403') {
     next('/403');
     return;
+  }
+
+  // 处理OAuth登录回调token
+  if (to.query.userToken) {
+    console.log('检测到OAuth回调token，开始处理登录...');
+    const userToken = to.query.userToken;
+    const emailCollectionNeeded = to.query.emailCollectionNeeded === 'true';
+
+    console.log('OAuth回调参数:', {
+      userToken: userToken ? userToken.substring(0, 20) + '...' : null,
+      emailCollectionNeeded: emailCollectionNeeded
+    });
+
+    // 使用同步XMLHttpRequest验证token（与poetize-im-ui保持一致）
+    try {
+      const xhr = new XMLHttpRequest();
+      // 使用导入的constant而不是store.state.constant
+      const baseURL = constant.baseURL || 'http://localhost:8081';
+
+      // 对token进行AES加密，因为后端期望接收加密的token
+      const encryptedToken = common.encrypt(userToken);
+      console.log('原始token长度:', userToken.length, '加密后token长度:', encryptedToken.length);
+
+      xhr.open('post', baseURL + "/user/token", false);
+      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+      xhr.send("userToken=" + encryptedToken);
+
+      console.log('Token验证请求状态:', xhr.status, xhr.statusText);
+      console.log('Token验证响应:', xhr.responseText);
+
+      if (xhr.status === 200) {
+        const result = JSON.parse(xhr.responseText);
+        if (result && result.code === 200) {
+          console.log('OAuth登录成功，用户信息:', result.data);
+          console.log('OAuth响应消息:', result.message);
+
+          // 检查是否需要邮箱收集（通过URL参数或响应消息）
+          const needsEmailCollection = emailCollectionNeeded || result.message === 'EMAIL_COLLECTION_NEEDED';
+
+          if (needsEmailCollection) {
+            console.log('✅ 检测到需要邮箱收集，准备显示邮箱收集模态框');
+            console.log('邮箱收集触发方式:', emailCollectionNeeded ? 'URL参数' : '响应消息');
+
+            // 存储临时的用户信息和token
+            // 尝试从用户数据中获取provider，如果没有则从URL参数获取
+            const provider = result.data.provider || to.query.provider || 'unknown';
+            const tempUserData = {
+              ...result.data,
+              needsEmailCollection: true,
+              provider: provider
+            };
+
+            // 先存储token，但标记为需要完善信息
+            localStorage.setItem("userToken", result.data.accessToken);
+            localStorage.setItem("adminToken", result.data.accessToken);
+            localStorage.setItem("tempUserData", JSON.stringify(tempUserData));
+
+            console.log('已存储临时用户数据:', tempUserData);
+
+            // 重定向到首页，首页会检测到需要邮箱收集并显示模态框
+            console.log('重定向到首页并显示邮箱收集模态框');
+            next({
+              path: '/',
+              query: { showEmailCollection: 'true' },
+              replace: true
+            });
+            return;
+          }
+
+          // 正常的OAuth登录流程
+          localStorage.setItem("userToken", result.data.accessToken);
+          localStorage.setItem("adminToken", result.data.accessToken);
+          store.commit("loadCurrentUser", result.data);
+          store.commit("loadCurrentAdmin", result.data);
+
+          // 清除URL中的token参数并重定向到首页
+          const cleanPath = to.path === '/' ? '/' : to.path;
+          console.log('OAuth登录完成，重定向到:', cleanPath);
+          next({ path: cleanPath, replace: true });
+          return;
+        } else {
+          console.error('OAuth token验证失败:', result);
+          // token验证失败，清除token参数并继续正常流程
+          next({ path: to.path, query: {}, replace: true });
+          return;
+        }
+      } else {
+        console.error('OAuth token验证HTTP错误:', xhr.status, xhr.statusText);
+        // HTTP错误，清除token参数并继续正常流程
+        next({ path: to.path, query: {}, replace: true });
+        return;
+      }
+    } catch (error) {
+      console.error('OAuth token验证异常:', error);
+      console.error('错误详情:', {
+        message: error.message,
+        stack: error.stack,
+        userToken: userToken ? userToken.substring(0, 10) + '...' : 'undefined',
+        baseURL: constant.baseURL
+      });
+      // 验证异常，清除token参数并继续正常流程
+      next({ path: to.path, query: {}, replace: true });
+      return;
+    }
   }
   
   // 检查是否需要管理员权限

@@ -31,6 +31,9 @@ public class BaseRequestVO extends Page {
 
     private Integer userType;
 
+    // 是否为第三方登录用户筛选[null:全部，true:第三方登录，false:普通注册]
+    private Boolean isThirdPartyUser;
+
     private Integer userId;
 
     private String resourceType;

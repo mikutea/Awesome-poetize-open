@@ -17,17 +17,21 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from config import SECRET_KEY, JAVA_BACKEND_URL, FRONTEND_URL, JAVA_CONFIG_URL, PYTHON_SERVICE_PORT
 from web_admin_api import register_web_admin_api
 from py_three_login import oauth_login, oauth_callback
-from visit_stats_api import register_visit_stats_api
+from redis_oauth_state_manager import oauth_state_manager
+
 from email_api import register_email_api  # 仅处理邮箱配置和测试功能，实际邮件发送由Java后端处理
 from captcha_api import register_captcha_api  # 处理滑动验证码配置功能
 from seo_api import register_seo_api  # 处理SEO优化相关功能
 from ai_chat_api import register_ai_chat_api  # 处理AI聊天配置功能
 from translation_api import register_translation_api  # 处理翻译管理功能
 from auth_decorator import admin_required  # 导入管理员权限验证装饰器
+from cache_warmup_service import get_cache_warmup_service  # 导入缓存预热服务
 import logging
+import asyncio
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +44,15 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# 添加Session中间件（必须在其他中间件之前添加）
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    max_age=3600,  # 1小时过期
+    same_site='lax',  # 允许跨站点请求携带cookie
+    https_only=False  # 开发环境允许HTTP
 )
 
 # 配置CORS
@@ -76,22 +89,70 @@ async def health_check_old():
     """兼容旧的健康检查路径"""
     return await health_check()
 
+# OAuth状态管理器调试端点
+@app.get("/debug/oauth-states")
+async def debug_oauth_states():
+    """获取OAuth状态管理器的统计信息"""
+    return oauth_state_manager.get_stats()
+
+
+
 def register_all_apis(app):
     """注册所有API模块"""
-    # 注册OAuth路由
+    # 注册OAuth路由 - 支持多种路径格式
     app.add_api_route('/oauth/login/{provider}', oauth_login, methods=['GET'])
     app.add_api_route('/oauth/callback/{provider}', oauth_callback, methods=['GET'])
-    
+
+    # 兼容路由 - 支持前端直接调用的路径
+    app.add_api_route('/login/{provider}', oauth_login, methods=['GET'])
+    app.add_api_route('/callback/{provider}', oauth_callback, methods=['GET'])
+
     # 注册各个API模块
     register_web_admin_api(app)
-    register_visit_stats_api(app)
     register_email_api(app)
     register_captcha_api(app)
     register_seo_api(app)
     register_ai_chat_api(app)  # 注册AI聊天配置API
     register_translation_api(app)  # 注册翻译管理API
-    
+
     logger.info("所有API模块已注册完成")
+
+# ================================ 应用启动事件 ================================
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时的初始化操作"""
+    logger.info("应用启动中，开始初始化...")
+
+    # 异步执行缓存预热，不阻塞服务启动
+    asyncio.create_task(perform_cache_warmup())
+
+    logger.info("应用启动完成")
+
+async def perform_cache_warmup():
+    """执行缓存预热（异步）"""
+    try:
+        # 等待一小段时间，确保服务完全启动
+        await asyncio.sleep(2)
+
+        logger.info("开始执行缓存预热...")
+        warmup_service = get_cache_warmup_service()
+        success = await warmup_service.warmup_all_caches()
+
+        if success:
+            logger.info("缓存预热成功完成")
+        else:
+            logger.warning("缓存预热部分失败，但服务正常运行")
+
+    except Exception as e:
+        logger.error(f"缓存预热过程中发生异常: {e}")
+        # 预热失败不影响服务正常运行
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时的清理操作"""
+    logger.info("应用正在关闭...")
+    logger.info("应用已关闭")
 
 # 注册所有API
 register_all_apis(app)

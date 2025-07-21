@@ -166,7 +166,19 @@
           return;
         }
         this.$emit("submitComment", this.commentContent.trim());
+        // 注意：不在这里清空评论内容，由父组件根据验证码流程决定何时清空
+      },
+
+      // 清空评论内容（由父组件调用）
+      clearComment() {
         this.commentContent = "";
+      },
+
+      // 恢复评论内容（验证码取消时调用）
+      restoreComment(content) {
+        if (content) {
+          this.commentContent = content;
+        }
       }
     }
   }

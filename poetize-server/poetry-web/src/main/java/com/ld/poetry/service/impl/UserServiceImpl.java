@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.UserMapper;
+import com.ld.poetry.entity.ThirdPartyOauthConfig;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
 import com.ld.poetry.entity.WeiYan;
@@ -20,6 +21,10 @@ import com.ld.poetry.im.http.entity.ImChatUserFriend;
 import com.ld.poetry.im.websocket.ImConfigConst;
 import com.ld.poetry.im.websocket.TioUtil;
 import com.ld.poetry.im.websocket.TioWebsocketStarter;
+import com.ld.poetry.service.CacheService;
+import com.ld.poetry.service.PasswordService;
+import com.ld.poetry.service.PasswordUpgradeService;
+import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.service.WeiYanService;
 import com.ld.poetry.utils.*;
@@ -31,6 +36,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.DigestUtils;
@@ -41,13 +49,15 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * <p>
@@ -76,6 +86,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Autowired
     private com.ld.poetry.utils.cache.UserCacheManager userCacheManager;
+
+    @Autowired
+    private ThirdPartyOauthConfigService thirdPartyOauthConfigService;
+
+    @Autowired
+    private CacheService cacheService;
+
+
+
+    @Autowired
+    private com.ld.poetry.service.OAuthClientService oAuthClientService;
+
+    @Autowired
+    private PasswordService passwordService;
+
+    @Autowired
+    private PasswordUpgradeService passwordUpgradeService;
 
     @Value("${user.code.format}")
     private String codeFormat;
@@ -130,17 +157,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         } else {
             attempts++;
         }
-        
+
         // 设置失败尝试记录，过期时间1小时
         PoetryCache.put(attemptKey, attempts, 3600);
-        
+
         // 如果失败次数超过阈值，锁定账号
         if (attempts >= CommonConst.MAX_LOGIN_ATTEMPTS) {
             String lockKey = "login_lock_" + account;
             PoetryCache.put(lockKey, true, CommonConst.LOGIN_LOCKOUT_TIME);
             log.warn("账号 {} 因多次登录失败被锁定 {} 秒", account, CommonConst.LOGIN_LOCKOUT_TIME);
         }
-        
+
         return attempts;
     }
 
@@ -174,9 +201,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
         // 解密前端传来的AES加密密码
-        String decryptedPassword = new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).decrypt(password));
-        
-        if (!one.getPassword().equals(DigestUtils.md5DigestAsHex(decryptedPassword.getBytes()))) {
+        String decryptedPassword;
+        try {
+            decryptedPassword = passwordService.decryptFromFrontend(password);
+        } catch (Exception e) {
+            log.warn("密码解密失败 - 用户名: {}, IP: {}", account, clientIp);
+            return PoetryResult.fail("密码格式错误！");
+        }
+
+        // 使用新的密码验证服务
+        if (!passwordService.matches(decryptedPassword, one.getPassword())) {
             int attempts = recordFailedLoginAttempt(account);
             log.warn("登录失败 - 密码错误: {}, IP: {}, 失败次数: {}", account, clientIp, attempts);
             return PoetryResult.fail("用户名或密码错误！");
@@ -185,6 +219,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 登录成功，清除失败记录
         clearFailedLoginAttempts(account);
         log.info("用户登录成功 - 用户名: {}, IP: {}", account, clientIp);
+
+        // 检查密码是否需要升级（MD5 -> BCrypt）
+        if (passwordService.needsUpgrade(one.getPassword())) {
+            try {
+                String upgradedPassword = passwordService.upgradePassword(decryptedPassword, one.getPassword());
+                // 更新数据库中的密码
+                lambdaUpdate().eq(User::getId, one.getId())
+                    .set(User::getPassword, upgradedPassword)
+                    .update();
+                // 更新内存中的用户对象
+                one.setPassword(upgradedPassword);
+                // 记录密码升级统计
+                passwordUpgradeService.recordPasswordUpgrade();
+                log.info("用户密码已从MD5升级到BCrypt - 用户名: {}", account);
+            } catch (Exception e) {
+                log.error("密码升级失败 - 用户名: {}, 错误: {}", account, e.getMessage());
+                // 密码升级失败不影响登录，只记录日志
+            }
+        }
 
         // 检查管理员权限
         if (isAdmin && (one.getUserType() == PoetryEnum.USER_TYPE_ADMIN.getCode() || one.getUserType() == PoetryEnum.USER_TYPE_DEV.getCode())) {
@@ -225,18 +278,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             String uuid = UUID.randomUUID().toString().replaceAll("-", "");
             adminToken = CommonConst.ADMIN_ACCESS_TOKEN + uuid;
             log.info("生成新的管理员token - 用户: {}, token: {}", account, adminToken);
-            PoetryCache.put(adminToken, one, CommonConst.TOKEN_EXPIRE);
-            PoetryCache.put(CommonConst.ADMIN_TOKEN + one.getId(), adminToken, CommonConst.TOKEN_EXPIRE);
-            // 缓存用户信息到UserCacheManager
+
+            // 使用Redis缓存替换PoetryCache
+            cacheService.cacheUserSession(adminToken, one.getId());
+            cacheService.cacheUserTokenMapping(one.getId(), adminToken);
+            cacheService.cacheUser(one);
+
+            // 保持UserCacheManager兼容性
             userCacheManager.cacheUserByToken(adminToken, one);
             userCacheManager.cacheUserById(one.getId(), one);
         } else if (!isAdmin && !StringUtils.hasText(userToken)) {
             String uuid = UUID.randomUUID().toString().replaceAll("-", "");
             userToken = CommonConst.USER_ACCESS_TOKEN + uuid;
             log.info("生成新的用户token - 用户: {}, token: {}", account, userToken);
-            PoetryCache.put(userToken, one, CommonConst.TOKEN_EXPIRE);
-            PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), userToken, CommonConst.TOKEN_EXPIRE);
-            // 缓存用户信息到UserCacheManager
+
+            // 使用Redis缓存替换PoetryCache
+            cacheService.cacheUserSession(userToken, one.getId());
+            cacheService.cacheUserTokenMapping(one.getId(), userToken);
+            cacheService.cacheUser(one);
+
+            // 保持UserCacheManager兼容性
             userCacheManager.cacheUserByToken(userToken, one);
             userCacheManager.cacheUserById(one.getId(), one);
         }
@@ -263,22 +324,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         String token = PoetryUtil.getToken();
         Integer userId = PoetryUtil.getUserId();
         log.info("用户退出登录 - 用户ID: {}, token: {}", userId, token);
-        
+
+        // 使用Redis缓存清理替换PoetryCache
+        cacheService.evictUserSession(token);
+        cacheService.evictUserTokenMapping(userId);
+        cacheService.evictUser(userId);
+
         if (token.contains(CommonConst.USER_ACCESS_TOKEN)) {
-            PoetryCache.remove(CommonConst.USER_TOKEN + userId);
             TioWebsocketStarter tioWebsocketStarter = TioUtil.getTio();
             if (tioWebsocketStarter != null) {
                 Tio.removeUser(tioWebsocketStarter.getServerTioConfig(), String.valueOf(userId), "用户退出登录");
             }
-        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-            PoetryCache.remove(CommonConst.ADMIN_TOKEN + userId);
         }
-        PoetryCache.remove(token);
-        
+
         // 清除UserCacheManager中的用户缓存
         userCacheManager.removeUserByToken(token);
         userCacheManager.removeUserById(userId);
-        
+
         return PoetryResult.success();
     }
 
@@ -314,7 +376,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
 
-        user.setPassword(new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).decrypt(user.getPassword())));
+        // 解密前端传来的AES加密密码
+        String decryptedPassword;
+        try {
+            decryptedPassword = passwordService.decryptFromFrontend(user.getPassword());
+        } catch (Exception e) {
+            log.warn("注册时密码解密失败");
+            return PoetryResult.fail("密码格式错误！");
+        }
+
+        // 验证密码是否有效（仅检查非空）
+        if (!passwordService.isPasswordValid(decryptedPassword)) {
+            return PoetryResult.fail("密码不能为空！");
+        }
 
         Long count = lambdaQuery().eq(User::getUsername, user.getUsername()).count();
         if (count != 0) {
@@ -336,16 +410,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         u.setUsername(user.getUsername());
         u.setPhoneNumber(user.getPhoneNumber());
         u.setEmail(user.getEmail());
-        u.setPassword(DigestUtils.md5DigestAsHex(user.getPassword().getBytes()));
+        // 新用户直接使用BCrypt加密密码
+        u.setPassword(passwordService.encodeBCrypt(decryptedPassword));
         u.setAvatar(PoetryUtil.getRandomAvatar(null));
         save(u);
 
         User one = lambdaQuery().eq(User::getId, u.getId()).one();
 
         String userToken = CommonConst.USER_ACCESS_TOKEN + UUID.randomUUID().toString().replaceAll("-", "");
-        PoetryCache.put(userToken, one, CommonConst.TOKEN_EXPIRE);
-        PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), userToken, CommonConst.TOKEN_EXPIRE);
-        
+
+        // 使用Redis缓存替换PoetryCache
+        cacheService.cacheUserSession(userToken, one.getId());
+        cacheService.cacheUserTokenMapping(one.getId(), userToken);
+        cacheService.cacheUser(one);
+
         // 缓存用户信息到UserCacheManager
         userCacheManager.cacheUserByToken(userToken, one);
         userCacheManager.cacheUserById(one.getId(), one);
@@ -410,11 +488,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         u.setIntroduction(user.getIntroduction());
         updateById(u);
         User one = lambdaQuery().eq(User::getId, u.getId()).one();
-        PoetryCache.put(PoetryUtil.getToken(), one, CommonConst.TOKEN_EXPIRE);
-        PoetryCache.put(CommonConst.USER_TOKEN + one.getId(), PoetryUtil.getToken(), CommonConst.TOKEN_EXPIRE);
-        
+        String token = PoetryUtil.getToken();
+
+        // 使用Redis缓存替换PoetryCache
+        cacheService.cacheUserSession(token, one.getId());
+        cacheService.cacheUserTokenMapping(one.getId(), token);
+        cacheService.cacheUser(one);
+
         // 更新UserCacheManager中的用户缓存
-        userCacheManager.cacheUserByToken(PoetryUtil.getToken(), one);
+        userCacheManager.cacheUserByToken(token, one);
         userCacheManager.cacheUserById(one.getId(), one);
 
         UserVO userVO = new UserVO();
@@ -503,10 +585,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public PoetryResult<UserVO> updateSecretInfo(String place, Integer flag, String code, String password) {
-        password = new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).decrypt(password));
+        // 解密前端传来的AES加密密码
+        String decryptedPassword;
+        try {
+            decryptedPassword = passwordService.decryptFromFrontend(password);
+        } catch (Exception e) {
+            log.warn("更新密码时密码解密失败");
+            return PoetryResult.fail("密码格式错误！");
+        }
 
         User user = PoetryUtil.getCurrentUser();
-        if ((flag == 1 || flag == 2) && !DigestUtils.md5DigestAsHex(password.getBytes()).equals(user.getPassword())) {
+        // 使用新的密码验证服务验证当前密码
+        if ((flag == 1 || flag == 2) && !passwordService.matches(decryptedPassword, user.getPassword())) {
             return PoetryResult.fail("密码错误！");
         }
         if ((flag == 1 || flag == 2) && !StringUtils.hasText(code)) {
@@ -544,11 +634,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("验证码错误！");
             }
         } else if (flag == 3) {
-            if (DigestUtils.md5DigestAsHex(place.getBytes()).equals(user.getPassword())) {
-                updateUser.setPassword(DigestUtils.md5DigestAsHex(password.getBytes()));
-            } else {
-                return PoetryResult.fail("密码错误！");
+            // flag == 3 表示修改密码，place是旧密码，password是新密码
+            String oldPassword;
+            try {
+                oldPassword = passwordService.decryptFromFrontend(place);
+            } catch (Exception e) {
+                log.warn("旧密码解密失败");
+                return PoetryResult.fail("旧密码格式错误！");
             }
+
+            // 验证旧密码
+            if (!passwordService.matches(oldPassword, user.getPassword())) {
+                return PoetryResult.fail("旧密码错误！");
+            }
+
+            // 验证新密码是否有效（仅检查非空）
+            if (!passwordService.isPasswordValid(decryptedPassword)) {
+                return PoetryResult.fail("新密码不能为空！");
+            }
+
+            // 使用BCrypt加密新密码
+            updateUser.setPassword(passwordService.encodeBCrypt(decryptedPassword));
+            log.info("用户修改密码成功 - 用户ID: {}", user.getId());
         }
         updateById(updateUser);
 
@@ -598,7 +705,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public PoetryResult updateForForgetPassword(String place, Integer flag, String code, String password) {
-        password = new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).decrypt(password));
+        // 解密前端传来的AES加密密码
+        String decryptedPassword;
+        try {
+            decryptedPassword = passwordService.decryptFromFrontend(password);
+        } catch (Exception e) {
+            log.warn("忘记密码重置时密码解密失败");
+            return PoetryResult.fail("密码格式错误！");
+        }
+
+        // 验证密码是否有效（仅检查非空）
+        if (!passwordService.isPasswordValid(decryptedPassword)) {
+            return PoetryResult.fail("密码不能为空！");
+        }
 
         Integer codeCache = (Integer) PoetryCache.get(CommonConst.FORGET_PASSWORD + place + "_" + flag);
         if (codeCache == null || codeCache != Integer.parseInt(code)) {
@@ -606,6 +725,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
         PoetryCache.remove(CommonConst.FORGET_PASSWORD + place + "_" + flag);
+
+        // 使用BCrypt加密新密码
+        String encodedPassword = passwordService.encodeBCrypt(decryptedPassword);
 
         if (flag == 1) {
             User user = lambdaQuery().eq(User::getPhoneNumber, place).one();
@@ -617,8 +739,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("账号被冻结！");
             }
 
-            lambdaUpdate().eq(User::getPhoneNumber, place).set(User::getPassword, DigestUtils.md5DigestAsHex(password.getBytes())).update();
+            lambdaUpdate().eq(User::getPhoneNumber, place).set(User::getPassword, encodedPassword).update();
             PoetryCache.remove(CommonConst.USER_CACHE + user.getId().toString());
+            log.info("用户通过手机号重置密码成功 - 手机号: {}", place);
         } else if (flag == 2) {
             User user = lambdaQuery().eq(User::getEmail, place).one();
             if (user == null) {
@@ -629,15 +752,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("账号被冻结！");
             }
 
-            lambdaUpdate().eq(User::getEmail, place).set(User::getPassword, DigestUtils.md5DigestAsHex(password.getBytes())).update();
+            lambdaUpdate().eq(User::getEmail, place).set(User::getPassword, encodedPassword).update();
             PoetryCache.remove(CommonConst.USER_CACHE + user.getId().toString());
+            log.info("用户通过邮箱重置密码成功 - 邮箱: {}", place);
         }
 
         return PoetryResult.success();
     }
 
     @Override
-    public PoetryResult<Page> listUser(BaseRequestVO baseRequestVO) {
+    public PoetryResult<Page<UserVO>> listUser(BaseRequestVO baseRequestVO) {
         LambdaQueryChainWrapper<User> lambdaQuery = lambdaQuery();
 
         if (baseRequestVO.getUserStatus() != null) {
@@ -646,6 +770,20 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         if (baseRequestVO.getUserType() != null) {
             lambdaQuery.eq(User::getUserType, baseRequestVO.getUserType());
+        }
+
+        // 根据是否为第三方登录用户进行筛选
+        if (baseRequestVO.getIsThirdPartyUser() != null) {
+            if (baseRequestVO.getIsThirdPartyUser()) {
+                // 筛选第三方登录用户：platform_type不为空
+                lambdaQuery.isNotNull(User::getPlatformType)
+                          .ne(User::getPlatformType, "");
+            } else {
+                // 筛选普通注册用户：platform_type为空或空字符串
+                lambdaQuery.and(wrapper -> wrapper.isNull(User::getPlatformType)
+                                                 .or()
+                                                 .eq(User::getPlatformType, ""));
+            }
         }
 
         if (StringUtils.hasText(baseRequestVO.getSearchKey())) {
@@ -659,15 +797,35 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         Page<User> page = new Page<>(baseRequestVO.getCurrent(), baseRequestVO.getSize());
         Page<User> resultPage = lambdaQuery.orderByDesc(User::getCreateTime).page(page);
 
+        // 转换为UserVO并设置isThirdPartyUser字段
+        List<UserVO> userVOList = new ArrayList<>();
         List<User> records = resultPage.getRecords();
         if (!CollectionUtils.isEmpty(records)) {
-            records.forEach(u -> {
-                u.setPassword(null);
-                u.setOpenId(null);
-            });
+            userVOList = records.stream().map(user -> {
+                UserVO userVO = new UserVO();
+                BeanUtils.copyProperties(user, userVO);
+
+                // 显式设置关键字段，确保数据正确传输
+                userVO.setUserStatus(user.getUserStatus());
+                userVO.setAdmire(user.getAdmire());
+                userVO.setUserType(user.getUserType());
+
+                // 设置是否为第三方登录用户
+                userVO.setIsThirdPartyUser(user.getPlatformType() != null && !user.getPlatformType().trim().isEmpty());
+
+                // 清除敏感信息
+                userVO.setPassword(null);
+                userVO.setOpenId(null);
+
+                return userVO;
+            }).collect(Collectors.toList());
         }
-        
-        return PoetryResult.success(resultPage);
+
+        // 创建UserVO的分页结果
+        Page<UserVO> userVOPage = new Page<>(resultPage.getCurrent(), resultPage.getSize(), resultPage.getTotal());
+        userVOPage.setRecords(userVOList);
+
+        return PoetryResult.success(userVOPage);
     }
 
     @Override
@@ -693,7 +851,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new PoetryRuntimeException("未登陆，请登陆后再进行操作！");
         }
 
-        User user = (User) PoetryCache.get(userToken);
+        // 使用多级缓存策略获取用户信息
+        User user = null;
+
+        // 优先从UserCacheManager获取
+        user = userCacheManager.getUserByToken(userToken);
+
+        // 降级到Redis缓存获取
+        if (user == null) {
+            Integer userId = cacheService.getUserIdFromSession(userToken);
+            if (userId != null) {
+                user = cacheService.getCachedUser(userId);
+            }
+        }
+
+        // 最后降级到PoetryCache获取
+        if (user == null) {
+            user = (User) PoetryCache.get(userToken);
+        }
 
         if (user == null) {
             throw new PoetryRuntimeException("登录已过期，请重新登陆！");
@@ -762,7 +937,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (!StringUtils.hasText(finalUsername)) {
                 finalUsername = provider + "_user_" + System.currentTimeMillis();
             }
-            
+
             int count = 0;
             String uniqueUsername = finalUsername;
             while (lambdaQuery().eq(User::getUsername, uniqueUsername).count() > 0) {
@@ -778,16 +953,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             newUser.setUserStatus(true);
             newUser.setUserType(PoetryEnum.USER_TYPE_USER.getCode());
             newUser.setGender(PoetryEnum.USER_GENDER_NONE.getCode());
-            
+
             save(newUser);
-            
+
             ImChatGroupUser imChatGroupUser = new ImChatGroupUser();
             imChatGroupUser.setGroupId(ImConfigConst.DEFAULT_GROUP_ID);
             imChatGroupUser.setUserId(newUser.getId());
             imChatGroupUser.setAdminFlag(false);
             imChatGroupUser.setUserStatus(ImConfigConst.GROUP_USER_STATUS_PASS);
             imChatGroupUserMapper.insert(imChatGroupUser);
-            
+
             existUser = newUser;
         }
 
@@ -795,7 +970,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (PoetryCache.get(CommonConst.USER_TOKEN + existUser.getId()) != null) {
             userToken = (String) PoetryCache.get(CommonConst.USER_TOKEN + existUser.getId());
         }
-        
+
         if (!StringUtils.hasText(userToken)) {
             String uuid = UUID.randomUUID().toString().replaceAll("-", "");
             userToken = CommonConst.USER_ACCESS_TOKEN + uuid;
@@ -807,7 +982,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         BeanUtils.copyProperties(existUser, userVO);
         userVO.setPassword(null);
         userVO.setAccessToken(userToken);
-        
+
+        log.info("OAuth登录成功，用户: {} (ID: {})", existUser.getUsername(), existUser.getId());
+
         return PoetryResult.success(userVO);
     }
 
@@ -821,5 +998,163 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 String.format(codeFormat, i),
                 "",
                 webName);
+    }
+
+    @Override
+    public PoetryResult getBindablePlatforms() {
+        try {
+            User currentUser = PoetryUtil.getCurrentUser();
+
+            // 只有普通注册用户才能绑定第三方账号
+            if (currentUser.getPlatformType() != null && !currentUser.getPlatformType().trim().isEmpty()) {
+                return PoetryResult.fail("第三方登录用户不能绑定其他账号");
+            }
+
+            // 获取已启用且全局启用的第三方平台配置
+            List<ThirdPartyOauthConfig> enabledConfigs = thirdPartyOauthConfigService.getActiveConfigs();
+
+            // 转换为前端需要的格式
+            List<Map<String, Object>> platforms = enabledConfigs.stream()
+                .map(config -> {
+                    Map<String, Object> platform = new HashMap<>();
+                    platform.put("platformType", config.getPlatformType());
+                    platform.put("platformName", getPlatformDisplayName(config.getPlatformType()));
+                    platform.put("iconUrl", getPlatformIconUrl(config.getPlatformType()));
+                    return platform;
+                })
+                .collect(Collectors.toList());
+
+            return PoetryResult.success(platforms);
+        } catch (Exception e) {
+            log.error("获取可绑定平台列表失败", e);
+            return PoetryResult.fail("获取平台列表失败");
+        }
+    }
+
+    @Override
+    public PoetryResult getAccountBindingStatus() {
+        try {
+            User currentUser = PoetryUtil.getCurrentUser();
+
+            Map<String, Object> status = new HashMap<>();
+            status.put("isThirdPartyUser", currentUser.getPlatformType() != null && !currentUser.getPlatformType().trim().isEmpty());
+            status.put("boundPlatform", currentUser.getPlatformType());
+            status.put("boundPlatformName", getPlatformDisplayName(currentUser.getPlatformType()));
+            status.put("canBind", currentUser.getPlatformType() == null || currentUser.getPlatformType().trim().isEmpty());
+
+            return PoetryResult.success(status);
+        } catch (Exception e) {
+            log.error("获取账号绑定状态失败", e);
+            return PoetryResult.fail("获取绑定状态失败");
+        }
+    }
+
+    @Override
+    public PoetryResult getOAuthAuthUrl(String platformType) {
+        try {
+            User currentUser = PoetryUtil.getCurrentUser();
+
+            // 检查是否为普通注册用户
+            if (currentUser.getPlatformType() != null && !currentUser.getPlatformType().trim().isEmpty()) {
+                return PoetryResult.fail("第三方登录用户不能绑定其他账号");
+            }
+
+            // 检查平台是否已配置
+            if (!oAuthClientService.isPlatformConfigured(platformType)) {
+                return PoetryResult.fail("平台未配置或未启用");
+            }
+
+            // 生成state参数（简单随机字符串，绑定功能已移除）
+            String state = java.util.UUID.randomUUID().toString();
+
+            // 构建授权URL
+            String authUrl = oAuthClientService.buildAuthUrl(platformType, state);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("authUrl", authUrl);
+            result.put("platformType", platformType);
+            result.put("state", state);
+
+            return PoetryResult.success(result);
+        } catch (Exception e) {
+            log.error("获取OAuth授权URL失败: platformType={}", platformType, e);
+            return PoetryResult.fail("获取授权URL失败：" + e.getMessage());
+        }
+    }
+
+    @Override
+    public PoetryResult bindThirdPartyAccount(String platformType, String code, String state) {
+        try {
+            log.info("开始绑定第三方账号: platformType={}, code={}, state={}", platformType, code, state);
+
+            // 绑定功能已移除，直接返回错误
+            log.error("绑定功能已移除");
+            return PoetryResult.fail("绑定功能暂不可用");
+
+
+        } catch (Exception e) {
+            log.error("绑定第三方账号失败: platformType={}, code={}", platformType, code, e);
+            return PoetryResult.fail("绑定失败：" + e.getMessage());
+        }
+    }
+
+    @Override
+    public PoetryResult unbindThirdPartyAccount() {
+        try {
+            User currentUser = PoetryUtil.getCurrentUser();
+
+            // 检查是否已绑定第三方账号
+            if (currentUser.getPlatformType() == null || currentUser.getPlatformType().trim().isEmpty()) {
+                return PoetryResult.fail("您还没有绑定第三方账号");
+            }
+
+            // 解绑第三方账号
+            currentUser.setPlatformType(null);
+            currentUser.setUid(null);
+
+            boolean success = updateById(currentUser);
+            if (success) {
+                return PoetryResult.success("解绑成功");
+            } else {
+                return PoetryResult.fail("解绑失败");
+            }
+        } catch (Exception e) {
+            log.error("解绑第三方账号失败", e);
+            return PoetryResult.fail("解绑失败");
+        }
+    }
+
+    /**
+     * 获取平台显示名称
+     */
+    private String getPlatformDisplayName(String platformType) {
+        if (platformType == null) {
+            return null;
+        }
+        switch (platformType.toLowerCase()) {
+            case "github":
+                return "GitHub";
+            case "google":
+                return "Google";
+            case "x":
+            case "twitter":
+                return "Twitter/X";
+            case "yandex":
+                return "Yandex";
+            case "gitee":
+                return "Gitee";
+            default:
+                return platformType;
+        }
+    }
+
+    /**
+     * 获取平台图标URL
+     */
+    private String getPlatformIconUrl(String platformType) {
+        if (platformType == null) {
+            return null;
+        }
+        return "/static/svg/" + platformType.toLowerCase() + ".svg";
     }
 }

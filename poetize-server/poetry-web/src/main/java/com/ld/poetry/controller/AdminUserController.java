@@ -14,6 +14,7 @@ import com.ld.poetry.service.UserService;
 import com.ld.poetry.utils.PoetryUtil;
 import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.vo.BaseRequestVO;
+import com.ld.poetry.vo.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.tio.core.Tio;
@@ -38,7 +39,7 @@ public class AdminUserController {
      */
     @PostMapping("/user/list")
     @LoginCheck(0)
-    public PoetryResult<Page> listUser(@RequestBody BaseRequestVO baseRequestVO) {
+    public PoetryResult<Page<UserVO>> listUser(@RequestBody BaseRequestVO baseRequestVO) {
         return userService.listUser(baseRequestVO);
     }
 

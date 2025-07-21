@@ -160,6 +160,14 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 邮箱收集模态框 -->
+    <EmailCollectionModal
+      :visible="showEmailCollectionModal"
+      :userInfo="tempUserData"
+      :provider="tempUserData.provider || 'gitee'"
+      @complete="handleEmailCollectionComplete"
+    />
   </div>
 </template>
 <script>
@@ -170,6 +178,7 @@
   const sortArticle = () => import( "./common/sortArticle");
   const myFooter = () => import( "./common/myFooter");
   const myAside = () => import( "./myAside");
+  const EmailCollectionModal = () => import( "./common/EmailCollectionModal");
 
   export default {
     components: {
@@ -179,7 +188,8 @@
       articleList,
       sortArticle,
       myFooter,
-      myAside
+      myAside,
+      EmailCollectionModal
     },
 
     data() {
@@ -205,7 +215,10 @@
           "category": ""
         },
         articles: [],
-        sortArticles: {}
+        sortArticles: {},
+        // 邮箱收集相关
+        showEmailCollectionModal: false,
+        tempUserData: {}
       };
     },
 
@@ -246,6 +259,9 @@
     },
 
     mounted() {
+      // 检查是否需要显示邮箱收集模态框
+      this.checkEmailCollectionNeeded();
+
       setTimeout(() => {
         this.push = this.$common.pushNotification(this.$store.state.webInfo.notices, false);
         if(!this.$common.isEmpty(this.push)) {
@@ -355,6 +371,93 @@
           }
         };
         xhr.send();
+      },
+
+      // 邮箱收集相关方法
+      checkEmailCollectionNeeded() {
+        console.log('🔍 检查邮箱收集需求...');
+        console.log('URL查询参数:', this.$route.query);
+
+        // 检查URL参数
+        if (this.$route.query.showEmailCollection === 'true') {
+          console.log('✅ 检测到showEmailCollection参数');
+
+          const tempUserDataStr = localStorage.getItem('tempUserData');
+          console.log('localStorage中的tempUserData:', tempUserDataStr);
+
+          if (tempUserDataStr) {
+            try {
+              this.tempUserData = JSON.parse(tempUserDataStr);
+              console.log('解析后的临时用户数据:', this.tempUserData);
+
+              if (this.tempUserData.needsEmailCollection) {
+                console.log('✅ 需要邮箱收集，显示模态框');
+                this.showEmailCollectionModal = true;
+
+                // 清除URL参数
+                this.$router.replace({ path: '/', query: {} });
+              } else {
+                console.log('⚠️ 临时用户数据中needsEmailCollection为false');
+              }
+            } catch (error) {
+              console.error('❌ 解析临时用户数据失败:', error);
+              localStorage.removeItem('tempUserData');
+            }
+          } else {
+            console.log('⚠️ localStorage中没有tempUserData');
+          }
+        } else {
+          console.log('⚠️ URL中没有showEmailCollection参数');
+        }
+      },
+
+      async handleEmailCollectionComplete(result) {
+        console.log('邮箱收集完成:', result);
+
+        try {
+          // 隐藏模态框
+          this.showEmailCollectionModal = false;
+
+          // 如果用户提供了邮箱，更新用户信息
+          if (result.email && !result.skipped) {
+            this.tempUserData.email = result.email;
+          }
+
+          // 完成登录流程
+          this.$store.commit("loadCurrentUser", this.tempUserData);
+          this.$store.commit("loadCurrentAdmin", this.tempUserData);
+
+          // 清除临时数据
+          localStorage.removeItem('tempUserData');
+
+          // 显示欢迎消息
+          const platformName = this.getPlatformName(this.tempUserData.provider);
+          if (result.skipped) {
+            this.$message.success(`欢迎通过 ${platformName} 登录！您可以稍后在个人设置中添加邮箱。`);
+          } else {
+            this.$message.success(`欢迎通过 ${platformName} 登录！邮箱已保存。`);
+          }
+
+        } catch (error) {
+          console.error('完成邮箱收集流程时出错:', error);
+          this.$message.error('登录过程中出现问题，但您已成功登录');
+
+          // 即使出错也要完成基本的登录流程
+          this.$store.commit("loadCurrentUser", this.tempUserData);
+          this.$store.commit("loadCurrentAdmin", this.tempUserData);
+          localStorage.removeItem('tempUserData');
+        }
+      },
+
+      getPlatformName(provider) {
+        const platformNames = {
+          'gitee': 'Gitee',
+          'github': 'GitHub',
+          'google': 'Google',
+          'yandex': 'Yandex',
+          'x': 'Twitter'
+        };
+        return platformNames[provider] || provider;
       }
     }
   }

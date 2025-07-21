@@ -39,6 +39,10 @@ public class CommentVO {
 
     private String commentInfo;
 
+    private String ipAddress;
+
+    private String location;
+
     //子评论必须传评论楼层ID
     private Integer floorCommentId;
 

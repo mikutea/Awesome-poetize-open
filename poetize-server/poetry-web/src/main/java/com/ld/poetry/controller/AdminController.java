@@ -49,6 +49,9 @@ public class AdminController {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private com.ld.poetry.service.PasswordUpgradeService passwordUpgradeService;
+
     /**
      * 获取网站信息
      */
@@ -117,6 +120,36 @@ public class AdminController {
         } catch (Exception e) {
             log.error("SEO配置更新失败", e);
             return PoetryResult.fail("SEO配置更新失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取密码升级统计信息
+     */
+    @GetMapping("/password/upgrade/statistics")
+    @LoginCheck(0)
+    public PoetryResult<Map<String, Object>> getPasswordUpgradeStatistics() {
+        try {
+            Map<String, Object> statistics = passwordUpgradeService.getUpgradeStatistics();
+            return PoetryResult.success(statistics);
+        } catch (Exception e) {
+            log.error("获取密码升级统计失败", e);
+            return PoetryResult.fail("获取密码升级统计失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取密码安全报告
+     */
+    @GetMapping("/password/security/report")
+    @LoginCheck(0)
+    public PoetryResult<String> getPasswordSecurityReport() {
+        try {
+            String report = passwordUpgradeService.generateSecurityReport();
+            return PoetryResult.success(report);
+        } catch (Exception e) {
+            log.error("生成密码安全报告失败", e);
+            return PoetryResult.fail("生成密码安全报告失败: " + e.getMessage());
         }
     }
 }

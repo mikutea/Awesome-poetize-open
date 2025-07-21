@@ -67,6 +67,32 @@ spring:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: org.mariadb.jdbc.Driver
 
+  # Redis配置
+  redis:
+    host: ${SPRING_REDIS_HOST:localhost}
+    port: ${SPRING_REDIS_PORT:6379}
+    # 如果Redis没有设置密码，则留空或注释掉password配置
+    password: ${SPRING_REDIS_PASSWORD:123456}
+    database: ${SPRING_REDIS_DATABASE:0}
+    timeout: ${SPRING_REDIS_TIMEOUT:5000}ms
+    lettuce:
+      pool:
+        max-active: ${SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE:20}
+        max-idle: ${SPRING_REDIS_LETTUCE_POOL_MAX_IDLE:10}
+        min-idle: ${SPRING_REDIS_LETTUCE_POOL_MIN_IDLE:5}
+        max-wait: -1ms
+      shutdown-timeout: 100ms
+    connect-timeout: 5000ms
+
+  # 缓存配置
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000  # 默认10分钟过期
+      cache-null-values: false
+      use-key-prefix: true
+      key-prefix: "poetize:"
+
 user:
   code:
     format:
@@ -162,3 +188,31 @@ image:
     min-quality: 0.3
     # 文件大小阈值（小于此大小不压缩）
     size-threshold: 204800  # 200KB
+
+# ================================
+# 密码安全配置 - Password Security Configuration
+# ================================
+# 本配置段用于管理系统的密码安全策略
+# 根据部署场景选择合适的安全策略，每种策略都有明确的适用范围
+poetize:
+  security:
+    password:
+      # ========== 部署场景选择 ==========
+      # 选择适合您系统的部署场景，系统会自动应用对应的安全策略
+      # 可选值：
+      #   new-system     - 全新系统：最高安全级别，仅支持BCrypt（推荐）
+      #   existing-system - 现有系统：兼容MD5，自动升级到BCrypt
+      #   migration-system - 迁移系统：有时间限制的MD5支持，逐步迁移
+      deployment-scenario: new-system
+
+      # ========== BCrypt加密配置 ==========
+      # BCrypt强度级别（4-31）
+      # 推荐值：10-12（平衡安全性和性能）
+      # 注意：强度越高，加密时间越长，但安全性越好
+      bcrypt-strength: 12
+
+      # ========== 迁移配置（仅在migration-system模式下需要） ==========
+      # 迁移系统的MD5支持截止时间，格式：yyyy-MM-dd HH:mm:ss
+      # 示例：migration-end-time: "2025-12-31 23:59:59"
+      # migration-end-time: null
+

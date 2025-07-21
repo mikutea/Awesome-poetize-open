@@ -68,7 +68,8 @@ export default new Vuex.Store({
       show: false,        // 是否显示验证码
       action: 'comment',  // 验证码操作类型
       params: null,       // 验证成功后的回调参数
-      onSuccess: null     // 验证成功后的回调函数
+      onSuccess: null,    // 验证成功后的回调函数
+      onCancel: null      // 验证取消后的回调函数
     }
   },
   getters: {
@@ -179,9 +180,14 @@ export default new Vuex.Store({
     // 显示或隐藏验证码
     showCaptcha(state, show) {
       state.captcha.show = show;
-      // 如果隐藏验证码，重置其他状态
+      // 如果隐藏验证码，执行取消回调并重置状态
       if (!show) {
+        if (state.captcha.onCancel && typeof state.captcha.onCancel === 'function') {
+          state.captcha.onCancel();
+        }
         state.captcha.params = null;
+        state.captcha.onSuccess = null;
+        state.captcha.onCancel = null;
       }
     },
     
@@ -191,6 +197,7 @@ export default new Vuex.Store({
         state.captcha.action = params.action || 'comment';
         state.captcha.params = params;
         state.captcha.onSuccess = params.onSuccess || null;
+        state.captcha.onCancel = params.onCancel || null;
       }
     },
     
@@ -203,6 +210,7 @@ export default new Vuex.Store({
       state.captcha.show = false;
       state.captcha.params = null;
       state.captcha.onSuccess = null;
+      state.captcha.onCancel = null;
     }
   },
   actions: {

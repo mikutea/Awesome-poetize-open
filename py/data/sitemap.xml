@@ -1,50 +1,55 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>http://localhost:5000/</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/sort</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/sort</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/favorite</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/favorite</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/weiYan</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/weiYan</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/message</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/message</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/about</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/about</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/user</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/user</loc>
+    <lastmod>2025-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>http://localhost:5000/im</loc>
-    <lastmod>2025-07-13</lastmod>
+    <loc>http://localhost/im</loc>
+    <lastmod>2025-07-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>http:/localhost/category/1</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

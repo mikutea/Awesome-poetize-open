@@ -5,7 +5,7 @@ Disallow: /api/
 Disallow: /private/
 
 # Sitemap
-Sitemap: http://localhost:5000/sitemap.xml
+Sitemap: http://localhost/sitemap.xml
 
 # 搜索引擎爬虫特定规则
 User-agent: Baiduspider

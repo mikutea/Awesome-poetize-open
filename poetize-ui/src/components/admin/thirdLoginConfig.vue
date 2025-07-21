@@ -137,31 +137,31 @@ export default {
         github: {
           client_id: '',
           client_secret: '',
-          redirect_uri: this.$constant.webURL + '/callback/github',
+          redirect_uri: this.$constant.pythonBaseURL + '/callback/github',
           enabled: true
         },
         google: {
           client_id: '',
           client_secret: '',
-          redirect_uri: this.$constant.webURL + '/callback/google',
+          redirect_uri: this.$constant.pythonBaseURL + '/callback/google',
           enabled: true
         },
         twitter: {
           client_key: '',
           client_secret: '',
-          redirect_uri: this.$constant.webURL + '/callback/x',
+          redirect_uri: this.$constant.pythonBaseURL + '/callback/x',
           enabled: true
         },
         yandex: {
           client_id: '',
           client_secret: '',
-          redirect_uri: this.$constant.webURL + '/callback/yandex',
+          redirect_uri: this.$constant.pythonBaseURL + '/callback/yandex',
           enabled: true
         },
         gitee: {
           client_id: '',
           client_secret: '',
-          redirect_uri: this.$constant.webURL + '/callback/gitee',
+          redirect_uri: this.$constant.pythonBaseURL + '/callback/gitee',
           enabled: true
         }
       },

@@ -149,12 +149,37 @@ DEFAULT_AI_CHAT_CONFIG = {
 }
 
 def get_ai_chat_config():
-    """获取AI聊天配置"""
+    """获取AI聊天配置（带缓存）"""
     try:
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        cached_config = cache_service.get_cached_ai_chat_config()
+        if cached_config:
+            logger.debug("从缓存获取AI聊天配置")
+            # 返回解密配置和显示配置
+            decrypted_config = cached_config.get('decrypted', {})
+            display_config = cached_config.get('display', {})
+            return decrypted_config, display_config
+
         if not os.path.exists(AI_CHAT_CONFIG_FILE):
             logger.info("AI聊天配置文件不存在，使用默认配置")
-            return DEFAULT_AI_CHAT_CONFIG.copy(), DEFAULT_AI_CHAT_CONFIG.copy()
-            
+            default_config = DEFAULT_AI_CHAT_CONFIG.copy()
+
+            # 缓存默认配置
+            try:
+                cache_data = {
+                    'decrypted': default_config,
+                    'display': default_config
+                }
+                cache_service.cache_ai_chat_config(cache_data)
+                logger.debug("默认AI聊天配置已缓存")
+            except Exception as cache_e:
+                logger.warning(f"缓存默认AI聊天配置失败: {cache_e}")
+
+            return default_config, default_config
+
         with open(AI_CHAT_CONFIG_FILE, 'r', encoding='utf-8') as f:
             encrypted_config = json.load(f)
         
@@ -179,11 +204,22 @@ def get_ai_chat_config():
         
         # 添加配置状态信息
         display_config['configured'] = bool(
-            decrypted_config.get('provider') and 
-            decrypted_config.get('api_key') and 
+            decrypted_config.get('provider') and
+            decrypted_config.get('api_key') and
             decrypted_config.get('model')
         )
-        
+
+        # 缓存配置
+        try:
+            cache_data = {
+                'decrypted': decrypted_config,
+                'display': display_config
+            }
+            cache_service.cache_ai_chat_config(cache_data)
+            logger.debug("AI聊天配置已缓存")
+        except Exception as cache_e:
+            logger.warning(f"缓存AI聊天配置失败: {cache_e}")
+
         return decrypted_config, display_config
         
     except Exception as e:
@@ -236,7 +272,20 @@ def save_ai_chat_config(config):
         # 保存到文件
         with open(AI_CHAT_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(processed_config, f, ensure_ascii=False, indent=2)
-        
+
+        # 使用统一的缓存刷新服务
+        try:
+            from cache_refresh_service import get_cache_refresh_service
+            refresh_service = get_cache_refresh_service()
+            refresh_result = refresh_service.refresh_ai_chat_caches()
+
+            if refresh_result.get("success", False):
+                logger.info(f"AI聊天配置更新完成，成功清理 {refresh_result.get('cleared_count', 0)} 个相关缓存")
+            else:
+                logger.warning(f"AI聊天缓存清理部分失败: 成功 {refresh_result.get('cleared_count', 0)}, 失败 {refresh_result.get('failed_count', 0)}")
+        except Exception as cache_e:
+            logger.warning(f"清理AI聊天相关缓存失败: {cache_e}")
+
         logger.info("AI聊天配置保存成功")
         return True
         
@@ -1032,8 +1081,26 @@ async def get_web_tools() -> List[dict]:
         return []
 
 async def get_ai_response(config, user_message, chat_history=[]):
-    """获取AI响应 - 使用MCP协议获取工具"""
+    """获取AI响应 - 使用MCP协议获取工具（带缓存）"""
     try:
+        from cache_service import get_cache_service
+        import hashlib
+
+        cache_service = get_cache_service()
+
+        # 生成缓存键（基于消息内容和配置）
+        config_for_hash = {k: v for k, v in config.items() if k != 'api_key'}  # 排除敏感信息
+        cache_key_data = f"{user_message}:{json.dumps(config_for_hash, sort_keys=True)}:{json.dumps(chat_history, sort_keys=True)}"
+        message_hash = hashlib.md5(cache_key_data.encode('utf-8')).hexdigest()
+        config_hash = hashlib.md5(json.dumps(config_for_hash, sort_keys=True).encode('utf-8')).hexdigest()
+
+        # 先尝试从缓存获取（仅对相同的消息和配置缓存）
+        if not chat_history or len(chat_history) == 0:  # 只缓存单轮对话
+            cached_response = cache_service.get_cached_ai_chat_response(message_hash, config_hash)
+            if cached_response:
+                logger.debug("从缓存获取AI聊天响应")
+                return cached_response
+
         provider = config.get("provider", "openai")
         api_key = config.get("api_key", "")
         model = config.get("model", "gpt-3.5-turbo")
@@ -1041,10 +1108,10 @@ async def get_ai_response(config, user_message, chat_history=[]):
         api_base = config.get("api_base", config.get("base_url", ""))
         max_tokens = config.get("max_tokens", 2000)
         temperature = config.get("temperature", 0.7)
-        
+
         web_tools_enabled = config.get("enable_web_tools", False)
         web_tools_auto_call = config.get("web_tools_auto_call", False)
-        
+
         # 系统消息
         system_prompt = config.get("system_prompt", "你是一个有用的AI助手。")
         
@@ -1161,8 +1228,24 @@ async def get_ai_response(config, user_message, chat_history=[]):
                 final_response["content"] = final_content + tool_summary
                 final_response["tool_results"] = tool_results
                 
+            # 缓存最终响应（仅单轮对话）
+            if not chat_history or len(chat_history) == 0:
+                try:
+                    cache_service.cache_ai_chat_response(message_hash, config_hash, final_response)
+                    logger.debug("AI聊天最终响应已缓存")
+                except Exception as cache_e:
+                    logger.warning(f"缓存AI聊天最终响应失败: {cache_e}")
+
             return final_response
-        
+
+        # 缓存普通响应（仅单轮对话）
+        if not chat_history or len(chat_history) == 0:
+            try:
+                cache_service.cache_ai_chat_response(message_hash, config_hash, response)
+                logger.debug("AI聊天响应已缓存")
+            except Exception as cache_e:
+                logger.warning(f"缓存AI聊天响应失败: {cache_e}")
+
         return response
         
     except Exception as e:

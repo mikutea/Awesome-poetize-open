@@ -24,6 +24,11 @@ public class UserVO {
 
     private Integer gender;
 
+    /**
+     * 用户状态[true:启用，false:禁用]
+     */
+    private Boolean userStatus;
+
     private String avatar;
 
     private String introduction;
@@ -49,6 +54,44 @@ public class UserVO {
     private Boolean isBoss = false;
 
     private String accessToken;
+
+    /**
+     * 赞赏
+     */
+    private String admire;
+
+    /**
+     * 是否为第三方登录用户
+     */
+    private Boolean isThirdPartyUser;
+
+    /**
+     * 获取是否为第三方登录用户
+     */
+    public Boolean getIsThirdPartyUser() {
+        if (isThirdPartyUser == null) {
+            isThirdPartyUser = platformType != null && !platformType.trim().isEmpty();
+        }
+        return isThirdPartyUser;
+    }
+
+    /**
+     * 设置是否为第三方登录用户
+     */
+    public void setIsThirdPartyUser(Boolean isThirdPartyUser) {
+        this.isThirdPartyUser = isThirdPartyUser;
+    }
+
+    /**
+     * 获取用户类型显示名称
+     */
+    public String getUserTypeDisplayName() {
+        if (getIsThirdPartyUser()) {
+            return "第三方用户";
+        } else {
+            return "普通用户";
+        }
+    }
 
     private String code;
 

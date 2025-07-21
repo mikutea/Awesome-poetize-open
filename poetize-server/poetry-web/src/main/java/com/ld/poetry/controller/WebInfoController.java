@@ -7,9 +7,10 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.WebInfoService;
+import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import com.ld.poetry.utils.*;
-import com.ld.poetry.utils.cache.PoetryCache;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,6 +66,12 @@ public class WebInfoController {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private ThirdPartyOauthConfigService thirdPartyOauthConfigService;
+
+    @Autowired
+    private CacheService cacheService;
+
     // API配置的缓存键
     private static final String API_CONFIG_CACHE_KEY = "API_CONFIG";
 
@@ -80,7 +87,8 @@ public class WebInfoController {
         LambdaQueryChainWrapper<WebInfo> wrapper = new LambdaQueryChainWrapper<>(webInfoService.getBaseMapper());
         List<WebInfo> list = wrapper.list();
         if (!CollectionUtils.isEmpty(list)) {
-            PoetryCache.put(CommonConst.WEB_INFO, list.get(0));
+            // 使用Redis缓存替换PoetryCache
+            cacheService.cacheWebInfo(list.get(0));
             
             // 网站信息更新时，重新渲染首页和百宝箱页面
             try {
@@ -111,7 +119,7 @@ public class WebInfoController {
         }
         
         // 缓存过期，重新构建
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo != null) {
             WebInfo result = new WebInfo();
             BeanUtils.copyProperties(webInfo, result);
@@ -120,7 +128,7 @@ public class WebInfoController {
             result.setWaifuJson(null);
 
             try {
-                Map<String, Object> historyStats = (Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS);
+                Map<String, Object> historyStats = (Map<String, Object>) cacheService.getCachedIpHistoryStatistics();
                 if (historyStats != null) {
                     // 获取访问统计
                     Long historyCount = (Long) historyStats.get(CommonConst.IP_HISTORY_COUNT);
@@ -164,42 +172,17 @@ public class WebInfoController {
     @PostMapping("/updateThirdLoginConfig")
     public PoetryResult<Object> updateThirdLoginConfig(@RequestBody Map<String, Object> config) {
         try {
-            String pythonServerUrl = restTemplate.getUriTemplateHandler().expand("").toString();
-            if (pythonServerUrl == null || pythonServerUrl.isEmpty()) {
-                // 如果RestTemplate没有配置baseUrl，则从环境变量中获取
-                pythonServerUrl = System.getProperty("PYTHON_SERVICE_URL", "http://localhost:5000");
-            }
-            String thirdLoginConfigUrl = pythonServerUrl + "/webInfo/updateThirdLoginConfig";
-            
-            // 设置请求头
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.add("X-Internal-Service", "poetize-java");
-            headers.add("X-Admin-Request", "true");
-            
-            // 创建请求实体
-            HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(config, headers);
-            
-            log.info("转发第三方登录配置更新请求到Python服务: {}", thirdLoginConfigUrl);
-            
-            // 发送请求到Python服务
-            Map<String, Object> response = restTemplate.postForObject(
-                thirdLoginConfigUrl,
-                requestEntity,
-                Map.class
-            );
-            
-            log.info("Python服务第三方登录配置更新响应: {}", response);
-            
-            if (response != null && response.containsKey("code")) {
-                int code = Integer.parseInt(response.get("code").toString());
-                if (code == 200) {
-                    return PoetryResult.success(response.get("data"));
-                } else {
-                    return PoetryResult.fail(response.get("message") != null ? response.get("message").toString() : "第三方登录配置更新失败");
-                }
+            log.info("更新第三方登录配置: {}", config);
+
+            // 直接使用数据库服务更新配置
+            PoetryResult<Boolean> result = thirdPartyOauthConfigService.updateThirdLoginConfig(config);
+
+            if (result.isSuccess()) {
+                log.info("第三方登录配置更新成功");
+                return PoetryResult.success("配置更新成功");
             } else {
-                return PoetryResult.fail("Python服务响应格式错误");
+                log.warn("第三方登录配置更新失败: {}", result.getMessage());
+                return PoetryResult.fail(result.getMessage());
             }
         } catch (Exception e) {
             log.error("第三方登录配置更新失败", e);
@@ -215,7 +198,7 @@ public class WebInfoController {
     public PoetryResult<Map<String, Object>> getHistoryInfo() {
         Map<String, Object> result = new HashMap<>();
 
-        Map<String, Object> history = (Map<String, Object>) PoetryCache.get(CommonConst.IP_HISTORY_STATISTICS);
+        Map<String, Object> history = (Map<String, Object>) cacheService.getCachedIpHistoryStatistics();
         List<HistoryInfo> infoList = new LambdaQueryChainWrapper<>(historyInfoMapper)
                 .select(HistoryInfo::getIp, HistoryInfo::getUserId, HistoryInfo::getNation, HistoryInfo::getProvince, HistoryInfo::getCity)
                 .ge(HistoryInfo::getCreateTime, LocalDateTime.now().with(LocalTime.MIN))
@@ -285,7 +268,7 @@ public class WebInfoController {
      */
     @GetMapping("/getWaifuJson")
     public String getWaifuJson() {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo != null && StringUtils.hasText(webInfo.getWaifuJson())) {
             return webInfo.getWaifuJson();
         }
@@ -297,7 +280,7 @@ public class WebInfoController {
      */
     @GetMapping("/clearSortCache")
     public PoetryResult<String> clearSortCache() {
-        PoetryCache.remove(CommonConst.SORT_INFO);
+        cacheService.evictSortList();
         return PoetryResult.success();
     }
 
@@ -307,13 +290,13 @@ public class WebInfoController {
     @LoginCheck(0)
     @GetMapping("/getApiConfig")
     public PoetryResult<Map<String, Object>> getApiConfig() {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo == null) {
             LambdaQueryChainWrapper<WebInfo> wrapper = new LambdaQueryChainWrapper<>(webInfoService.getBaseMapper());
             List<WebInfo> list = wrapper.list();
             if (!CollectionUtils.isEmpty(list)) {
                 webInfo = list.get(0);
-                PoetryCache.put(CommonConst.WEB_INFO, webInfo);
+                cacheService.cacheWebInfo(webInfo);
             } else {
                 webInfo = new WebInfo();
             }
@@ -332,7 +315,7 @@ public class WebInfoController {
     @LoginCheck(0)
     @PostMapping("/saveApiConfig")
     public PoetryResult<String> saveApiConfig(@RequestBody Map<String, Object> apiConfig) {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo == null) {
             LambdaQueryChainWrapper<WebInfo> wrapper = new LambdaQueryChainWrapper<>(webInfoService.getBaseMapper());
             List<WebInfo> list = wrapper.list();
@@ -361,7 +344,7 @@ public class WebInfoController {
         // 更新缓存
         webInfo.setApiEnabled(enabled);
         webInfo.setApiKey(apiKey);
-        PoetryCache.put(CommonConst.WEB_INFO, webInfo);
+        cacheService.cacheWebInfo(webInfo);
         
         return PoetryResult.success();
     }
@@ -372,7 +355,7 @@ public class WebInfoController {
     @LoginCheck(0)
     @PostMapping("/regenerateApiKey")
     public PoetryResult<String> regenerateApiKey() {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         if (webInfo == null) {
             LambdaQueryChainWrapper<WebInfo> wrapper = new LambdaQueryChainWrapper<>(webInfoService.getBaseMapper());
             List<WebInfo> list = wrapper.list();
@@ -393,7 +376,7 @@ public class WebInfoController {
         
         // 更新缓存
         webInfo.setApiKey(newApiKey);
-        PoetryCache.put(CommonConst.WEB_INFO, webInfo);
+        cacheService.cacheWebInfo(webInfo);
         
         return PoetryResult.success(newApiKey);
     }
@@ -496,47 +479,56 @@ public class WebInfoController {
     @GetMapping("/getThirdLoginConfig")
     public PoetryResult<Object> getThirdLoginConfig() {
         try {
-            String pythonServerUrl = restTemplate.getUriTemplateHandler().expand("").toString();
-            if (pythonServerUrl == null || pythonServerUrl.isEmpty()) {
-                // 如果RestTemplate没有配置baseUrl，则从环境变量中获取
-                pythonServerUrl = System.getProperty("PYTHON_SERVICE_URL", "http://localhost:5000");
-            }
-            String thirdLoginConfigUrl = pythonServerUrl + "/webInfo/getThirdLoginConfig";
-            
-            // 设置请求头
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.add("X-Internal-Service", "poetize-java");
-            headers.add("X-Admin-Request", "true");
-            
-            // 创建请求实体
-            HttpEntity<String> requestEntity = new HttpEntity<>(headers);
-            
-            log.info("转发获取第三方登录配置请求到Python服务: {}", thirdLoginConfigUrl);
-            
-            // 发送请求到Python服务
-            Map<String, Object> response = restTemplate.exchange(
-                thirdLoginConfigUrl,
-                org.springframework.http.HttpMethod.GET,
-                requestEntity,
-                Map.class
-            ).getBody();
-            
-            log.info("Python服务第三方登录配置响应: {}", response);
-            
-            if (response != null && response.containsKey("code")) {
-                int code = Integer.parseInt(response.get("code").toString());
-                if (code == 200) {
-                    return PoetryResult.success(response.get("data"));
-                } else {
-                    return PoetryResult.fail(response.get("message") != null ? response.get("message").toString() : "获取第三方登录配置失败");
-                }
+            log.info("获取第三方登录配置");
+
+            // 直接从数据库获取配置
+            PoetryResult<Map<String, Object>> result = thirdPartyOauthConfigService.getThirdLoginConfig();
+
+            if (result.isSuccess()) {
+                log.info("第三方登录配置获取成功");
+                return PoetryResult.success(result.getData());
             } else {
-                return PoetryResult.fail("Python服务响应格式错误");
+                log.warn("第三方登录配置获取失败: {}", result.getMessage());
+                return PoetryResult.fail(result.getMessage());
             }
         } catch (Exception e) {
             log.error("获取第三方登录配置失败", e);
             return PoetryResult.fail("获取第三方登录配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取第三方登录状态（轻量级接口，用于前端状态检查）
+     */
+    @GetMapping("/getThirdLoginStatus")
+    public PoetryResult<Object> getThirdLoginStatus(@RequestParam(required = false) String provider) {
+        try {
+            log.debug("获取第三方登录状态，平台: {}", provider);
+
+            // 获取激活的配置（全局启用且平台启用）
+            List<ThirdPartyOauthConfig> activeConfigs = thirdPartyOauthConfigService.getActiveConfigs();
+
+            // 构建状态响应
+            Map<String, Object> status = new HashMap<>();
+            boolean globalEnabled = !activeConfigs.isEmpty();
+            status.put("enable", globalEnabled);
+
+            // 如果指定了平台，检查该平台状态
+            if (provider != null && !provider.trim().isEmpty()) {
+                boolean platformEnabled = activeConfigs.stream()
+                    .anyMatch(config -> provider.equals(config.getPlatformType()));
+                status.put(provider, Map.of("enabled", platformEnabled));
+            } else {
+                // 返回所有平台状态
+                for (ThirdPartyOauthConfig config : activeConfigs) {
+                    status.put(config.getPlatformType(), Map.of("enabled", true));
+                }
+            }
+
+            return PoetryResult.success(status);
+        } catch (Exception e) {
+            log.error("获取第三方登录状态失败", e);
+            return PoetryResult.fail("获取第三方登录状态失败: " + e.getMessage());
         }
     }
 

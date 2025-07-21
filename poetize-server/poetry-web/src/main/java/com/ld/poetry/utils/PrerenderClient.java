@@ -54,6 +54,18 @@ public class PrerenderClient {
         renderArticles(Collections.singletonList(id));
     }
 
+    /**
+     * 渲染指定文章的指定语言版本
+     * @param id 文章ID
+     * @param languages 要渲染的语言列表
+     */
+    public void renderArticleWithLanguages(Integer id, List<String> languages) {
+        if (id == null) {
+            return;
+        }
+        renderArticlesWithLanguages(Collections.singletonList(id), languages);
+    }
+
     public void renderArticles(List<Integer> ids) {
         try {
             HttpHeaders headers = createInternalServiceHeaders();
@@ -63,6 +75,26 @@ public class PrerenderClient {
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
             restTemplate.postForEntity(prerenderUrl, request, String.class);
             log.info("已提交文章 {} 到 prerender-worker", ids);
+        } catch (Exception e) {
+            log.warn("调用 prerender-worker 失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 渲染指定文章列表的指定语言版本
+     * @param ids 文章ID列表
+     * @param languages 要渲染的语言列表
+     */
+    public void renderArticlesWithLanguages(List<Integer> ids, List<String> languages) {
+        try {
+            HttpHeaders headers = createInternalServiceHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            Map<String, Object> body = new HashMap<>();
+            body.put("ids", ids);
+            body.put("languages", languages);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            restTemplate.postForEntity(prerenderUrl, request, String.class);
+            log.info("已提交文章 {} 到 prerender-worker，渲染语言: {}", ids, languages);
         } catch (Exception e) {
             log.warn("调用 prerender-worker 失败: {}", e.getMessage());
         }

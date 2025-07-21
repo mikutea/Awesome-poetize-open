@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-15
+## 修改时间: 2025-07-21
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.4.4
+## 版本: 1.4.5
 
 # 定义颜色
 RED='\033[0;31m'
@@ -85,6 +85,7 @@ SWAP_SIZE=1G      # 默认swap大小为1G（对于2GB及以下内存将自动增
 RUN_IN_BACKGROUND=false
 LOG_FILE="deploy.log"
 DISABLE_DOCKER_CACHE=true  # 默认禁用Docker构建缓存
+POETIZE_KEEP_GIT=true      # 默认保留Git仓库以支持update功能
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
@@ -155,9 +156,11 @@ create_global_poetize_command() {
   if [ -L "$target_path" ] || [ -f "$target_path" ]; then
     sudo rm -f "$target_path" 2>/dev/null
   fi
-  
-  # 静默创建符号链接
-  if sudo ln -sf "$poetize_script" "$target_path" 2>/dev/null; then
+
+  # 静默复制文件
+  if sudo cp "$poetize_script" "$target_path" 2>/dev/null; then
+    # 确保复制后的文件具有可执行权限
+    sudo chmod +x "$target_path" 2>/dev/null
     return 0
   else
     return 1
@@ -350,6 +353,10 @@ show_help() {
   echo "  --log-file FILE         指定日志文件（默认为deploy.log）"
   echo "  --enable-docker-cache   启用Docker构建缓存（默认禁用以节省空间）"
   echo ""
+  echo "Git仓库选项:"
+  echo "  --keep-git              保留Git仓库（默认，支持后续update功能）"
+  echo "  --no-git, --remove-git  删除Git仓库（节省磁盘空间，不支持Git更新）"
+  echo ""
   echo "示例:"
   echo "  $0 --domain example.com --domain www.example.com --email admin@example.com --enable-https"
   echo "  $0 --config .poetize-config"
@@ -357,6 +364,8 @@ show_help() {
   echo "  $0 --background         # 在后台运行，输出到deploy.log"
   echo "  $0 --background --log-file custom.log"
   echo "  $0 --enable-swap --swap-size 2G"
+  echo "  $0 --no-git             # 部署时删除Git仓库，节省空间"
+  echo "  $0 --keep-git           # 保留Git仓库，支持后续update功能"
   echo ""
 }
 
@@ -416,6 +425,14 @@ parse_arguments() {
         ;;
       --enable-docker-cache)
         DISABLE_DOCKER_CACHE=false
+        shift
+        ;;
+      --no-git|--remove-git)
+        POETIZE_KEEP_GIT=false
+        shift
+        ;;
+      --keep-git)
+        POETIZE_KEEP_GIT=true
         shift
         ;;
       *)
@@ -2881,6 +2898,9 @@ init_deploy() {
   # 替换默认数据库密码为随机强密码
   replace_db_passwords
   
+  # 替换默认Redis密码为随机强密码
+  replace_redis_password
+
   # 配置Docker Compose AES密钥
   replace_docker_compose_aes_key
 
@@ -3208,6 +3228,7 @@ check_and_fix_network_conflict() {
     sed_i "s|ipv4_address: 172\.28\.147\.7|ipv4_address: $base_ip.7|g" docker-compose.yml
     sed_i "s|ipv4_address: 172\.28\.147\.8|ipv4_address: $base_ip.8|g" docker-compose.yml
     sed_i "s|ipv4_address: 172\.28\.147\.9|ipv4_address: $base_ip.9|g" docker-compose.yml
+    sed_i "s|ipv4_address: 172\.28\.147\.10|ipv4_address: $base_ip.10|g" docker-compose.yml
     
     # 更新Python服务的DOCKER_SUBNET环境变量
     sed_i "s|DOCKER_SUBNET=172\.28\.147\.0/28|DOCKER_SUBNET=$new_subnet|g" docker-compose.yml
@@ -4518,6 +4539,21 @@ replace_db_passwords() {
 
   success "数据库密码已成功更新为随机强密码"
 }
+
+# 替换默认Redis密码为随机强密码
+replace_redis_password() {
+  info "生成随机Redis密码..."
+  
+  # 生成随机密码
+  REDIS_PASSWORD=$(generate_secure_password 16 'a-zA-Z0-9!@#%^_+')
+  
+  # 替换docker-compose.yml中的默认密码
+  sed_i "s/poetize_redis_2025/${REDIS_PASSWORD}/g" docker-compose.yml
+  
+  success "Redis密码已成功更新为随机强密码"
+
+}
+
 # 替换docker-compose.yml中的AES密钥函数
 replace_docker_compose_aes_key() {
   # 生成随机AES密钥
@@ -4935,23 +4971,50 @@ download_and_extract_project() {
   local tar_file="Awesome-poetize-open.tar.gz"
   local extract_dir="$1"
   local repo_url="https://gitee.com/leapya/poetize.git"
-  
+
   info "正在下载项目源码..."
-  
+
+  # 检查是否保留Git仓库（支持后续update功能）
+  local keep_git="$POETIZE_KEEP_GIT"  # 使用命令行参数设置的值
+
+  if [ "$keep_git" = "true" ]; then
+    info "Git仓库设置: 保留Git仓库（支持后续使用 'poetize -update' 命令更新）"
+  else
+    info "Git仓库设置: 删除Git仓库（节省磁盘空间，后续更新需重新下载）"
+  fi
+
   if is_china_environment; then
-    git clone --depth 1 "$repo_url" "$extract_dir"
-    rm -rf "$extract_dir/.git"
+    if [ "$keep_git" = "true" ]; then
+      info "下载完整Git仓库（支持后续更新功能）..."
+      git clone "$repo_url" "$extract_dir"
+    else
+      info "下载项目源码（浅克隆，不支持Git更新）..."
+      git clone --depth 1 "$repo_url" "$extract_dir"
+      rm -rf "$extract_dir/.git"
+    fi
     if [ $? -ne 0 ]; then
       error "项目源码克隆失败"
       return 1
     fi
   else
-    git clone --depth 1 "$download_url" "$extract_dir"
-    rm -rf "$extract_dir/.git"
+    if [ "$keep_git" = "true" ]; then
+      info "下载完整Git仓库（支持后续更新功能）..."
+      git clone "$download_url" "$extract_dir"
+    else
+      info "下载项目源码（浅克隆，不支持Git更新）..."
+      git clone --depth 1 "$download_url" "$extract_dir"
+      rm -rf "$extract_dir/.git"
+    fi
     if [ $? -ne 0 ]; then
       error "项目源码克隆失败"
       return 1
     fi
+  fi
+
+  # 如果保留了Git仓库，显示相关信息
+  if [ "$keep_git" = "true" ] && [ -d "$extract_dir/.git" ]; then
+    success "Git仓库已保留，支持使用 'poetize -update' 命令进行后续更新"
+    info "Git仓库大小: $(du -sh "$extract_dir/.git" | cut -f1)"
   fi
 
   # 创建项目目录并移动文件

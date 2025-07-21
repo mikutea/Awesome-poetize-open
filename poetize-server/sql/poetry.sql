@@ -73,6 +73,8 @@ CREATE TABLE `poetize`.`comment` (
   `like_count` int NOT NULL DEFAULT 0 COMMENT '点赞数',
   `comment_content` varchar(1024) NOT NULL COMMENT '评论内容',
   `comment_info` varchar(256) DEFAULT NULL COMMENT '评论额外信息',
+  `ip_address` varchar(45) DEFAULT NULL COMMENT 'IP地址',
+  `location` varchar(100) DEFAULT NULL COMMENT '地理位置',
 
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
 
@@ -224,6 +226,33 @@ CREATE TABLE `poetize`.`sys_config` (
   PRIMARY KEY (`id`)
 ) ENGINE=Aria DEFAULT CHARSET=utf8mb4 COMMENT='参数配置表';
 
+DROP TABLE IF EXISTS `poetize`.`third_party_oauth_config`;
+
+CREATE TABLE `poetize`.`third_party_oauth_config` (
+  `id` int NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `platform_type` varchar(32) NOT NULL COMMENT '平台类型（github, google, twitter, yandex, gitee等）',
+  `platform_name` varchar(64) DEFAULT NULL COMMENT '平台名称',
+  `client_id` varchar(256) DEFAULT NULL COMMENT '客户端ID',
+  `client_secret` varchar(512) DEFAULT NULL COMMENT '客户端密钥',
+  `client_key` varchar(256) DEFAULT NULL COMMENT '客户端Key（Twitter使用）',
+  `redirect_uri` varchar(512) DEFAULT NULL COMMENT '重定向URI',
+  `scope` varchar(256) DEFAULT NULL COMMENT '授权范围',
+  `enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否启用该平台[0:否，1:是]',
+  `global_enabled` tinyint(1) NOT NULL DEFAULT 0 COMMENT '全局是否启用第三方登录[0:否，1:是]',
+  `sort_order` int DEFAULT 0 COMMENT '排序顺序',
+  `remark` varchar(512) DEFAULT NULL COMMENT '备注',
+
+  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否删除[0:未删除，1:已删除]',
+
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_platform_type` (`platform_type`),
+  KEY `idx_enabled` (`enabled`),
+  KEY `idx_global_enabled` (`global_enabled`),
+  KEY `idx_sort_order` (`sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='第三方OAuth登录配置表';
+
 DROP TABLE IF EXISTS `poetize`.`family`;
 
 CREATE TABLE `poetize`.`family` (
@@ -339,7 +368,7 @@ CREATE TABLE `poetize`.`article_translation` (
   KEY `idx_article_id` (`article_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文章翻译内容表';
 
-INSERT INTO `poetize`.`user`(`id`, `username`, `password`, `phone_number`, `email`, `user_status`, `gender`, `open_id`, `admire`, `subscribe`, `avatar`, `introduction`, `user_type`, `update_by`, `deleted`) VALUES (1, 'Sara', '47bce5c74f589f4867dbd57e9ca9f808', '', '', 1, 1, '', '', '', '', '', 0, 'Sara', 0);
+INSERT INTO `poetize`.`user`(`id`, `username`, `password`, `phone_number`, `email`, `user_status`, `gender`, `open_id`, `admire`, `subscribe`, `avatar`, `introduction`, `user_type`, `update_by`, `deleted`) VALUES (1, 'Sara', '$12$hxtMwTkpt1FyFrQgRMQ/lenlkYd28MEhQMcafzhnXz7hYgDMM0b/C', '', '', 1, 1, '', '', '', '', '', 0, 'Sara', 0);
 
 INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`, `minimal_footer`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
     "waifuPath": "/static/live2d-widget/waifu-tips.json",
@@ -387,7 +416,13 @@ INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_v
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (32, '是否从远程加载字体Unicode范围', 'font.unicode.remote', 'true', '2');
 INSERT INTO `poetize`.`sys_config` (`id`, `config_name`, `config_key`, `config_value`, `config_type`) VALUES (33, '字体Unicode范围JSON文件路径', 'font.unicode.path', '/static/assets/font_chunks/unicode_ranges.json', '2');
 
-
+-- 初始化第三方OAuth登录配置数据
+INSERT INTO `poetize`.`third_party_oauth_config` (`platform_type`, `platform_name`, `scope`, `enabled`, `global_enabled`, `sort_order`, `remark`, `deleted`) VALUES
+('github', 'GitHub', 'user:email', 0, 0, 1, 'GitHub OAuth登录配置，需要在GitHub开发者设置中创建OAuth应用', 0),
+('google', 'Google', 'openid email profile', 0, 0, 2, 'Google OAuth登录配置，需要在Google Cloud Console中创建OAuth客户端', 0),
+('twitter', 'Twitter', 'tweet.read users.read', 0, 0, 3, 'Twitter OAuth登录配置，需要在Twitter Developer Portal中创建应用', 0),
+('yandex', 'Yandex', 'login:email login:info', 0, 0, 4, 'Yandex OAuth登录配置，需要在Yandex OAuth中创建应用', 0),
+('gitee', 'Gitee', 'user_info emails', 0, 0, 5, 'Gitee OAuth登录配置，需要在Gitee第三方应用中创建应用', 0);
 INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`, `status`,  `remark`) VALUES ('POETIZE', 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg', '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～', 'siteInfo', 1, 'https://s1.ax1x.com/2022/11/10/z9VlHs.png');
 
 -- ========== 导入静态资源到resource表 ==========

@@ -44,7 +44,7 @@ public interface UserService extends IService<User> {
 
     PoetryResult updateForForgetPassword(String place, Integer flag, String code, String password);
 
-    PoetryResult<Page> listUser(BaseRequestVO baseRequestVO);
+    PoetryResult<Page<UserVO>> listUser(BaseRequestVO baseRequestVO);
 
     PoetryResult<List<UserVO>> getUserByUsername(String username);
 
@@ -63,4 +63,30 @@ public interface UserService extends IService<User> {
      * @return 登录结果
      */
     PoetryResult<UserVO> thirdLogin(String provider, String uid, String username, String email, String avatar);
+
+    /**
+     * 获取用户可绑定的第三方平台列表
+     */
+    PoetryResult getBindablePlatforms();
+
+    /**
+     * 检查第三方账号绑定状态
+     */
+    PoetryResult getAccountBindingStatus();
+
+    /**
+     * 获取OAuth授权URL
+     */
+    PoetryResult getOAuthAuthUrl(String platformType);
+
+    /**
+     * 绑定第三方账号
+     */
+    PoetryResult bindThirdPartyAccount(String platformType, String code, String state);
+
+    /**
+     * 解绑第三方账号
+     */
+    PoetryResult unbindThirdPartyAccount();
+
 }

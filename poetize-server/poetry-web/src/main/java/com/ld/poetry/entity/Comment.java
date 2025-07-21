@@ -77,6 +77,18 @@ public class Comment implements Serializable {
     private String commentInfo;
 
     /**
+     * IP地址
+     */
+    @TableField("ip_address")
+    private String ipAddress;
+
+    /**
+     * 地理位置
+     */
+    @TableField("location")
+    private String location;
+
+    /**
      * 楼层评论ID
      */
     @TableField("floor_comment_id")

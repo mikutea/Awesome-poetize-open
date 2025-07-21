@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.ResourceCheck;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.LabelMapper;
@@ -16,16 +17,19 @@ import com.ld.poetry.entity.*;
 import com.ld.poetry.enums.CommentTypeEnum;
 import com.ld.poetry.enums.PoetryEnum;
 import com.ld.poetry.service.ArticleService;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.utils.*;
-import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.utils.mail.MailUtil;
 import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -98,7 +102,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     @Autowired
     private SysConfigService sysConfigService;
 
+    @Autowired
+    private CacheService cacheService;
+
     @Override
+    @CacheEvict(value = {"articles", "sortArticles"}, allEntries = true)
     public PoetryResult saveArticle(ArticleVO articleVO) {
         long startTime = System.currentTimeMillis();
         log.info("【Service性能监控】开始保存文章到数据库");
@@ -168,8 +176,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         
         // 将文章ID回填到VO对象
         articleVO.setId(article.getId());
-        
-        PoetryCache.remove(CommonConst.SORT_INFO);
+
+        // 使用Redis缓存清理替换PoetryCache
+        cacheService.evictSortList();
 
         // 异步发送订阅邮件，避免阻塞保存操作
         if (articleVO.getViewStatus()) {
@@ -191,7 +200,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         LambdaQueryChainWrapper<Label> wrapper = new LambdaQueryChainWrapper<>(labelMapper);
                         Label label = wrapper.select(Label::getLabelName).eq(Label::getId, labelId).one();
                         String text = getSubscribeMail(label.getLabelName(), articleTitle);
-                        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+                        WebInfo webInfo = cacheService.getCachedWebInfo();
                         mailUtil.sendMailMessage(emails, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
                         
                         long mailEndTime = System.currentTimeMillis();
@@ -220,6 +229,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
      */
     @Override
     public PoetryResult<String> saveArticleAsync(ArticleVO articleVO) {
+        // 调用重载方法，使用默认参数
+        return saveArticleAsync(articleVO, false, null);
+    }
+
+    /**
+     * 异步保存文章（快速响应版本，支持翻译参数）
+     */
+    @Override
+    public PoetryResult<String> saveArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation) {
         // 生成任务ID
         String taskId = "article_save_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000);
         
@@ -311,9 +329,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     return;
                 }
                 log.info("【异步保存】数据库保存成功，任务ID: {}, 文章ID: {}", taskId, article.getId());
-                
+
                 // 清理缓存
-                PoetryCache.remove(CommonConst.SORT_INFO);
+                cacheService.evictSortList();
                 
                 // 更新状态：后台处理中
                 updateSaveStatus(taskId, "processing", "文章已保存，正在处理邮件通知和翻译...");
@@ -333,8 +351,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 
                 // 异步翻译（翻译完成后内部会触发预渲染）
                 try {
-                    log.info("【异步保存】开始文章翻译，任务ID: {}", taskId);
-                    translationService.translateAndSaveArticle(article.getId());
+                    log.info("【异步保存】开始文章翻译，任务ID: {}, 跳过AI翻译: {}, 有暂存翻译: {}",
+                            taskId, skipAiTranslation, pendingTranslation != null && !pendingTranslation.isEmpty());
+                    translationService.translateAndSaveArticle(article.getId(), skipAiTranslation, pendingTranslation);
                     log.info("【异步保存】文章翻译完成（包含预渲染），任务ID: {}", taskId);
                 } catch (Exception e) {
                     log.error("【异步保存】文章翻译失败，任务ID: {}", taskId, e);
@@ -488,7 +507,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 LambdaQueryChainWrapper<Label> wrapper = new LambdaQueryChainWrapper<>(labelMapper);
                 Label label = wrapper.select(Label::getLabelName).eq(Label::getId, labelId).one();
                 String text = getSubscribeMail(label.getLabelName(), articleTitle);
-                WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+                WebInfo webInfo = cacheService.getCachedWebInfo();
                 mailUtil.sendMailMessage(emails, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
                 log.info("订阅邮件发送完成，发送给{}个用户", emails.size());
             }
@@ -533,7 +552,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     private String getSubscribeMail(String labelName, String articleTitle) {
-        WebInfo webInfo = (WebInfo) PoetryCache.get(CommonConst.WEB_INFO);
+        WebInfo webInfo = cacheService.getCachedWebInfo();
         String webName = (webInfo == null ? "POETIZE" : webInfo.getWebName());
         
         // 从数据库获取订阅模板
@@ -554,6 +573,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    @CacheEvict(value = {"articles", "sortArticles"}, allEntries = true)
     public PoetryResult deleteArticle(Integer id) {
         Integer userId = PoetryUtil.getUserId();
         
@@ -571,7 +591,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         
         // 删除文章
         removeById(id);
-        PoetryCache.remove(CommonConst.SORT_INFO);
+
+        // 使用Redis缓存清理替换PoetryCache
+        cacheService.evictArticleRelatedCache(id);
+        cacheService.deleteKey(CacheConstants.SORT_LIST_KEY);
+
         return PoetryResult.success();
     }
 
@@ -625,7 +649,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         
         updateChainWrapper.update();
-        PoetryCache.remove(CommonConst.SORT_INFO);
+        cacheService.evictSortList();
 
         // 更新后重新翻译，TranslationService 内部完毕后预渲染
         new Thread(() -> translationService.refreshArticleTranslation(articleVO.getId())).start();
@@ -838,16 +862,42 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    @Cacheable(value = "sortArticles", key = "'all'", unless = "#result == null || #result.data == null")
     public PoetryResult<Map<Integer, List<ArticleVO>>> listSortArticle() {
-        Map<Integer, List<ArticleVO>> result = (Map<Integer, List<ArticleVO>>) PoetryCache.get(CommonConst.SORT_ARTICLE_LIST);
-        if (result != null) {
+        // 使用Redis缓存替换PoetryCache
+        Map<Integer, List<Article>> cachedResult = cacheService.getCachedSortArticleList();
+        if (cachedResult != null) {
+            // 转换为ArticleVO
+            Map<Integer, List<ArticleVO>> result = new HashMap<>();
+            for (Map.Entry<?, List<Article>> entry : cachedResult.entrySet()) {
+                // 安全地转换键类型，处理String到Integer的转换
+                Integer sortId = convertToInteger(entry.getKey());
+                if (sortId != null) {
+                    List<ArticleVO> articleVOList = entry.getValue().stream().map(article -> {
+                        ArticleVO vo = buildArticleVO(article, false);
+                        if (StringUtils.hasText(article.getSummary())) {
+                            vo.setSummary(article.getSummary());
+                        }
+                        vo.setHasVideo(StringUtils.hasText(article.getVideoUrl()));
+                        vo.setPassword(null);
+                        vo.setVideoUrl(null);
+                        return vo;
+                    }).collect(Collectors.toList());
+                    result.put(sortId, articleVOList);
+                } else {
+                    log.warn("无法转换分类ID: {}, 类型: {}", entry.getKey(),
+                            entry.getKey() != null ? entry.getKey().getClass().getSimpleName() : "null");
+                }
+            }
             return PoetryResult.success(result);
         }
 
         synchronized (CommonConst.SORT_ARTICLE_LIST.intern()) {
-            result = (Map<Integer, List<ArticleVO>>) PoetryCache.get(CommonConst.SORT_ARTICLE_LIST);
-            if (result == null) {
-                Map<Integer, List<ArticleVO>> map = new HashMap<>();
+            // 双重检查锁定
+            cachedResult = cacheService.getCachedSortArticleList();
+            if (cachedResult == null) {
+                Map<Integer, List<Article>> articleMap = new HashMap<>();
+                Map<Integer, List<ArticleVO>> resultMap = new HashMap<>();
 
                 List<Sort> sorts = new LambdaQueryChainWrapper<>(sortMapper).select(Sort::getId).list();
                 for (Sort sort : sorts) {
@@ -861,31 +911,62 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         continue;
                     }
 
-                    List<ArticleVO> articleVOList = articleList.stream().map(article -> {
-                        // 如果内容太长，仍然截取用于articleContent字段（保持兼容性）
-                        if (article.getArticleContent().length() > CommonConst.SUMMARY) {
-                            article.setArticleContent(article.getArticleContent().substring(0, CommonConst.SUMMARY).replace("`", "").replace("#", "").replace(">", ""));
+                    // 处理文章内容用于缓存
+                    List<Article> processedArticles = articleList.stream().map(article -> {
+                        Article processedArticle = new Article();
+                        BeanUtils.copyProperties(article, processedArticle);
+                        // 如果内容太长，截取用于缓存
+                        if (processedArticle.getArticleContent().length() > CommonConst.SUMMARY) {
+                            processedArticle.setArticleContent(processedArticle.getArticleContent().substring(0, CommonConst.SUMMARY).replace("`", "").replace("#", "").replace(">", ""));
                         }
+                        return processedArticle;
+                    }).collect(Collectors.toList());
 
+                    List<ArticleVO> articleVOList = processedArticles.stream().map(article -> {
                         ArticleVO vo = buildArticleVO(article, false);
-                        
+
                         // 直接使用数据库中存储的摘要
                         if (StringUtils.hasText(article.getSummary())) {
                             vo.setSummary(article.getSummary());
                         }
-                        
+
                         vo.setHasVideo(StringUtils.hasText(article.getVideoUrl()));
                         vo.setPassword(null);
                         vo.setVideoUrl(null);
                         return vo;
                     }).collect(Collectors.toList());
-                    map.put(sort.getId(), articleVOList);
+
+                    articleMap.put(sort.getId(), processedArticles);
+                    resultMap.put(sort.getId(), articleVOList);
                 }
 
-                PoetryCache.put(CommonConst.SORT_ARTICLE_LIST, map, CommonConst.TOKEN_INTERVAL);
-                return PoetryResult.success(map);
+                // 缓存到Redis
+                cacheService.cacheSortArticleList(articleMap);
+                return PoetryResult.success(resultMap);
             } else {
-                return PoetryResult.success(result);
+                // 转换缓存结果为ArticleVO
+                Map<Integer, List<ArticleVO>> resultMap = new HashMap<>();
+                for (Map.Entry<?, List<Article>> entry : cachedResult.entrySet()) {
+                    // 安全地转换键类型，处理String到Integer的转换
+                    Integer sortId = convertToInteger(entry.getKey());
+                    if (sortId != null) {
+                        List<ArticleVO> articleVOList = entry.getValue().stream().map(article -> {
+                            ArticleVO vo = buildArticleVO(article, false);
+                            if (StringUtils.hasText(article.getSummary())) {
+                                vo.setSummary(article.getSummary());
+                            }
+                            vo.setHasVideo(StringUtils.hasText(article.getVideoUrl()));
+                            vo.setPassword(null);
+                            vo.setVideoUrl(null);
+                            return vo;
+                        }).collect(Collectors.toList());
+                        resultMap.put(sortId, articleVOList);
+                    } else {
+                        log.warn("无法转换分类ID: {}, 类型: {}", entry.getKey(),
+                                entry.getKey() != null ? entry.getKey().getClass().getSimpleName() : "null");
+                    }
+                }
+                return PoetryResult.success(resultMap);
             }
         }
     }
@@ -962,6 +1043,38 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
     }
     
+    /**
+     * 安全地将对象转换为Integer类型
+     * 处理Redis序列化导致的类型转换问题
+     * @param obj 要转换的对象
+     * @return 转换后的Integer，转换失败返回null
+     */
+    private Integer convertToInteger(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+
+        if (obj instanceof Integer) {
+            return (Integer) obj;
+        }
+
+        if (obj instanceof Number) {
+            return ((Number) obj).intValue();
+        }
+
+        if (obj instanceof String) {
+            try {
+                return Integer.valueOf((String) obj);
+            } catch (NumberFormatException e) {
+                log.warn("无法将字符串转换为Integer: {}", obj);
+                return null;
+            }
+        }
+
+        log.warn("不支持的类型转换: {} -> Integer", obj.getClass().getSimpleName());
+        return null;
+    }
+
     /**
      * 智能摘要生成（优先AI，回退TextRank）
      * @param content 文章内容
@@ -1191,6 +1304,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
      */
     @Override
     public PoetryResult<String> updateArticleAsync(ArticleVO articleVO) {
+        // 调用重载方法，使用默认参数
+        return updateArticleAsync(articleVO, false, null);
+    }
+
+    /**
+     * 异步更新文章（快速响应版本，支持翻译参数）
+     */
+    @Override
+    public PoetryResult<String> updateArticleAsync(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation) {
         // 生成任务ID
         String taskId = "article_update_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000);
         
@@ -1287,17 +1409,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     return;
                 }
                 log.info("【异步更新】数据库更新成功，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
-                
+
                 // 清理缓存
-                PoetryCache.remove(CommonConst.SORT_INFO);
+                cacheService.evictSortList();
                 
                 // 更新状态：后台处理中
                 updateSaveStatus(taskId, "processing", "文章已更新，正在处理翻译...");
                 
                 // 异步翻译（翻译完成后内部会触发预渲染）
                 try {
-                    log.info("【异步更新】开始文章翻译，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
-                    translationService.translateAndSaveArticle(articleVO.getId());
+                    log.info("【异步更新】开始文章翻译，任务ID: {}, 文章ID: {}, 跳过AI翻译: {}, 有暂存翻译: {}",
+                            taskId, articleVO.getId(), skipAiTranslation, pendingTranslation != null && !pendingTranslation.isEmpty());
+                    translationService.translateAndSaveArticle(articleVO.getId(), skipAiTranslation, pendingTranslation);
                     log.info("【异步更新】文章翻译完成（包含预渲染），任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
                 } catch (Exception e) {
                     log.error("【异步更新】文章翻译失败，任务ID: {}, 文章ID: {}, 错误: {}", taskId, articleVO.getId(), e.getMessage(), e);

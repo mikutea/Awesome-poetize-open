@@ -159,25 +159,18 @@ services:
         max-file: "3"
     environment:
       - PORT=5000
-      - FLASK_ENV=production
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=poetize
-      - MYSQL_PASSWORD=poetize123
-      - MYSQL_DATABASE=poetize
-      - DB_TYPE=mariadb
       - JAVA_BACKEND_HOST=poetize-java
       - JAVA_BACKEND_PORT=8081
       - FRONTEND_HOST=example.com
-      - GUNICORN_WORKERS=2
-      - GUNICORN_THREADS=4
-      - GUNICORN_TIMEOUT=180
-      - GUNICORN_KEEPALIVE=5
-      - OLLAMA_API_URL=http://poetize-translation-model:11434/api
-      - OLLAMA_MODEL_NAME=qwen3:0.6b
       - NGINX_URL=http://nginx/flush_seo_cache
       - PRERENDER_URL=http://poetize-prerender:4000
       - DOCKER_SUBNET=172.28.147.0/28
+      # Redis配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=poetize_redis_2025
+      - REDIS_DB=0
+      - REDIS_MAX_CONNECTIONS=20
     volumes:
       - ./py/data:/app/data
     networks:
@@ -185,6 +178,8 @@ services:
         ipv4_address: 172.28.147.6
     depends_on:
       java-backend:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: always
     healthcheck:
@@ -249,11 +244,22 @@ services:
       - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
       - SITE_URL=http://example.com
       - DOCKER_SUBNET=172.28.147.0/28
+      # Redis配置
+      - SPRING_REDIS_HOST=redis
+      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_PASSWORD=poetize_redis_2025
+      - SPRING_REDIS_DATABASE=0
+      - SPRING_REDIS_TIMEOUT=3000
+      - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=20
+      - SPRING_REDIS_LETTUCE_POOL_MAX_IDLE=10
+      - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=5
     networks:
       poetize-network:
         ipv4_address: 172.28.147.7
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       poetize-ui:
         condition: service_completed_successfully
@@ -264,6 +270,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # Redis缓存服务
+  redis:
+    image: redis:8-alpine
+    container_name: poetize-redis
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      poetize-network:
+        ipv4_address: 172.28.147.10
+    restart: always
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "poetize_redis_2025"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "poetize_redis_2025", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # MariaDB服务
   mysql:
@@ -341,6 +370,7 @@ networks:
 
 volumes:
   mysql_data:
+  redis_data:
   certbot-etc:
   certbot-var:
   web-root:

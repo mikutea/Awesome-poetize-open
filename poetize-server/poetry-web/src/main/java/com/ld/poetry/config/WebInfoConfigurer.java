@@ -20,7 +20,7 @@ public class WebInfoConfigurer implements WebMvcConfigurer {
                     "/*.ico", "/*.png", "/*.jpg", "/*.gif", "/*.svg",
                     "/user/login", 
                     "/admin/**", 
-                    "/webInfo/getWebInfo", 
+                    "/webInfo/getWebInfo",
                     "/webInfo/updateWebInfo",
                     "/webInfo/getSortInfo",
                     "/webInfo/getAdmire",

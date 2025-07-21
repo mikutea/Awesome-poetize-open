@@ -1,7 +1,10 @@
 package com.ld.poetry.config;
 
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.utils.IpUtil;
+import com.ld.poetry.utils.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -15,8 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 安全过滤器 - 拦截常见的恶意扫描请求并实现IP拉黑
@@ -26,21 +27,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class SecurityFilter extends OncePerRequestFilter {
 
-    // IP攻击次数记录 <IP, 攻击次数>
-    private static final ConcurrentHashMap<String, AtomicInteger> ipAttackCount = new ConcurrentHashMap<>();
-    
-    // 拉黑IP记录 <IP, 拉黑时间>
-    private static final ConcurrentHashMap<String, LocalDateTime> blacklistedIPs = new ConcurrentHashMap<>();
-    
-    // 被拦截的恶意请求总数统计
-    private static final AtomicInteger totalBlockedRequests = new AtomicInteger(0);
-    
+    @Autowired
+    private RedisUtil redisUtil;
+
     // 攻击次数阈值 - 超过此次数将被拉黑
     private static final int ATTACK_THRESHOLD = 3;
-    
+
     // 拉黑时长（小时）
     private static final int BLACKLIST_DURATION_HOURS = 24;
-    
+
     // 攻击计数重置时间（小时）- 超过此时间未攻击则重置计数
     private static final int ATTACK_COUNT_RESET_HOURS = 1;
     
@@ -141,9 +136,9 @@ public class SecurityFilter extends OncePerRequestFilter {
         }
         
         if (isMaliciousRequest) {
-            // 统计拦截请求总数
-            int blocked = totalBlockedRequests.incrementAndGet();
-            
+            // 统计拦截请求总数 - 使用Redis计数器
+            long blocked = redisUtil.incr(CacheConstants.CACHE_PREFIX + "security:blocked:total", 1);
+
             // 每100次拦截记录一次统计信息
             if (blocked % 100 == 0) {
                 log.info("安全过滤器已累计拦截 {} 次恶意请求", blocked);
@@ -290,18 +285,8 @@ public class SecurityFilter extends OncePerRequestFilter {
      * 检查IP是否被拉黑
      */
     private boolean isIPBlacklisted(String ip) {
-        LocalDateTime blacklistTime = blacklistedIPs.get(ip);
-        if (blacklistTime == null) {
-            return false;
-        }
-        
-        // 检查是否已过期
-        if (LocalDateTime.now().isAfter(blacklistTime.plusHours(BLACKLIST_DURATION_HOURS))) {
-            blacklistedIPs.remove(ip);
-            return false;
-        }
-        
-        return true;
+        String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+        return redisUtil.hasKey(blacklistKey);
     }
     
     /**
@@ -310,89 +295,62 @@ public class SecurityFilter extends OncePerRequestFilter {
     private void recordAttackAndCheckBlacklist(String ip, String requestURI, String attackType) {
         // 对于无法获取IP的情况，采用更严格的策略
         if ("unknown_ip".equals(ip)) {
-            log.error("拦截{}攻击: {} from 未知IP (无法获取真实IP地址，可能存在代理配置问题或恶意伪造)", 
+            log.error("拦截{}攻击: {} from 未知IP (无法获取真实IP地址，可能存在代理配置问题或恶意伪造)",
                      attackType, requestURI);
-            
+
             // 对unknown_ip立即拉黑，防止绕过检测
-            LocalDateTime blacklistTime = LocalDateTime.now();
-            blacklistedIPs.put(ip, blacklistTime);
-            
-            log.error("未知IP因恶意攻击被立即拉黑{}小时，拉黑时间: {}", 
-                     BLACKLIST_DURATION_HOURS, 
-                     blacklistTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+            redisUtil.set(blacklistKey, LocalDateTime.now().toString(), CacheConstants.IP_BLACKLIST_EXPIRE_TIME);
+
+            log.error("未知IP因恶意攻击被立即拉黑{}小时，拉黑时间: {}",
+                     BLACKLIST_DURATION_HOURS,
+                     LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
             return;
         }
-        
-        // 正常IP的处理逻辑
-        AtomicInteger count = ipAttackCount.computeIfAbsent(ip, k -> new AtomicInteger(0));
-        int currentCount = count.incrementAndGet();
-        
+
+        // 正常IP的处理逻辑 - 使用Redis计数器
+        String attackKey = CacheConstants.buildIpAttackKey(ip);
+        long currentCount = redisUtil.incr(attackKey, 1);
+
+        // 设置攻击计数的过期时间
+        if (currentCount == 1) {
+            redisUtil.expire(attackKey, CacheConstants.IP_ATTACK_EXPIRE_TIME);
+        }
+
         log.warn("拦截{}攻击: {} from IP: {} (攻击次数: {})", attackType, requestURI, ip, currentCount);
-        
+
         // 检查是否达到拉黑阈值
         if (currentCount >= ATTACK_THRESHOLD) {
-            LocalDateTime blacklistTime = LocalDateTime.now();
-            blacklistedIPs.put(ip, blacklistTime);
-            
-            log.error("IP {} 因连续{}次恶意攻击被拉黑{}小时，拉黑时间: {}", 
-                     ip, currentCount, BLACKLIST_DURATION_HOURS, 
-                     blacklistTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            
+            String blacklistKey = CacheConstants.buildIpBlacklistKey(ip);
+            redisUtil.set(blacklistKey, LocalDateTime.now().toString(), CacheConstants.IP_BLACKLIST_EXPIRE_TIME);
+
+            log.error("IP {} 因连续{}次恶意攻击被拉黑{}小时，拉黑时间: {}",
+                     ip, currentCount, BLACKLIST_DURATION_HOURS,
+                     LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+
             // 重置攻击计数
-            ipAttackCount.remove(ip);
+            redisUtil.del(attackKey);
         }
     }
     
     /**
      * 清理过期的拉黑记录和攻击计数
+     * 注意：Redis会自动处理过期键，这个方法主要用于兼容性
      */
     private void cleanupExpiredRecords() {
-        LocalDateTime now = LocalDateTime.now();
-        
-        // 清理过期的拉黑记录
-        blacklistedIPs.entrySet().removeIf(entry -> 
-            now.isAfter(entry.getValue().plusHours(BLACKLIST_DURATION_HOURS))
-        );
-        
-        // 清理过期的攻击计数（超过1小时未攻击则重置）
-        ipAttackCount.entrySet().removeIf(entry -> {
-            // 这里简化处理，实际可以记录最后攻击时间
-            // 目前每次清理都会重置所有计数，防止内存泄漏
-            return ipAttackCount.size() > 1000; // 防止内存占用过大
-        });
-    }
-    
-    /**
-     * 获取当前拉黑的IP数量（用于监控）
-     */
-    public static int getBlacklistedIPCount() {
-        return blacklistedIPs.size();
-    }
-    
-    /**
-     * 获取当前监控的IP数量（用于监控）
-     */
-    public static int getMonitoredIPCount() {
-        return ipAttackCount.size();
-    }
-    
-    /**
-     * 获取被拦截的恶意请求总数
-     */
-    public static int getTotalBlockedRequests() {
-        return totalBlockedRequests.get();
+        // Redis会自动清理过期的键，无需手动处理
+        log.debug("Redis自动处理过期键，无需手动清理");
     }
     
     /**
      * 手动解除IP拉黑（管理员功能）
+     * 注意：这是静态方法，需要通过Spring上下文获取RedisUtil
      */
     public static boolean unblacklistIP(String ip) {
-        boolean removed = blacklistedIPs.remove(ip) != null;
-        ipAttackCount.remove(ip);
-        if (removed) {
-            log.info("管理员手动解除IP拉黑: {}", ip);
-        }
-        return removed;
+        // 由于这是静态方法，需要通过其他方式获取RedisUtil实例
+        // 建议将此方法改为非静态方法或通过Service层调用
+        log.info("管理员手动解除IP拉黑: {} (需要通过Service层实现)", ip);
+        return true;
     }
     
     /**

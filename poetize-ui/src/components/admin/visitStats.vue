@@ -316,10 +316,12 @@
   
       fetchVisitStats() {
         this.loading = true;
-        
-        this.$http.get(this.$constant.pythonBaseURL + `/webInfo/getDailyVisitStats?days=${this.timeRange}`)
+
+        // 直接调用Java后端API，使用管理员token进行认证
+        this.$http.get(this.$constant.baseURL + `/webInfo/getDailyVisitStats?days=${this.timeRange}`, {}, true)
           .then(res => {
-            if (res.code === 200 && res.data) {
+            // Java后端返回的是PoetryResult格式，检查success字段或code字段
+            if ((res.code === 200 || res.success) && res.data) {
               this.visitStats = res.data;
               this.updateChart();
             } else {
@@ -327,7 +329,28 @@
             }
           })
           .catch(error => {
-            this.$message.error(`获取访问统计数据出错: ${error.message}`);
+            console.error('获取访问统计数据出错:', error);
+            // 提供更详细的错误信息
+            let errorMessage = '获取访问统计数据出错';
+            if (error.response) {
+              // 服务器返回了错误响应
+              if (error.response.status === 401) {
+                errorMessage = '权限不足，请确认您有管理员权限';
+              } else if (error.response.status === 403) {
+                errorMessage = '访问被拒绝，请重新登录';
+              } else if (error.response.data && error.response.data.message) {
+                errorMessage = error.response.data.message;
+              } else {
+                errorMessage = `服务器错误 (${error.response.status})`;
+              }
+            } else if (error.request) {
+              // 网络错误
+              errorMessage = '网络连接失败，请检查网络连接';
+            } else {
+              // 其他错误
+              errorMessage = error.message || '未知错误';
+            }
+            this.$message.error(errorMessage);
           })
           .finally(() => {
             this.loading = false;

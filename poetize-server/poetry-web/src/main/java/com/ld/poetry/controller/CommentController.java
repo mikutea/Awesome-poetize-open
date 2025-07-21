@@ -1,10 +1,12 @@
 package com.ld.poetry.controller;
 
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.service.CommentService;
+import com.ld.poetry.service.LocationService;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.cache.PoetryCache;
@@ -15,6 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -25,6 +31,7 @@ import org.springframework.web.bind.annotation.*;
  * @author sara
  * @since 2021-08-13
  */
+@Slf4j
 @RestController
 @RequestMapping("/comment")
 public class CommentController {
@@ -35,6 +42,9 @@ public class CommentController {
 
     @Autowired
     private CommonQuery commonQuery;
+
+    @Autowired
+    private LocationService locationService;
 
 
     /**
@@ -80,6 +90,42 @@ public class CommentController {
     @PostMapping("/listComment")
     public PoetryResult<BaseRequestVO> listComment(@RequestBody BaseRequestVO baseRequestVO) {
         return commentService.listComment(baseRequestVO);
+    }
+
+    /**
+     * 🔧 新接口：子评论懒加载查询
+     * 支持分页加载某个评论的子评论
+     */
+    @PostMapping("/listChildComments")
+    public PoetryResult<Page<CommentVO>> listChildComments(
+            @RequestParam("parentCommentId") Integer parentCommentId,
+            @RequestBody BaseRequestVO baseRequestVO,
+            @RequestParam(value = "current", defaultValue = "1") Integer current,
+            @RequestParam(value = "size", defaultValue = "10") Integer size) {
+
+        PoetryResult<Page<CommentVO>> result = commentService.listChildComments(parentCommentId, baseRequestVO, current, size);
+
+        return result;
+    }
+
+    /**
+     * 获取IP地理位置缓存统计信息 - 管理员功能
+     */
+    @GetMapping("/getLocationCacheStats")
+    public PoetryResult<Map<String, Object>> getLocationCacheStats() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("cacheSize", locationService.getCacheSize());
+        result.put("message", "IP地理位置缓存统计信息");
+        return PoetryResult.success(result);
+    }
+
+    /**
+     * 清理IP地理位置缓存 - 管理员功能
+     */
+    @PostMapping("/clearLocationCache")
+    public PoetryResult<String> clearLocationCache() {
+        locationService.clearLocationCache();
+        return PoetryResult.success("IP地理位置缓存已清理");
     }
 }
 

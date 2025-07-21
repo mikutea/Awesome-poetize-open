@@ -29,6 +29,39 @@
         <mavon-editor ref="md" @imgAdd="imgAdd" v-model="article.articleContent"/>
       </el-form-item>
 
+      <!-- 翻译编辑按钮和跳过开关 -->
+      <el-form-item>
+        <div style="display: flex; align-items: center; gap: 20px;">
+          <div>
+            <el-button type="info" icon="el-icon-edit" @click="openTranslationEditor">编辑翻译</el-button>
+            <span style="margin-left: 10px; color: #909399; font-size: 12px;">
+              编辑文章的翻译版本
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center;">
+            <el-switch
+              v-model="skipAiTranslation"
+              active-text="跳过AI自动翻译"
+              inactive-text="启用AI自动翻译"
+              :active-color="skipAiTranslation ? '#F56C6C' : '#13CE66'"
+              style="margin-right: 10px;">
+            </el-switch>
+            <el-tooltip content="开启后保存文章时不会执行AI自动翻译" placement="top">
+              <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+            </el-tooltip>
+          </div>
+        </div>
+
+        <!-- 暂存翻译提示 -->
+        <div v-if="hasPendingTranslation" style="margin-top: 8px;">
+          <el-tag type="warning" size="mini">
+            <i class="el-icon-edit"></i>
+            有未保存的翻译内容 ({{ getLanguageName(pendingTranslation.language) }})
+          </el-tag>
+        </div>
+      </el-form-item>
+
       <el-form-item label="是否启用评论" prop="commentStatus">
         <el-tag :type="article.commentStatus === false ? 'danger' : 'success'"
                 disable-transitions>
@@ -172,6 +205,59 @@
         <el-button type="primary" @click="createNewLabel" :loading="newLabelLoading">确 定</el-button>
       </div>
     </el-dialog>
+
+    <!-- 翻译编辑弹窗 -->
+    <el-dialog
+      title="编辑文章翻译"
+      :visible.sync="translationDialogVisible"
+      width="80%"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false">
+
+      <el-form :model="translationForm" ref="translationForm" label-width="120px">
+        <!-- 目标语言选择 -->
+        <el-form-item label="目标语言">
+          <el-select v-model="translationForm.targetLanguage" @change="onTargetLanguageChange">
+            <el-option label="English (英文)" value="en"></el-option>
+            <el-option label="日本語 (日文)" value="ja"></el-option>
+            <el-option label="繁體中文 (繁体中文)" value="zh-TW"></el-option>
+            <el-option label="한국어 (韩文)" value="ko"></el-option>
+            <el-option label="Français (法文)" value="fr"></el-option>
+            <el-option label="Deutsch (德文)" value="de"></el-option>
+            <el-option label="Español (西班牙文)" value="es"></el-option>
+            <el-option label="Русский (俄文)" value="ru"></el-option>
+          </el-select>
+          <span style="margin-left: 10px; color: #909399; font-size: 12px;">
+            修改后将同时更新系统默认目标语言
+          </span>
+        </el-form-item>
+
+        <!-- 翻译标题 -->
+        <el-form-item label="翻译标题" prop="translatedTitle">
+          <el-input
+            v-model="translationForm.translatedTitle"
+            maxlength="500"
+            show-word-limit
+            placeholder="请输入翻译后的文章标题">
+          </el-input>
+        </el-form-item>
+
+        <!-- 翻译内容 -->
+        <el-form-item label="翻译内容" prop="translatedContent">
+          <mavon-editor
+            ref="translationMd"
+            v-model="translationForm.translatedContent"
+            placeholder="请输入翻译后的文章内容（支持Markdown格式）"/>
+        </el-form-item>
+      </el-form>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="closeTranslationDialog">取 消</el-button>
+        <el-button type="primary" @click="saveTranslation" :loading="translationSaving">
+          保 存
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -247,6 +333,22 @@
             { max: 256, message: '标签描述长度不能超过256个字符', trigger: 'blur' }
           ]
         },
+        // 翻译编辑相关数据
+        translationDialogVisible: false,
+        translationSaving: false,
+        translationForm: {
+          targetLanguage: 'en',
+          translatedTitle: '',
+          translatedContent: ''
+        },
+        // 跳过AI翻译开关
+        skipAiTranslation: false,
+        // 暂存的翻译数据
+        pendingTranslation: {
+          title: '',
+          content: '',
+          language: ''
+        },
         rules: {
           articleTitle: [
             {required: true, message: '请输入标题', trigger: 'change'},
@@ -275,6 +377,15 @@
           ]
         }
       };
+    },
+
+    computed: {
+      // 检查是否有暂存的翻译数据
+      hasPendingTranslation() {
+        return this.pendingTranslation.title &&
+               this.pendingTranslation.content &&
+               this.pendingTranslation.language;
+      }
     },
 
     watch: {
@@ -538,8 +649,19 @@
           // 记录保存请求数据，便于调试
           console.log('准备保存文章:', JSON.stringify(article, null, 2));
           
+          // 准备请求参数
+          const params = new URLSearchParams();
+          params.append('skipAiTranslation', this.skipAiTranslation);
+
+          // 添加暂存翻译数据
+          if (this.hasPendingTranslation) {
+            params.append('pendingTranslationTitle', this.pendingTranslation.title);
+            params.append('pendingTranslationContent', this.pendingTranslation.content);
+            params.append('pendingTranslationLanguage', this.pendingTranslation.language);
+          }
+
           // 发送保存请求
-          this.$http.post(this.$constant.baseURL + url, article, true)
+          this.$http.post(this.$constant.baseURL + url + '?' + params.toString(), article, true)
             .then(res => {
               this.stopLoading();
               
@@ -566,6 +688,9 @@
                   });
                 }
                 
+                // 清空暂存翻译数据
+                this.clearPendingTranslation();
+
                 // 快速跳转，无需等待
                 setTimeout(() => {
                   this.$router.push({path: "/postList"});
@@ -600,12 +725,23 @@
           console.log('准备异步保存文章:', JSON.stringify(article, null, 2));
           
           // 根据是否有id选择不同的异步接口
-          let url = this.$common.isEmpty(this.id) 
+          let url = this.$common.isEmpty(this.id)
             ? "/article/saveArticleAsync"
             : "/article/updateArticleAsync";
-          
+
+          // 准备请求参数
+          const params = new URLSearchParams();
+          params.append('skipAiTranslation', this.skipAiTranslation);
+
+          // 添加暂存翻译数据
+          if (this.hasPendingTranslation) {
+            params.append('pendingTranslationTitle', this.pendingTranslation.title);
+            params.append('pendingTranslationContent', this.pendingTranslation.content);
+            params.append('pendingTranslationLanguage', this.pendingTranslation.language);
+          }
+
           // 发送异步保存请求
-          this.$http.post(this.$constant.baseURL + url, article, true)
+          this.$http.post(this.$constant.baseURL + url + '?' + params.toString(), article, true)
             .then(res => {
               this.asyncSaveLoading = false;
               
@@ -619,7 +755,10 @@
                 
                 // 添加通知（会自动启动轮询）
                 this.$notify.loading('保存文章', '正在保存文章，请稍候...', this.currentTaskId);
-                
+
+                // 清空暂存翻译数据
+                this.clearPendingTranslation();
+
                 // 延迟跳转，确保全局通知组件已接管轮询
                 setTimeout(() => {
                   console.log('准备跳转到文章列表页面');
@@ -873,6 +1012,165 @@
         if (!this.article.sortId) return '';
         const sort = this.sorts.find(s => s.id === this.article.sortId);
         return sort ? sort.sortName : '';
+      },
+
+      // 翻译编辑相关方法
+      async openTranslationEditor() {
+        try {
+          // 获取默认目标语言配置
+          await this.loadDefaultTargetLanguage();
+
+          // 如果是编辑已有文章（有ID），加载现有翻译内容
+          if (!this.$common.isEmpty(this.id)) {
+            await this.loadExistingTranslation();
+          } else {
+            // 新文章，以空白状态打开
+            this.translationForm.translatedTitle = '';
+            this.translationForm.translatedContent = '';
+          }
+
+          // 显示弹窗
+          this.translationDialogVisible = true;
+        } catch (error) {
+          console.error('打开翻译编辑器失败:', error);
+          this.$message.error('打开翻译编辑器失败: ' + error.message);
+        }
+      },
+
+      async loadDefaultTargetLanguage() {
+        try {
+          const response = await this.$http.get(this.$constant.pythonBaseURL + "/api/translation/default-lang");
+          if (response.code === 200 && response.data) {
+            this.translationForm.targetLanguage = response.data.default_target_lang || 'en';
+          }
+        } catch (error) {
+          console.warn('获取默认目标语言失败，使用默认值:', error);
+          this.translationForm.targetLanguage = 'en';
+        }
+      },
+
+      async loadExistingTranslation() {
+        // 确保有文章ID才执行数据库查询
+        if (this.$common.isEmpty(this.id)) {
+          console.warn('无文章ID，跳过翻译内容加载');
+          this.translationForm.translatedTitle = '';
+          this.translationForm.translatedContent = '';
+          return;
+        }
+
+        try {
+          const response = await this.$http.get(this.$constant.baseURL + "/article/getTranslation", {
+            id: this.id,
+            language: this.translationForm.targetLanguage
+          });
+
+          if (response.code === 200 && response.data && response.data.status === 'success') {
+            this.translationForm.translatedTitle = response.data.title || '';
+            this.translationForm.translatedContent = response.data.content || '';
+            console.log('成功加载现有翻译内容，语言:', this.translationForm.targetLanguage);
+          } else {
+            // 该语言没有翻译内容，清空表单
+            this.translationForm.translatedTitle = '';
+            this.translationForm.translatedContent = '';
+            console.log('该语言暂无翻译内容，语言:', this.translationForm.targetLanguage);
+          }
+        } catch (error) {
+          console.warn('加载现有翻译失败:', error);
+          // 加载失败，清空表单
+          this.translationForm.translatedTitle = '';
+          this.translationForm.translatedContent = '';
+        }
+      },
+
+      async onTargetLanguageChange(newLanguage) {
+        try {
+          // 更新系统默认目标语言
+          await this.updateDefaultTargetLanguage(newLanguage);
+
+          // 只有在文章已保存（有ID）时才加载翻译内容
+          if (!this.$common.isEmpty(this.id)) {
+            await this.loadExistingTranslation();
+          } else {
+            // 新文章或无ID，清空翻译表单
+            this.translationForm.translatedTitle = '';
+            this.translationForm.translatedContent = '';
+          }
+        } catch (error) {
+          console.error('切换目标语言失败:', error);
+          this.$message.error('切换目标语言失败: ' + error.message);
+        }
+      },
+
+      async updateDefaultTargetLanguage(targetLanguage) {
+        try {
+          const response = await this.$http.post(this.$constant.pythonBaseURL + "/api/translation/config", {
+            default_target_lang: targetLanguage
+          });
+
+          if (response.code === 200) {
+            this.$message.success('默认目标语言已更新为: ' + this.getLanguageName(targetLanguage));
+          }
+        } catch (error) {
+          console.warn('更新默认目标语言失败:', error);
+        }
+      },
+
+      getLanguageName(langCode) {
+        const langMap = {
+          'en': 'English (英文)',
+          'ja': '日本語 (日文)',
+          'zh-TW': '繁體中文 (繁体中文)',
+          'ko': '한국어 (韩文)',
+          'fr': 'Français (法文)',
+          'de': 'Deutsch (德文)',
+          'es': 'Español (西班牙文)',
+          'ru': 'Русский (俄文)'
+        };
+        return langMap[langCode] || langCode;
+      },
+
+      async saveTranslation() {
+        // 验证表单
+        if (!this.translationForm.translatedTitle.trim()) {
+          this.$message.warning('请输入翻译标题');
+          return;
+        }
+
+        if (!this.translationForm.translatedContent.trim()) {
+          this.$message.warning('请输入翻译内容');
+          return;
+        }
+
+        // 暂存翻译数据
+        this.pendingTranslation = {
+          title: this.translationForm.translatedTitle.trim(),
+          content: this.translationForm.translatedContent.trim(),
+          language: this.translationForm.targetLanguage
+        };
+
+        // 自动开启跳过AI翻译开关
+        this.skipAiTranslation = true;
+
+        // 显示成功消息
+        this.$message.success('翻译内容已暂存，请保存文章以应用翻译');
+
+        // 关闭弹窗
+        this.closeTranslationDialog();
+      },
+
+      closeTranslationDialog() {
+        this.translationDialogVisible = false;
+        this.translationForm.translatedTitle = '';
+        this.translationForm.translatedContent = '';
+      },
+
+      // 清空暂存的翻译数据
+      clearPendingTranslation() {
+        this.pendingTranslation = {
+          title: '',
+          content: '',
+          language: ''
+        };
       }
     }
   }

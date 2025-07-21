@@ -16,12 +16,39 @@ from auth_decorator import admin_required  # 导入管理员权限装饰器
 EMAIL_CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'py', 'data', 'mail_configs.json')
 
 def get_email_configs():
-    """获取所有邮箱配置"""
+    """获取所有邮箱配置（带缓存）"""
     try:
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        cached_configs = cache_service.get_cached_email_config()
+        if cached_configs:
+            print("从缓存获取邮件配置")
+            return cached_configs.get("configs", [])
+
         if not os.path.exists(EMAIL_CONFIG_FILE):
+            empty_config = {"configs": [], "defaultIndex": -1}
+
+            # 缓存空配置
+            try:
+                cache_service.cache_email_config(empty_config)
+                print("空邮件配置已缓存")
+            except Exception as cache_e:
+                print(f"缓存空邮件配置失败: {cache_e}")
+
             return []
+
         with open(EMAIL_CONFIG_FILE, 'r', encoding='utf-8') as f:
             configs = json.load(f)
+
+            # 缓存配置
+            try:
+                cache_service.cache_email_config(configs)
+                print("邮件配置已缓存")
+            except Exception as cache_e:
+                print(f"缓存邮件配置失败: {cache_e}")
+
             return configs.get("configs", [])
     except Exception as e:
         print(f"读取邮箱配置文件出错: {str(e)}")
@@ -453,6 +480,26 @@ def register_email_api(app: FastAPI):
             }
         
         return {"code": 200, "message": "调试配置信息", "data": config_info}
+
+    @app.post('/api/cache/refreshEmailCache')
+    async def refresh_email_cache(request: Request, _: bool = Depends(admin_required)):
+        """手动刷新邮件配置缓存"""
+        try:
+            from cache_refresh_service import get_cache_refresh_service
+            refresh_service = get_cache_refresh_service()
+            refresh_result = refresh_service.refresh_email_caches()
+
+            return {
+                "code": 200,
+                "message": "邮件缓存刷新完成",
+                "data": refresh_result
+            }
+        except Exception as e:
+            return {
+                "code": 500,
+                "message": f"刷新邮件缓存失败: {str(e)}",
+                "data": None
+            }
 
     @app.post('/api/debug/setBackendUrl')
     async def set_backend_url(request: Request):

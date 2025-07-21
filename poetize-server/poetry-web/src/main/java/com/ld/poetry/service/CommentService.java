@@ -25,4 +25,16 @@ public interface CommentService extends IService<Comment> {
     PoetryResult<BaseRequestVO> listComment(BaseRequestVO baseRequestVO);
 
     PoetryResult<Page> listAdminComment(BaseRequestVO baseRequestVO, Boolean isBoss);
+
+    /**
+     * 🔧 新接口：子评论懒加载查询
+     * 支持分页加载某个评论的子评论
+     *
+     * @param parentCommentId 父评论ID
+     * @param baseRequestVO 基础请求参数（包含source、type等）
+     * @param current 当前页码
+     * @param size 每页大小（默认10）
+     * @return 分页的子评论列表
+     */
+    PoetryResult<Page<CommentVO>> listChildComments(Integer parentCommentId, BaseRequestVO baseRequestVO, Integer current, Integer size);
 }

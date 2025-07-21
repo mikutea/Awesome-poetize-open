@@ -1718,31 +1718,31 @@ X-API-KEY: {{apiConfig.apiKey}}
           github: {
             client_id: '',
             client_secret: '',
-            redirect_uri: this.$constant.webURL + '/callback/github',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/github',
             enabled: true
           },
           google: {
             client_id: '',
             client_secret: '',
-            redirect_uri: this.$constant.webURL + '/callback/google',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/google',
             enabled: true
           },
           twitter: {
             client_key: '',
             client_secret: '',
-            redirect_uri: this.$constant.webURL + '/callback/x',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/x',
             enabled: true
           },
           yandex: {
             client_id: '',
             client_secret: '',
-            redirect_uri: this.$constant.webURL + '/callback/yandex',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/yandex',
             enabled: true
           },
           gitee: {
             client_id: '',
             client_secret: '',
-            redirect_uri: this.$constant.webURL + '/callback/gitee',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/gitee',
             enabled: true
           }
         },
@@ -2322,7 +2322,7 @@ X-API-KEY: {{apiConfig.apiKey}}
           username: "",
           password: "",
           port: 465, // 默认SSL端口
-          senderName: "Poetize",
+          senderName: "邮件服务",
           useSsl: true,
           useStarttls: false,
           auth: true,
@@ -2382,8 +2382,10 @@ X-API-KEY: {{apiConfig.apiKey}}
               // 关闭对话框
               document.querySelector('.el-message-box__close').click();
               // 获取preset参数并调用usePreset方法
-              const preset = btn.innerText.includes('163') ? '163' :
-                             btn.innerText.includes('QQ') ? 'qq' :
+              const preset = btn.innerText.includes('网易企业邮箱') ? '163ex' :
+                             btn.innerText.includes('网易163邮箱') ? '163' :
+                             btn.innerText.includes('腾讯企业邮箱') ? 'qqex' :
+                             btn.innerText.includes('QQ邮箱') ? 'qq' :
                              btn.innerText.includes('Gmail') ? 'gmail' :
                              btn.innerText.includes('Outlook') ? 'outlook' : 'aliyun';
               this.usePreset(preset);
@@ -2395,7 +2397,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 使用预设配置
       usePreset(preset) {
         let config = {
-          senderName: "Poetize",
+          senderName: "邮件服务",
           username: "",
           password: "",
           enabled: true,
@@ -2467,7 +2469,7 @@ X-API-KEY: {{apiConfig.apiKey}}
           case '163ex':
             config = {
               ...config,
-              host: "smtp.qiye.163.com",
+              host: "smtphz.qiye.163.com",
               port: 465,
               useSsl: true,
               useStarttls: false
@@ -2752,31 +2754,31 @@ X-API-KEY: {{apiConfig.apiKey}}
             github: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/github',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/github',
               enabled: false
             },
             google: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/google',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/google',
               enabled: false
             },
             twitter: {
               client_key: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/x',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/x',
               enabled: false
             },
             yandex: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/yandex',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/yandex',
               enabled: false
             },
             gitee: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/gitee',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/gitee',
               enabled: false
             }
           };
@@ -2822,31 +2824,31 @@ X-API-KEY: {{apiConfig.apiKey}}
             github: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/github',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/github',
               enabled: false
             },
             google: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/google',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/google',
               enabled: false
             },
             twitter: {
               client_key: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/x',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/x',
               enabled: false
             },
             yandex: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/yandex',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/yandex',
               enabled: false
             },
             gitee: {
               client_id: '',
               client_secret: '',
-              redirect_uri: this.$constant.webURL + '/callback/gitee',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/gitee',
               enabled: false
             }
           };

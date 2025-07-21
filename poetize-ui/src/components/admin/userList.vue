@@ -2,10 +2,14 @@
   <div>
     <div>
       <div class="handle-box">
-        <el-select v-model="pagination.userType" placeholder="用户类型" class="handle-select mrb10">
+        <el-select v-model="pagination.userType" placeholder="权限类型" class="handle-select mrb10">
           <el-option key="1" label="站长" :value="0"></el-option>
           <el-option key="2" label="管理员" :value="1"></el-option>
           <el-option key="3" label="普通用户" :value="2"></el-option>
+        </el-select>
+        <el-select v-model="pagination.isThirdPartyUser" placeholder="登录方式" class="handle-select mrb10">
+          <el-option key="1" label="普通注册" :value="false"></el-option>
+          <el-option key="2" label="第三方登录" :value="true"></el-option>
         </el-select>
         <el-select v-model="pagination.userStatus" placeholder="用户状态" class="handle-select mrb10">
           <el-option key="1" label="启用" :value="true"></el-option>
@@ -18,6 +22,14 @@
       <el-table :data="users" border class="table" header-cell-class-name="table-header">
         <el-table-column prop="id" label="ID" width="55" align="center"></el-table-column>
         <el-table-column prop="username" label="用户名" align="center"></el-table-column>
+        <el-table-column label="登录方式" align="center" width="100">
+          <template slot-scope="scope">
+            <el-tag :type="scope.row.isThirdPartyUser ? 'warning' : 'success'"
+                    disable-transitions>
+              {{ scope.row.isThirdPartyUser ? '第三方' : '普通' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="phoneNumber" label="手机号" align="center"></el-table-column>
         <el-table-column prop="email" label="邮箱" align="center"></el-table-column>
         <el-table-column label="赞赏" width="100" align="center">
@@ -32,7 +44,9 @@
                     disable-transitions>
               {{scope.row.userStatus === false ? '禁用' : '启用'}}
             </el-tag>
-            <el-switch v-if="scope.row.id !== $store.state.currentAdmin.id" @click.native="changeUserStatus(scope.row)" v-model="scope.row.userStatus"></el-switch>
+            <el-switch v-if="scope.row.id !== $store.state.currentAdmin.id"
+                       v-model="scope.row.userStatus"
+                       @change="handleUserStatusToggle(scope.row)"></el-switch>
           </template>
         </el-table-column>
         <el-table-column label="头像" align="center">
@@ -129,7 +143,8 @@
           total: 0,
           searchKey: "",
           userStatus: null,
-          userType: null
+          userType: null,
+          isThirdPartyUser: null
         },
         users: [],
         changeUser: {
@@ -159,7 +174,8 @@
           total: 0,
           searchKey: "",
           userStatus: null,
-          userType: null
+          userType: null,
+          isThirdPartyUser: null
         }
         this.getUsers();
       },
@@ -178,18 +194,74 @@
             });
           });
       },
-      changeUserStatus(user) {
+      handleUserStatusChange(user, newStatus) {
+        // 先保存原始状态，以便失败时恢复
+        const originalStatus = user.userStatus;
+
+        // 立即更新UI显示
+        user.userStatus = newStatus;
+
+        // 调用API更新后端状态
         this.$http.get(this.$constant.baseURL + "/admin/user/changeUserStatus", {
           userId: user.id,
-          flag: user.userStatus
+          flag: newStatus  // 传递新的状态值
         }, true)
           .then((res) => {
             this.$message({
-              message: "修改成功！",
+              message: newStatus ? "用户已启用！" : "用户已禁用！",
               type: "success"
             });
           })
           .catch((error) => {
+            // 如果API调用失败，恢复原来的状态
+            user.userStatus = originalStatus;
+            this.$message({
+              message: error.message,
+              type: "error"
+            });
+          });
+      },
+      handleUserStatusToggle(user) {
+        // 当开关被切换时，userStatus已经是新值了
+        // 我们需要调用API来同步后端状态
+        const newStatus = user.userStatus;
+
+        this.$http.get(this.$constant.baseURL + "/admin/user/changeUserStatus", {
+          userId: user.id,
+          flag: newStatus
+        }, true)
+          .then((res) => {
+            this.$message({
+              message: newStatus ? "用户已启用！" : "用户已禁用！",
+              type: "success"
+            });
+          })
+          .catch((error) => {
+            // 如果API调用失败，恢复原来的状态
+            user.userStatus = !newStatus;
+            this.$message({
+              message: "状态修改失败：" + error.message,
+              type: "error"
+            });
+          });
+      },
+      changeUserStatus(user) {
+        // 使用当前的userStatus值，因为@change事件在值改变后触发
+        const newStatus = user.userStatus;
+
+        this.$http.get(this.$constant.baseURL + "/admin/user/changeUserStatus", {
+          userId: user.id,
+          flag: newStatus  // 传递新的状态值
+        }, true)
+          .then((res) => {
+            this.$message({
+              message: newStatus ? "用户已启用！" : "用户已禁用！",
+              type: "success"
+            });
+          })
+          .catch((error) => {
+            // 如果请求失败，恢复原来的状态
+            user.userStatus = !newStatus;
             this.$message({
               message: error.message,
               type: "error"

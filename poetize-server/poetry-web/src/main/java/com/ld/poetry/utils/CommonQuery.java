@@ -1,11 +1,12 @@
 package com.ld.poetry.utils;
 
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
+import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.UserService;
-import com.ld.poetry.utils.cache.PoetryCache;
 import com.ld.poetry.vo.FamilyVO;
 import org.apache.commons.io.IOUtils;
 import org.lionsoul.ip2region.xdb.Searcher;
@@ -46,6 +47,9 @@ public class CommonQuery {
     @Autowired
     private FamilyMapper familyMapper;
 
+    @Autowired
+    private CacheService cacheService;
+
     private Searcher searcher;
 
     @PostConstruct
@@ -66,7 +70,7 @@ public class CommonQuery {
         String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
 
         @SuppressWarnings("unchecked")
-        CopyOnWriteArraySet<String> ipHistory = (CopyOnWriteArraySet<String>) PoetryCache.get(CommonConst.IP_HISTORY);
+        CopyOnWriteArraySet<String> ipHistory = (CopyOnWriteArraySet<String>) cacheService.getCachedIpHistory();
         if (ipHistory != null && !ipHistory.contains(ipUser)) {
             synchronized (ipUser.intern()) {
                 if (!ipHistory.contains(ipUser)) {
@@ -125,34 +129,38 @@ public class CommonQuery {
     }
 
     public User getUser(Integer userId) {
-        User user = (User) PoetryCache.get(CommonConst.USER_CACHE + userId.toString());
+        // 使用Redis缓存替换PoetryCache
+        User user = cacheService.getCachedUser(userId);
         if (user != null) {
             return user;
         }
         User u = userService.getById(userId);
         if (u != null) {
-            PoetryCache.put(CommonConst.USER_CACHE + userId.toString(), u, CommonConst.EXPIRE);
+            cacheService.cacheUser(u);
             return u;
         }
         return null;
     }
 
     public List<User> getAdmire() {
+        // 使用Redis缓存替换PoetryCache
+        String cacheKey = CacheConstants.CACHE_PREFIX + "admire:list";
         @SuppressWarnings("unchecked")
-        List<User> admire = (List<User>) PoetryCache.get(CommonConst.ADMIRE);
+        List<User> admire = (List<User>) cacheService.get(cacheKey);
         if (admire != null) {
             return admire;
         }
 
         synchronized (CommonConst.ADMIRE.intern()) {
+            // 双重检查锁定
             @SuppressWarnings("unchecked")
-            List<User> cachedAdmire = (List<User>) PoetryCache.get(CommonConst.ADMIRE);
+            List<User> cachedAdmire = (List<User>) cacheService.get(cacheKey);
             if (cachedAdmire != null) {
                 return cachedAdmire;
             } else {
                 List<User> users = userService.lambdaQuery().select(User::getId, User::getUsername, User::getAdmire, User::getAvatar).isNotNull(User::getAdmire).list();
 
-                PoetryCache.put(CommonConst.ADMIRE, users, CommonConst.EXPIRE);
+                cacheService.set(cacheKey, users, CacheConstants.LONG_EXPIRE_TIME);
 
                 return users;
             }
@@ -160,15 +168,18 @@ public class CommonQuery {
     }
 
     public List<FamilyVO> getFamilyList() {
+        // 使用Redis缓存替换PoetryCache
+        String cacheKey = CacheConstants.CACHE_PREFIX + "family:list";
         @SuppressWarnings("unchecked")
-        List<FamilyVO> familyVOList = (List<FamilyVO>) PoetryCache.get(CommonConst.FAMILY_LIST);
+        List<FamilyVO> familyVOList = (List<FamilyVO>) cacheService.get(cacheKey);
         if (familyVOList != null) {
             return familyVOList;
         }
 
         synchronized (CommonConst.FAMILY_LIST.intern()) {
+            // 双重检查锁定
             @SuppressWarnings("unchecked")
-            List<FamilyVO> cachedFamilyVOList = (List<FamilyVO>) PoetryCache.get(CommonConst.FAMILY_LIST);
+            List<FamilyVO> cachedFamilyVOList = (List<FamilyVO>) cacheService.get(cacheKey);
             if (cachedFamilyVOList != null) {
                 return cachedFamilyVOList;
             } else {
@@ -184,46 +195,48 @@ public class CommonQuery {
                     familyVOList = new ArrayList<>();
                 }
 
-                PoetryCache.put(CommonConst.FAMILY_LIST, familyVOList);
+                cacheService.set(cacheKey, familyVOList, CacheConstants.LONG_EXPIRE_TIME);
                 return familyVOList;
             }
         }
     }
 
     public Integer getCommentCount(Integer source, String type) {
-        Object countObj = PoetryCache.get(CommonConst.COMMENT_COUNT_CACHE + source.toString() + "_" + type);
-        if (countObj != null) {
-            // 兼容处理，支持Integer和Long类型
-            if (countObj instanceof Integer) {
-                return (Integer) countObj;
-            } else if (countObj instanceof Long) {
-                return ((Long) countObj).intValue();
-            }
+        // 使用Redis缓存替换PoetryCache
+        Long cachedCount = cacheService.getCachedCommentCount(source, type);
+        if (cachedCount != null) {
+            return cachedCount.intValue();
         }
+
         LambdaQueryChainWrapper<Comment> wrapper = new LambdaQueryChainWrapper<>(commentMapper);
         Long c = wrapper.eq(Comment::getSource, source).eq(Comment::getType, type).count();
         Integer result = c.intValue();
-        PoetryCache.put(CommonConst.COMMENT_COUNT_CACHE + source.toString() + "_" + type, result, CommonConst.EXPIRE);
+
+        // 缓存评论数量
+        cacheService.cacheCommentCount(source, type, c);
         return result;
     }
 
     public List<Integer> getUserArticleIds(Integer userId) {
+        // 使用Redis缓存替换PoetryCache
+        String cacheKey = CacheConstants.CACHE_PREFIX + "user:article:list:" + userId;
         @SuppressWarnings("unchecked")
-        List<Integer> ids = (List<Integer>) PoetryCache.get(CommonConst.USER_ARTICLE_LIST + userId.toString());
+        List<Integer> ids = (List<Integer>) cacheService.get(cacheKey);
         if (ids != null) {
             return ids;
         }
 
         synchronized ((CommonConst.USER_ARTICLE_LIST + userId.toString()).intern()) {
+            // 双重检查锁定
             @SuppressWarnings("unchecked")
-            List<Integer> cachedIds = (List<Integer>) PoetryCache.get(CommonConst.USER_ARTICLE_LIST + userId.toString());
+            List<Integer> cachedIds = (List<Integer>) cacheService.get(cacheKey);
             if (cachedIds != null) {
                 return cachedIds;
             } else {
                 LambdaQueryChainWrapper<Article> wrapper = new LambdaQueryChainWrapper<>(articleMapper);
                 List<Article> articles = wrapper.eq(Article::getUserId, userId).select(Article::getId).list();
                 List<Integer> collect = articles.stream().map(Article::getId).collect(Collectors.toList());
-                PoetryCache.put(CommonConst.USER_ARTICLE_LIST + userId.toString(), collect, CommonConst.EXPIRE);
+                cacheService.set(cacheKey, collect, CacheConstants.LONG_EXPIRE_TIME);
                 return collect;
             }
         }
@@ -235,14 +248,14 @@ public class CommonQuery {
             searchText = searchText.substring(0, 50);
         }
         
-        // 使用缓存键包含搜索文本，为每个搜索关键词提供独立缓存
-        String cacheKey = CommonConst.ARTICLE_SEARCH_RESULT + "_" + searchText;
-        
+        // 使用Redis缓存替换PoetryCache
+        String cacheKey = CacheConstants.CACHE_PREFIX + "search:article:" + (searchText != null ? searchText.hashCode() : "empty");
+
         @SuppressWarnings("unchecked")
-        List<List<Integer>> cachedIds = (List<List<Integer>>) PoetryCache.get(cacheKey);
+        List<List<Integer>> cachedIds = (List<List<Integer>>) cacheService.get(cacheKey);
         if (cachedIds != null) {
             return cachedIds;
-                }
+        }
         
         // 直接在数据库层面执行搜索，避免加载所有文章内容到内存
         List<List<Integer>> ids = new ArrayList<>();
@@ -277,23 +290,25 @@ public class CommonQuery {
 
         ids.add(titleIds);
         ids.add(contentIds);
-        
+
         // 缓存搜索结果10分钟
-        PoetryCache.put(cacheKey, ids, 600);
-        
+        cacheService.set(cacheKey, ids, 600);
+
         return ids;
     }
 
     public List<Sort> getSortInfo() {
+        // 使用Redis缓存替换PoetryCache
         @SuppressWarnings("unchecked")
-        List<Sort> sortInfo = (List<Sort>) PoetryCache.get(CommonConst.SORT_INFO);
+        List<Sort> sortInfo = (List<Sort>) cacheService.getCachedSortList();
         if (sortInfo != null) {
             return sortInfo;
         }
 
         synchronized (CommonConst.SORT_INFO.intern()) {
+            // 双重检查锁定
             @SuppressWarnings("unchecked")
-            List<Sort> cachedSortInfo = (List<Sort>) PoetryCache.get(CommonConst.SORT_INFO);
+            List<Sort> cachedSortInfo = (List<Sort>) cacheService.getCachedSortList();
             if (cachedSortInfo == null) {
                 List<Sort> sorts = new LambdaQueryChainWrapper<>(sortMapper).list();
                 if (!CollectionUtils.isEmpty(sorts)) {
@@ -320,7 +335,7 @@ public class CommonQuery {
                         }
                     });
                 }
-                PoetryCache.put(CommonConst.SORT_INFO, sorts);
+                cacheService.cacheSortList(sorts);
                 return sorts;
             } else {
                 return cachedSortInfo;

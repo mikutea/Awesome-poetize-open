@@ -20,7 +20,6 @@ if not os.path.exists(DATA_DIR):
 # 配置文件路径
 # 修改为与Java端一致的配置文件名
 EMAIL_CONFIG_FILE = os.path.join(DATA_DIR, 'mail_configs.json')
-THIRD_LOGIN_CONFIG_PATH = os.path.join(DATA_DIR, "third_login_config.json")
 
 # Java API基础URL，用于获取和更新数据库中的配置
 JAVA_API_URL = os.environ.get("JAVA_API_URL", BASE_BACKEND_URL)
@@ -53,119 +52,21 @@ def init_data_files():
             with open(EMAIL_CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump({"configs": [], "defaultIndex": -1}, f, ensure_ascii=False)
             
-    # 初始化第三方登录配置
-    if not os.path.exists(THIRD_LOGIN_CONFIG_PATH):
-        with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            default_host = "localhost:5000"  # 默认值，后续可以通过配置更新
-            json.dump({
-                "enable": False,
-                "github": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/github",
-                    "enabled": True
-                },
-                "google": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/google",
-                    "enabled": True
-                },
-                "twitter": {
-                    "client_key": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/x",
-                    "enabled": True
-                },
-                "yandex": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/yandex",
-                    "enabled": True
-                },
-                "gitee": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/gitee",
-                    "enabled": True
-                }
-            }, f, ensure_ascii=False)
-    else:
-        # 检查现有配置文件是否完整，如果不完整则修复
-        try:
-            with open(THIRD_LOGIN_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            
-            # 检查是否缺少gitee配置或enabled字段
-            needs_update = False
-            default_host = "localhost:5000"
-            
-            # 确保有gitee配置
-            if "gitee" not in config:
-                config["gitee"] = {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{default_host}/callback/gitee",
-                    "enabled": True
-                }
-                needs_update = True
-            
-            # 确保每个平台都有enabled字段
-            for platform in ["github", "google", "twitter", "yandex", "gitee"]:
-                if platform in config and "enabled" not in config[platform]:
-                    config[platform]["enabled"] = True
-                    needs_update = True
-            
-            # 如果需要更新，保存文件
-            if needs_update:
-                with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, ensure_ascii=False, indent=2)
-                print("已修复第三方登录配置文件")
-                
-        except Exception as e:
-            print(f"修复第三方登录配置文件时出错: {e}")
-            # 如果文件损坏，重新创建
-            with open(THIRD_LOGIN_CONFIG_PATH, 'w', encoding='utf-8') as f:
-                default_host = "localhost:5000"
-                json.dump({
-                    "enable": False,
-                    "github": {
-                        "client_id": "",
-                        "client_secret": "",
-                        "redirect_uri": f"http://{default_host}/callback/github",
-                        "enabled": True
-                    },
-                    "google": {
-                        "client_id": "",
-                        "client_secret": "",
-                        "redirect_uri": f"http://{default_host}/callback/google",
-                        "enabled": True
-                    },
-                    "twitter": {
-                        "client_key": "",
-                        "client_secret": "",
-                        "redirect_uri": f"http://{default_host}/callback/x",
-                        "enabled": True
-                    },
-                    "yandex": {
-                        "client_id": "",
-                        "client_secret": "",
-                        "redirect_uri": f"http://{default_host}/callback/yandex",
-                        "enabled": True
-                    },
-                    "gitee": {
-                        "client_id": "",
-                        "client_secret": "",
-                        "redirect_uri": f"http://{default_host}/callback/gitee",
-                        "enabled": True
-                    }
-                }, f, ensure_ascii=False, indent=2)
 
 # 从Java API读取网站信息
 async def get_web_info():
-    """从Java API获取网站信息"""
+    """从Java API获取网站信息（带缓存）"""
     try:
-        # 通过Java API从数据库获取，添加随机参数防止缓存
+        from cache_service import get_cache_service
+        cache_service = get_cache_service()
+
+        # 先尝试从缓存获取
+        cached_web_info = cache_service.get_cached_web_info(is_admin=False)
+        if cached_web_info:
+            print("从缓存获取网站信息")
+            return cached_web_info
+
+        # 缓存不存在，从Java API获取
         cache_breaker = int(time.time())
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -218,7 +119,14 @@ async def get_web_info():
                 
                 if "enableGrayMode" not in web_info:
                     web_info["enableGrayMode"] = False
-                
+
+                # 缓存网站信息
+                try:
+                    cache_service.cache_web_info(web_info, is_admin=False)
+                    print("网站信息已缓存")
+                except Exception as cache_e:
+                    print(f"缓存网站信息失败: {cache_e}")
+
                 return web_info
             else:
                 print(f"从Java API获取网站信息失败: {data.get('message', '未知错误')}")
@@ -289,6 +197,20 @@ async def save_web_info(web_info, request: Request = None):
             data = response.json()
             if data.get("code") == 200:
                 print(f"保存网站信息成功，看板娘状态: {java_web_info.get('enableWaifu', '未设置')}")
+
+                # 使用统一的缓存刷新服务
+                try:
+                    from cache_refresh_service import get_cache_refresh_service
+                    refresh_service = get_cache_refresh_service()
+                    refresh_result = refresh_service.refresh_web_info_caches()
+
+                    if refresh_result.get("success", False):
+                        print(f"网站信息更新完成，成功清理 {refresh_result.get('cleared_count', 0)} 个相关缓存")
+                    else:
+                        print(f"网站信息缓存清理部分失败: 成功 {refresh_result.get('cleared_count', 0)}, 失败 {refresh_result.get('failed_count', 0)}")
+                except Exception as cache_e:
+                    print(f"清理网站信息相关缓存失败: {cache_e}")
+
                 return True
             else:
                 print(f"保存网站信息失败: {data.get('message', '未知错误')}")
@@ -303,65 +225,66 @@ async def save_web_info(web_info, request: Request = None):
         traceback.print_exc()  # 打印完整的错误堆栈
         return False
 
-# 获取第三方登录配置
+# 获取第三方登录配置（已迁移到数据库）
 def get_third_login_config(host: str = "localhost:5000"):
+    """
+    从Java API（数据库）获取第三方登录配置
+    注意：配置已迁移到数据库，不再使用JSON文件
+    """
     try:
-        if os.path.exists(THIRD_LOGIN_CONFIG_PATH):
-            with open(THIRD_LOGIN_CONFIG_PATH, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                # 确保每个平台配置都有enabled字段
-                for platform in ["github", "google", "twitter", "yandex", "gitee"]:
-                    if platform in config and "enabled" not in config[platform]:
-                        config[platform]["enabled"] = True
-                return config
-        else:
-            # 返回默认配置
-            default_config = {
-                "enable": False,
-                "github": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{host}/callback/github",
-                    "enabled": True
-                },
-                "google": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{host}/callback/google",
-                    "enabled": True
-                },
-                "twitter": {
-                    "client_key": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{host}/callback/x",
-                    "enabled": True
-                },
-                "yandex": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{host}/callback/yandex",
-                    "enabled": True
-                },
-                "gitee": {
-                    "client_id": "",
-                    "client_secret": "",
-                    "redirect_uri": f"http://{host}/callback/gitee",
-                    "enabled": True
-                }
-            }
-            # 保存默认配置
-            save_third_login_config(default_config)
-            return default_config
+        java_api_url = f"{BASE_BACKEND_URL}/webInfo/getThirdLoginConfig"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Service": "poetize-python",
+            "X-Admin-Request": "true"
+        }
+
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(java_api_url, headers=headers)
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200 and result.get("data"):
+                    print("从Java API获取第三方登录配置成功")
+                    return result["data"]
+                else:
+                    print(f"Java API返回错误: {result.get('message', '未知错误')}")
+                    return None
+            else:
+                print(f"Java API请求失败，状态码: {response.status_code}")
+                return None
+
     except Exception as e:
         print(f"获取第三方登录配置失败: {str(e)}")
         return None
 
-# 保存第三方登录配置
+# 保存第三方登录配置（已迁移到数据库）
 def save_third_login_config(config):
+    """
+    保存第三方登录配置到Java API（数据库）
+    注意：配置已迁移到数据库，不再使用JSON文件
+    """
     try:
-        with open(THIRD_LOGIN_CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        return True
+        java_api_url = f"{BASE_BACKEND_URL}/webInfo/updateThirdLoginConfig"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Service": "poetize-python",
+            "X-Admin-Request": "true"
+        }
+
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(java_api_url, json=config, headers=headers)
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    print("第三方登录配置保存到数据库成功")
+                    return True
+                else:
+                    print(f"Java API返回错误: {result.get('message', '未知错误')}")
+                    return False
+            else:
+                print(f"Java API请求失败，状态码: {response.status_code}")
+                return False
+
     except Exception as e:
         print(f"保存第三方登录配置失败: {str(e)}")
         return False
@@ -662,6 +585,48 @@ def register_web_admin_api(app: FastAPI):
                 "data": None
             })
 
+    @app.get('/webInfo/getThirdLoginStatus')
+    async def get_third_login_status(provider: str = None):
+        """获取第三方登录状态（转发到Java后端）"""
+        try:
+            print(f"收到获取第三方登录状态请求，平台: {provider}")
+
+            # 构建请求URL
+            url = f"{JAVA_API_URL}/webInfo/getThirdLoginStatus"
+            if provider:
+                url += f"?provider={provider}"
+
+            # 转发请求到Java后端
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url,
+                    headers={
+                        'X-Internal-Service': 'poetize-python',
+                        'User-Agent': 'poetize-python/1.0.0'
+                    },
+                    timeout=5
+                )
+
+            if response.status_code == 200:
+                data = response.json()
+                print(f"从Java后端获取第三方登录状态成功: {data}")
+                return data
+            else:
+                print(f"Java后端返回错误状态码: {response.status_code}")
+                return {
+                    "code": response.status_code,
+                    "message": "获取第三方登录状态失败",
+                    "data": None
+                }
+
+        except Exception as e:
+            print(f"获取第三方登录状态失败: {e}")
+            return {
+                "code": 500,
+                "message": f"获取第三方登录状态失败: {str(e)}",
+                "data": None
+            }
+
     @app.post('/webInfo/updateWaifuStatus')
     @app.options('/webInfo/updateWaifuStatus')
     async def update_waifu_status(request: Request, _: bool = Depends(admin_required)):
@@ -783,8 +748,21 @@ if __name__ == '__main__':
     uvicorn.run(app, host="0.0.0.0", port=5001, debug=True) 
 
 async def get_admin_web_info_from_java(auth_token: str = None):
-    """从 Java 后端获取包含随机配置的完整网站信息，需要管理员 token"""
+    """从 Java 后端获取包含随机配置的完整网站信息，需要管理员 token（带缓存）"""
     try:
+        from cache_service import get_cache_service
+        import hashlib
+
+        cache_service = get_cache_service()
+
+        # 生成基于token的缓存键
+        if auth_token:
+            token_hash = hashlib.md5(auth_token.encode('utf-8')).hexdigest()
+            cached_info = cache_service.get_cached_web_info_details(token_hash)
+            if cached_info:
+                print("从缓存获取管理员网站详细信息")
+                return cached_info
+
         cache_breaker = int(time.time())
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -800,7 +778,18 @@ async def get_admin_web_info_from_java(auth_token: str = None):
         if response.status_code == 200:
             data = response.json()
             if data.get("code") == 200:
-                return data.get("data")
+                web_info = data.get("data")
+
+                # 缓存管理员网站详细信息
+                if auth_token and web_info:
+                    try:
+                        token_hash = hashlib.md5(auth_token.encode('utf-8')).hexdigest()
+                        cache_service.cache_web_info_details(token_hash, web_info)
+                        print("管理员网站详细信息已缓存")
+                    except Exception as cache_e:
+                        print(f"缓存管理员网站详细信息失败: {cache_e}")
+
+                return web_info
             print(f"Admin WebInfo 返回非200 code: {data}")
         else:
             print(f"Admin WebInfo HTTP错误: {response.status_code}")

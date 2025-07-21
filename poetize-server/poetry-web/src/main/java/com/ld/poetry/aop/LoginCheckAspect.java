@@ -48,7 +48,8 @@ public class LoginCheckAspect {
             throw new PoetryLoginException(CodeMsg.NOT_LOGIN.getMsg());
         }
 
-        User user = (User) PoetryCache.get(token);
+        // 使用PoetryUtil获取用户信息（已集成Redis缓存）
+        User user = PoetryUtil.getCurrentUser();
         if (user == null) {
             log.warn("Token无效或已过期: {}", token);
             throw new PoetryLoginException(CodeMsg.LOGIN_EXPIRED.getMsg());

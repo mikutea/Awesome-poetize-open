@@ -124,6 +124,19 @@
 <!--    <div href="#" class="cd-top" v-if="!$common.mobile()" @click="toTop()"></div>-->
 
     <div class="toolButton">
+      <!-- 简化语言切换按钮 - 只在文章页面且屏幕≤1050px时显示 -->
+      <div class="simple-lang-switch"
+           v-if="showSimpleLangSwitch"
+           @click="handleSimpleLangSwitch()"
+           :title="getSimpleLangSwitchTitle()">
+        <span class="simple-lang-text">{{ getSimpleLangDisplay() }}</span>
+      </div>
+
+      <!-- 目录按钮 - 只在文章页面显示 -->
+      <div class="toc-button-container" v-if="showTocButton" @click="clickTocButton()">
+        <i class="fa fa-align-justify toc-button-icon" aria-hidden="true"></i>
+      </div>
+
       <div class="backTop" v-if="toolButton" @click="toTop()">
         <!-- 回到顶部按钮 -->
         <svg viewBox="0 0 1024 1024" width="50" height="50">
@@ -267,6 +280,8 @@
     data() {
       return {
         toolButton: false,
+        showTocButton: false, // 控制目录按钮显示
+        showSimpleLangSwitch: false, // 控制简化语言切换按钮显示
         hoverEnter: false,
         mouseAnimation: false,
         isDark: false,
@@ -371,6 +386,12 @@
       if (this.$store.state.webInfo && this.$store.state.webInfo.enableGrayMode) {
         this.applyGrayMask();
       }
+
+      // 初始化目录按钮显示状态
+      this.updateTocButtonVisibility();
+
+      // 初始化简化语言切换按钮显示状态
+      this.updateSimpleLangSwitchVisibility();
     },
     destroyed() {
       window.removeEventListener("scroll", this.onScrollPage);
@@ -383,6 +404,12 @@
       }
     },
     watch: {
+      // 监听路由变化，控制目录按钮显示
+      '$route'(to, from) {
+        this.updateTocButtonVisibility();
+        this.updateSimpleLangSwitchVisibility();
+      },
+
       scrollTop(scrollTop, oldScrollTop) {
         //如果滑动距离超过实际背景高度的一半视为进入页面，背景改为白色
         const backgroundHeight = this.getActualBackgroundHeight();
@@ -674,6 +701,194 @@
         // 设置卡片背景RGB值用于半透明背景
         root.style.setProperty("--card-bg-rgb", "255, 255, 255");
       },
+      // 更新目录按钮显示状态
+      updateTocButtonVisibility() {
+        // 只在文章页面显示目录按钮
+        this.showTocButton = this.$route.path.startsWith('/article/') && this.$route.params.id;
+      },
+
+      // 目录按钮点击事件
+      clickTocButton() {
+        let display = $(".toc");
+        if ("none" === display.css("display")) {
+          display.css("display", "unset");
+        } else {
+          display.css("display", "none");
+        }
+      },
+
+      // 更新简化语言切换按钮显示状态
+      updateSimpleLangSwitchVisibility() {
+        // 只在文章页面显示简化语言切换按钮
+        this.showSimpleLangSwitch = this.$route.path.startsWith('/article/') && this.$route.params.id;
+      },
+
+      // 获取当前语言的简化显示
+      getSimpleLangDisplay() {
+        // 从article组件获取当前语言，如果获取不到则默认为中文
+        const articleComponent = this.getArticleComponent();
+
+        if (articleComponent && articleComponent.currentLang) {
+          const langMap = {
+            'zh': '简',
+            'zh-TW': '繁',
+            'zh-CN': '简',
+            'zh-HK': '港',
+            'zh-Hant': '繁',
+            'zh-Hans': '简',
+            'en': 'EN',
+            'ja': 'JP',
+            'ko': '한',
+            'fr': 'FR',
+            'de': 'DE',
+            'es': 'ES',
+            'ru': 'RU',
+            'pt': 'PT',
+            'it': 'IT',
+            'ar': 'AR',
+            'th': 'TH',
+            'vi': 'VI'
+          };
+          return langMap[articleComponent.currentLang] || articleComponent.currentLang.toUpperCase();
+        }
+
+        // 如果无法获取article组件，尝试从URL或localStorage获取默认语言
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlLang = urlParams.get('lang');
+        const savedLang = localStorage.getItem('preferredLanguage');
+
+        // 优先使用URL参数，然后是保存的偏好，最后是默认值
+        const defaultLang = urlLang || savedLang || 'zh';
+
+        const langMap = {
+          'zh': '简',
+          'zh-TW': '繁',
+          'zh-CN': '简',
+          'zh-HK': '港',
+          'zh-Hant': '繁',
+          'zh-Hans': '简',
+          'en': 'EN',
+          'ja': 'JP',
+          'ko': '한',
+          'fr': 'FR',
+          'de': 'DE',
+          'es': 'ES',
+          'ru': 'RU',
+          'pt': 'PT',
+          'it': 'IT',
+          'ar': 'AR',
+          'th': 'TH',
+          'vi': 'VI'
+        };
+
+        return langMap[defaultLang] || '简';
+      },
+
+      // 获取简化语言切换按钮的提示文本
+      getSimpleLangSwitchTitle() {
+        const articleComponent = this.getArticleComponent();
+        if (articleComponent && articleComponent.availableLanguageButtons) {
+          const nextLang = this.getNextAvailableLanguage();
+          if (nextLang) {
+            return `点击切换到${nextLang.name}`;
+          }
+        }
+        return '语言切换';
+      },
+
+      // 获取下一个可用语言
+      getNextAvailableLanguage() {
+        const articleComponent = this.getArticleComponent();
+        if (articleComponent && articleComponent.availableLanguageButtons && articleComponent.availableLanguageButtons.length > 1) {
+          const currentIndex = articleComponent.availableLanguageButtons.findIndex(
+            lang => lang.code === articleComponent.currentLang
+          );
+          const nextIndex = (currentIndex + 1) % articleComponent.availableLanguageButtons.length;
+          return articleComponent.availableLanguageButtons[nextIndex];
+        }
+        return null;
+      },
+
+      // 获取article组件实例
+      getArticleComponent() {
+        // 通过多种方式查找article组件
+        const findArticleComponent = (children) => {
+          for (let child of children) {
+            // 检查组件是否有article相关的数据属性（更严格的检查）
+            if (child.availableLanguageButtons !== undefined &&
+                child.currentLang !== undefined &&
+                child.handleLanguageSwitch !== undefined &&
+                child.sourceLanguage !== undefined &&
+                child.languageMap !== undefined) {
+              return child;
+            }
+            // 检查组件名称和文件路径
+            if (child.$options.name === 'article' ||
+                child.$vnode?.tag?.includes('article') ||
+                child.$options._componentTag === 'article' ||
+                child.$options.__file?.includes('article.vue')) {
+              return child;
+            }
+            // 递归查找子组件
+            if (child.$children && child.$children.length > 0) {
+              const found = findArticleComponent(child.$children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        // 首先尝试从$children查找
+        let articleComponent = findArticleComponent(this.$children);
+
+        // 如果没找到，尝试从$refs查找
+        if (!articleComponent && this.$refs) {
+          for (let refName in this.$refs) {
+            const ref = this.$refs[refName];
+            if (ref && ref.availableLanguageButtons !== undefined &&
+                ref.currentLang !== undefined &&
+                ref.handleLanguageSwitch !== undefined &&
+                ref.sourceLanguage !== undefined) {
+              articleComponent = ref;
+              break;
+            }
+          }
+        }
+
+        // 如果还没找到，尝试从全局查找
+        if (!articleComponent) {
+          const allComponents = this.$root.$children;
+          articleComponent = findArticleComponent(allComponents);
+        }
+
+        // 最后尝试从router-view中查找
+        if (!articleComponent) {
+          const routerView = this.$children.find(child =>
+            child.$vnode?.componentOptions?.tag === 'router-view'
+          );
+          if (routerView && routerView.$children) {
+            articleComponent = findArticleComponent(routerView.$children);
+          }
+        }
+
+        return articleComponent;
+      },
+
+      // 处理简化语言切换按钮点击
+      handleSimpleLangSwitch() {
+        const articleComponent = this.getArticleComponent();
+        if (articleComponent && articleComponent.handleLanguageSwitch) {
+          const nextLang = this.getNextAvailableLanguage();
+          if (nextLang) {
+            // 调用article组件的语言切换方法
+            articleComponent.handleLanguageSwitch(nextLang.code);
+
+            // 强制更新显示
+            this.$forceUpdate();
+          }
+        }
+      },
+
       toTop() {
         window.scrollTo({
           top: 0,
@@ -974,9 +1189,95 @@
   display: none;
 }
 
+/* 简化语言切换按钮样式 - 仅在≤1050px时显示 */
+.simple-lang-switch {
+  display: none;
+}
+
+@media (max-width: 1050px) {
+  .simple-lang-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    user-select: none;
+  }
+
+  .simple-lang-switch:hover {
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .simple-lang-switch:active {
+    transform: translateY(0) scale(0.95);
+  }
+
+  .simple-lang-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--black);
+    transition: color 0.3s ease;
+  }
+
+  .simple-lang-switch:hover .simple-lang-text {
+    color: var(--themeBackground);
+  }
+}
+
+/* 目录按钮样式 */
+.toc-button-container {
+  cursor: pointer;
+  font-size: 25px;
+  width: 30px;
+  transition: all 0.3s ease;
+  margin-bottom: 4px
+}
+
+.toc-button-icon {
+  font-size: 23px;
+  color: var(--black);
+}
+
+.toc-button-container:hover .toc-button-icon {
+  color: var(--themeBackground);
+}
+
 @media screen and (max-width: 400px) {
   .toolButton {
     right: 0.5vh;
+  }
+}
+
+/* 移动端简化语言切换按钮优化 */
+@media (max-width: 768px) {
+  .simple-lang-switch {
+    width: 32px !important;
+    height: 32px !important;
+    margin-bottom: 6px !important;
+    border-radius: 6px !important;
+  }
+
+  .simple-lang-text {
+    font-size: 11px !important;
+  }
+
+  /* 移动端触摸优化 */
+  .simple-lang-switch:hover {
+    transform: none !important; /* 移除hover效果避免触摸设备粘滞 */
+  }
+
+  .simple-lang-switch:active {
+    transform: scale(0.95) !important;
   }
 }
 
