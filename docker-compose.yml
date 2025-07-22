@@ -273,7 +273,7 @@ services:
 
   # Redis缓存服务
   redis:
-    image: redis:8-alpine
+    image: redis:7-alpine
     container_name: poetize-redis
     logging:
       options:
