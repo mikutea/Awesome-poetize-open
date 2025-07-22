@@ -253,6 +253,8 @@ services:
       - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=20
       - SPRING_REDIS_LETTUCE_POOL_MAX_IDLE=10
       - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=5
+      # Token安全配置
+      - TOKEN_SECRET_KEY=your_super_secure_random_key_here_at_least_32_chars
     networks:
       poetize-network:
         ipv4_address: 172.28.147.7

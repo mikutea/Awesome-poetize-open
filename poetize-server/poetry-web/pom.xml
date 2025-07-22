@@ -158,6 +158,13 @@
             <artifactId>hutool-extra</artifactId>
         </dependency>
 
+        <!-- Apache Commons Codec - 用于HMAC签名计算 -->
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.16.0</version>
+        </dependency>
+
         <dependency>
             <groupId>com.qiniu</groupId>
             <artifactId>qiniu-java-sdk</artifactId>

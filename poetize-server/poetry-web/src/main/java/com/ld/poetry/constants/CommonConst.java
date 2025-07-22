@@ -50,9 +50,9 @@ public class CommonConst {
     public static final String IP_HISTORY_COUNT = "ip_history_count";
 
     /**
-     * Token过期时间：10天
+     * Token过期时间：7天（统一与SESSION_EXPIRE_TIME保持一致）
      */
-    public static final long TOKEN_EXPIRE = 864000;
+    public static final long TOKEN_EXPIRE = 604800;
 
     /**
      * Code过期时间：1天

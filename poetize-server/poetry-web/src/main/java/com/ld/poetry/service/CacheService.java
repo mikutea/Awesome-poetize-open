@@ -1,6 +1,7 @@
 package com.ld.poetry.service;
 
 import com.ld.poetry.constants.CacheConstants;
+import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.entity.WebInfo;
@@ -521,23 +522,25 @@ public class CacheService {
 
     /**
      * 缓存用户会话
+     * 使用统一的TOKEN_EXPIRE时间，确保与token过期时间一致
      */
     public void cacheUserSession(String token, Integer userId) {
         if (token != null && userId != null) {
             String key = CacheConstants.buildSessionKey(token);
-            redisUtil.set(key, userId, CacheConstants.SESSION_EXPIRE_TIME);
-            log.debug("缓存用户会话: token={}, userId={}", token, userId);
+            redisUtil.set(key, userId, CommonConst.TOKEN_EXPIRE);
+            log.debug("缓存用户会话: token={}, userId={}, 过期时间: {}秒", token, userId, CommonConst.TOKEN_EXPIRE);
         }
     }
 
     /**
      * 缓存用户Token映射
+     * 使用统一的TOKEN_EXPIRE时间，确保与token过期时间一致
      */
     public void cacheUserTokenMapping(Integer userId, String token) {
         if (userId != null && token != null) {
             String key = CacheConstants.CACHE_PREFIX + "user:token:" + userId;
-            redisUtil.set(key, token, CacheConstants.SESSION_EXPIRE_TIME);
-            log.debug("缓存用户Token映射: userId={}, token={}", userId, token);
+            redisUtil.set(key, token, CommonConst.TOKEN_EXPIRE);
+            log.debug("缓存用户Token映射: userId={}, token={}, 过期时间: {}秒", userId, token, CommonConst.TOKEN_EXPIRE);
         }
     }
 

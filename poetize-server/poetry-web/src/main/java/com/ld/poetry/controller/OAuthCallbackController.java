@@ -5,6 +5,7 @@ import com.ld.poetry.service.UserService;
 import com.ld.poetry.vo.UserVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -79,13 +80,24 @@ public class OAuthCallbackController {
                 log.info("OAuth登录成功: provider={}, uid={}, userId={}",
                         provider, uid, result.getData().getId());
 
-                // 如果需要邮箱收集，在返回数据中添加标记
-                if (emailCollectionNeeded != null && emailCollectionNeeded) {
-                    UserVO userVO = result.getData();
-                    // 可以通过扩展UserVO或在返回消息中添加标记
-                    log.info("用户需要补充邮箱信息: provider={}, uid={}", provider, uid);
-                    // 这里可以设置一个特殊的标记，让前端知道需要收集邮箱
+                // 🔧 修复邮箱收集逻辑：检查数据库中用户是否已有邮箱
+                UserVO userVO = result.getData();
+                boolean userHasEmailInDB = StringUtils.hasText(userVO.getEmail());
+
+                // 只有当用户在数据库中没有邮箱 AND 第三方平台也没有提供邮箱时，才需要收集邮箱
+                boolean needsEmailCollection = !userHasEmailInDB &&
+                    (emailCollectionNeeded != null && emailCollectionNeeded);
+
+                if (needsEmailCollection) {
+                    log.info("用户需要补充邮箱信息: provider={}, uid={}, 数据库邮箱={}, 第三方邮箱={}",
+                            provider, uid, userVO.getEmail(), email);
                     result.setMessage("EMAIL_COLLECTION_NEEDED");
+                } else if (userHasEmailInDB) {
+                    log.info("用户已有邮箱信息，无需收集: provider={}, uid={}, 邮箱={}",
+                            provider, uid, userVO.getEmail());
+                } else if (StringUtils.hasText(email)) {
+                    log.info("第三方平台提供了邮箱信息: provider={}, uid={}, 邮箱={}",
+                            provider, uid, email);
                 }
             } else {
                 log.warn("OAuth登录失败: provider={}, uid={}, error={}",

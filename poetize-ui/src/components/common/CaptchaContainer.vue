@@ -3,6 +3,7 @@
     <captcha-wrapper
       :visible="visible"
       :action="captchaAction"
+      :is-reply-comment="isReplyComment"
       @success="onCaptchaSuccess"
       @fail="onCaptchaFail"
       @close="onCaptchaClose"
@@ -23,7 +24,8 @@ export default {
     ...mapState({
       visible: state => state.captcha.show,
       captchaAction: state => state.captcha.action,
-      captchaParams: state => state.captcha.params
+      captchaParams: state => state.captcha.params,
+      isReplyComment: state => state.captcha.isReplyComment
     })
   },
   methods: {

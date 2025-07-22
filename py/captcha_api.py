@@ -234,29 +234,42 @@ def register_captcha_api(app: FastAPI):
         """验证复选框验证码"""
         try:
             data = await request.json()
-            
+
             # 获取验证数据
             mouse_track = data.get('mouseTrack', [])
             straight_ratio = data.get('straightRatio', 1.0)
             client_ip = request.client.host
             user_agent = request.headers.get('User-Agent', '')
-            
+
+            # 获取前端传递的动态参数
+            is_reply_comment = data.get('isReplyComment', False)
+            retry_count = data.get('retryCount', 0)
+            frontend_sensitivity = data.get('trackSensitivity')
+            frontend_min_points = data.get('minTrackPoints')
+
+            print(f"验证请求 - 回复评论: {is_reply_comment}, 重试次数: {retry_count}, 轨迹点数: {len(mouse_track)}")
+
             # 获取验证码配置
             config = get_captcha_config()
             checkbox_config = config.get('checkbox', DEFAULT_CAPTCHA_CONFIG['checkbox'])
-            
+
             # 验证数据分析
             is_valid = True
-            
-            # 1. 轨迹点数量检查
-            min_track_points = checkbox_config.get('minTrackPoints', 3)
+            validation_details = []
+
+            # 1. 轨迹点数量检查 - 使用前端计算的动态参数
+            min_track_points = frontend_min_points if frontend_min_points is not None else checkbox_config.get('minTrackPoints', 3)
             if len(mouse_track) < min_track_points:
                 is_valid = False
-                
-            # 2. 直线率检查
-            track_sensitivity = checkbox_config.get('trackSensitivity', 0.98)
+                validation_details.append(f"轨迹点数不足: {len(mouse_track)} < {min_track_points}")
+
+            # 2. 直线率检查 - 使用前端计算的动态敏感度
+            track_sensitivity = frontend_sensitivity if frontend_sensitivity is not None else checkbox_config.get('trackSensitivity', 0.98)
             if straight_ratio > track_sensitivity:
                 is_valid = False
+                validation_details.append(f"轨迹过于直线: {straight_ratio:.3f} > {track_sensitivity:.3f}")
+
+            print(f"验证结果: {is_valid}, 详情: {validation_details}")
             
             # 3. IP频率限制检查（防止短时间内多次验证）
             # 这里可以实现更复杂的IP验证逻辑

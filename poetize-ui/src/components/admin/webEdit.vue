@@ -1040,7 +1040,7 @@
         </div>
 
         <div class="form-tip" style="margin-top: 15px; font-size: 13px; color: #909399;">
-          * 回调地址通常为 http://你的域名/callback/{平台标识}
+          * 回调地址为 http://你的域名/python/callback/{平台标识}
         </div>
 
         <div style="margin-top: 20px;margin-bottom: 22px; text-align: center;">
@@ -2971,6 +2971,9 @@ X-API-KEY: {{apiConfig.apiKey}}
               type: "success"
             });
             this.loading = false;
+
+            // 触发第三方登录配置变更事件
+            this.$bus.$emit('thirdPartyLoginConfigChanged');
           })
           .catch((error) => {
             this.$message({
@@ -2989,6 +2992,9 @@ X-API-KEY: {{apiConfig.apiKey}}
               type: "success"
             });
             this.loading = false;
+
+            // 触发第三方登录配置变更事件
+            this.$bus.$emit('thirdPartyLoginConfigChanged');
           })
           .catch((error) => {
             this.$message({

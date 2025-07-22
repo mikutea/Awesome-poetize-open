@@ -55,20 +55,22 @@ public class LoginCheckAspect {
             throw new PoetryLoginException(CodeMsg.LOGIN_EXPIRED.getMsg());
         }
 
-        // 验证token类型和权限
-        if (token.contains(CommonConst.USER_ACCESS_TOKEN)) {
+        // 验证token类型和权限 - 使用更安全的startsWith()方法防止权限绕过攻击
+        if (TokenValidationUtil.isUserToken(token)) {
             if (loginCheck.value() == PoetryEnum.USER_TYPE_ADMIN.getCode() || loginCheck.value() == PoetryEnum.USER_TYPE_DEV.getCode()) {
-                log.warn("普通用户尝试访问管理员接口: {}", user.getUsername());
+                log.warn("普通用户尝试访问管理员接口 - 用户: {}, IP: {}, token前缀: {}",
+                    user.getUsername(), clientIp, TokenValidationUtil.getTokenPrefix(token));
                 return PoetryResult.fail("请输入管理员账号！");
             }
-        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+        } else if (TokenValidationUtil.isAdminToken(token)) {
             log.info("管理员请求 - IP: {}, 用户: {}", clientIp, user.getUsername());
             if (loginCheck.value() == PoetryEnum.USER_TYPE_ADMIN.getCode() && user.getId().intValue() != CommonConst.ADMIN_USER_ID) {
-                log.warn("非超级管理员尝试访问超级管理员接口: {}", user.getUsername());
+                log.warn("非超级管理员尝试访问超级管理员接口 - 用户: {}, IP: {}", user.getUsername(), clientIp);
                 return PoetryResult.fail("请输入管理员账号！");
             }
         } else {
-            log.warn("无效的token类型: {}", token);
+            log.warn("无效的token类型或格式 - IP: {}, token前缀: {}, token长度: {}",
+                clientIp, TokenValidationUtil.getTokenPrefix(token), token.length());
             throw new PoetryLoginException(CodeMsg.NOT_LOGIN.getMsg());
         }
 
@@ -77,31 +79,32 @@ public class LoginCheckAspect {
             throw new PoetryRuntimeException("权限不足！");
         }
 
-        // 重置过期时间
+        // 重置过期时间 - 使用安全的token类型检查
         String userId = user.getId().toString();
         boolean needRefresh = false;
-        if (token.contains(CommonConst.USER_ACCESS_TOKEN)) {
+        if (TokenValidationUtil.isUserToken(token)) {
             needRefresh = PoetryCache.get(CommonConst.USER_TOKEN_INTERVAL + userId) == null;
-        } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+        } else if (TokenValidationUtil.isAdminToken(token)) {
             needRefresh = PoetryCache.get(CommonConst.ADMIN_TOKEN_INTERVAL + userId) == null;
         }
 
         if (needRefresh) {
             synchronized (userId.intern()) {
                 boolean shouldRefresh = false;
-                if (token.contains(CommonConst.USER_ACCESS_TOKEN)) {
+                if (TokenValidationUtil.isUserToken(token)) {
                     shouldRefresh = PoetryCache.get(CommonConst.USER_TOKEN_INTERVAL + userId) == null;
-                } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+                } else if (TokenValidationUtil.isAdminToken(token)) {
                     shouldRefresh = PoetryCache.get(CommonConst.ADMIN_TOKEN_INTERVAL + userId) == null;
                 }
 
                 if (shouldRefresh) {
-                    log.info("刷新token过期时间 - 用户: {}", user.getUsername());
+                    log.info("刷新token过期时间 - 用户: {}, token类型: {}",
+                        user.getUsername(), TokenValidationUtil.getTokenType(token).getDescription());
                     PoetryCache.put(token, user, CommonConst.TOKEN_EXPIRE);
-                    if (token.contains(CommonConst.USER_ACCESS_TOKEN)) {
+                    if (TokenValidationUtil.isUserToken(token)) {
                         PoetryCache.put(CommonConst.USER_TOKEN + userId, token, CommonConst.TOKEN_EXPIRE);
                         PoetryCache.put(CommonConst.USER_TOKEN_INTERVAL + userId, token, CommonConst.TOKEN_INTERVAL);
-                    } else if (token.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+                    } else if (TokenValidationUtil.isAdminToken(token)) {
                         PoetryCache.put(CommonConst.ADMIN_TOKEN + userId, token, CommonConst.TOKEN_EXPIRE);
                         PoetryCache.put(CommonConst.ADMIN_TOKEN_INTERVAL + userId, token, CommonConst.TOKEN_INTERVAL);
                     }

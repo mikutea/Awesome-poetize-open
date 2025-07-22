@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-21
+## 修改时间: 2025-07-23
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.4.5
+## 版本: 1.4.6
 
 # 定义颜色
 RED='\033[0;31m'
@@ -2904,6 +2904,9 @@ init_deploy() {
   # 配置Docker Compose AES密钥
   replace_docker_compose_aes_key
 
+  # 配置Docker Compose Token密钥
+  generate_token_secret_key
+
   # 设置域名
   info "更新Nginx配置中的域名..."
   if [ -n "$PRIMARY_DOMAIN" ]; then
@@ -4554,12 +4557,20 @@ replace_redis_password() {
 
 }
 
+# 生成随机安全的Token密钥
+generate_token_secret_key() {
+  local TOKEN_SECRET_KEY=$(generate_secure_password 32 'a-zA-Z0-9!@#%^_+')
+  info "生成的Token密钥: $TOKEN_SECRET_KEY"
+  sed_i "s/TOKEN_SECRET_KEY=.*/TOKEN_SECRET_KEY=${TOKEN_SECRET_KEY}/g" docker-compose.yml
+  success "Token密钥已成功更新为随机强密码"
+}
+
 # 替换docker-compose.yml中的AES密钥函数
 replace_docker_compose_aes_key() {
   # 生成随机AES密钥
   local AES_KEY=$(generate_secure_password 16 'a-zA-Z0-9!@#%^_+')
   info "生成的AES密钥: $AES_KEY"
-  
+
   # 替换docker-compose.yml中的AES密钥
   sed_i "s|VUE_APP_POETIZE_AES_KEY=.*|VUE_APP_POETIZE_AES_KEY=$AES_KEY|g" docker-compose.yml
   sed_i "s|POETIZE_AES_KEY=.*|POETIZE_AES_KEY=$AES_KEY|g" docker-compose.yml

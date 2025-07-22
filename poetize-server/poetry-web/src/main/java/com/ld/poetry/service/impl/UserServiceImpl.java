@@ -273,11 +273,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             }
         }
 
-        // 生成新token
+        // 生成新的安全token（使用HMAC签名）
         if (isAdmin && !StringUtils.hasText(adminToken)) {
-            String uuid = UUID.randomUUID().toString().replaceAll("-", "");
-            adminToken = CommonConst.ADMIN_ACCESS_TOKEN + uuid;
-            log.info("生成新的管理员token - 用户: {}, token: {}", account, adminToken);
+            adminToken = SecureTokenGenerator.generateAdminToken(one.getId());
+            log.info("生成新的安全管理员token - 用户: {}, 用户ID: {}", account, one.getId());
 
             // 使用Redis缓存替换PoetryCache
             cacheService.cacheUserSession(adminToken, one.getId());
@@ -288,9 +287,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             userCacheManager.cacheUserByToken(adminToken, one);
             userCacheManager.cacheUserById(one.getId(), one);
         } else if (!isAdmin && !StringUtils.hasText(userToken)) {
-            String uuid = UUID.randomUUID().toString().replaceAll("-", "");
-            userToken = CommonConst.USER_ACCESS_TOKEN + uuid;
-            log.info("生成新的用户token - 用户: {}, token: {}", account, userToken);
+            userToken = SecureTokenGenerator.generateUserToken(one.getId());
+            log.info("生成新的安全用户token - 用户: {}, 用户ID: {}", account, one.getId());
 
             // 使用Redis缓存替换PoetryCache
             cacheService.cacheUserSession(userToken, one.getId());
@@ -417,7 +415,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         User one = lambdaQuery().eq(User::getId, u.getId()).one();
 
-        String userToken = CommonConst.USER_ACCESS_TOKEN + UUID.randomUUID().toString().replaceAll("-", "");
+        String userToken = SecureTokenGenerator.generateUserToken(one.getId());
 
         // 使用Redis缓存替换PoetryCache
         cacheService.cacheUserSession(userToken, one.getId());
@@ -851,6 +849,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new PoetryRuntimeException("未登陆，请登陆后再进行操作！");
         }
 
+        // 首先验证token的安全性和有效性
+        if (!TokenValidationUtil.isValidToken(userToken)) {
+            log.warn("Token验证失败，可能是伪造或已损坏的token");
+            throw new PoetryRuntimeException("Token无效，请重新登陆！");
+        }
+
         // 使用多级缓存策略获取用户信息
         User user = null;
 
@@ -868,6 +872,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 最后降级到PoetryCache获取
         if (user == null) {
             user = (User) PoetryCache.get(userToken);
+        }
+
+        // 如果缓存中都没有，尝试从token中提取用户ID并从数据库获取
+        if (user == null) {
+            Integer userIdFromToken = TokenValidationUtil.extractUserId(userToken);
+            if (userIdFromToken != null) {
+                user = getById(userIdFromToken);
+                if (user != null) {
+                    log.info("从token中提取用户ID并从数据库重新加载用户信息: {}", userIdFromToken);
+                    // 重新缓存用户信息
+                    cacheService.cacheUserSession(userToken, user.getId());
+                    cacheService.cacheUser(user);
+                    userCacheManager.cacheUserByToken(userToken, user);
+                }
+            }
         }
 
         if (user == null) {
@@ -933,6 +952,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .one();
 
         if (existUser == null) {
+            // 新用户注册逻辑
             String finalUsername = username;
             if (!StringUtils.hasText(finalUsername)) {
                 finalUsername = provider + "_user_" + System.currentTimeMillis();
@@ -964,6 +984,51 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             imChatGroupUserMapper.insert(imChatGroupUser);
 
             existUser = newUser;
+            log.info("创建新的第三方登录用户: provider={}, uid={}, username={}, email={}",
+                    provider, uid, uniqueUsername, email);
+        } else {
+            // 🔧 已存在用户的邮箱更新逻辑
+            boolean userHasEmailInDB = StringUtils.hasText(existUser.getEmail());
+            boolean thirdPartyProvidedEmail = StringUtils.hasText(email);
+
+            // 如果数据库中没有邮箱，但第三方平台提供了邮箱，则更新数据库
+            if (!userHasEmailInDB && thirdPartyProvidedEmail) {
+                log.info("更新用户邮箱信息: userId={}, provider={}, 新邮箱={}",
+                        existUser.getId(), provider, email);
+
+                User updateUser = new User();
+                updateUser.setId(existUser.getId());
+                updateUser.setEmail(email);
+                updateById(updateUser);
+
+                // 更新内存中的用户对象
+                existUser.setEmail(email);
+
+                log.info("用户邮箱更新成功: userId={}, email={}", existUser.getId(), email);
+            } else if (userHasEmailInDB) {
+                log.info("用户已有邮箱，保持不变: userId={}, 现有邮箱={}, 第三方邮箱={}",
+                        existUser.getId(), existUser.getEmail(), email);
+            } else {
+                log.info("用户和第三方平台都没有邮箱信息: userId={}, provider={}",
+                        existUser.getId(), provider);
+            }
+
+            // 更新其他可能变化的信息（头像、用户名等）
+            boolean needsUpdate = false;
+            User updateUser = new User();
+            updateUser.setId(existUser.getId());
+
+            // 如果第三方平台提供了新的头像，更新头像
+            if (StringUtils.hasText(avatar) && !avatar.equals(existUser.getAvatar())) {
+                updateUser.setAvatar(avatar);
+                existUser.setAvatar(avatar);
+                needsUpdate = true;
+                log.info("更新用户头像: userId={}, 新头像={}", existUser.getId(), avatar);
+            }
+
+            if (needsUpdate) {
+                updateById(updateUser);
+            }
         }
 
         String userToken = "";
@@ -972,8 +1037,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         }
 
         if (!StringUtils.hasText(userToken)) {
-            String uuid = UUID.randomUUID().toString().replaceAll("-", "");
-            userToken = CommonConst.USER_ACCESS_TOKEN + uuid;
+            userToken = SecureTokenGenerator.generateUserToken(existUser.getId());
             PoetryCache.put(userToken, existUser, CommonConst.TOKEN_EXPIRE);
             PoetryCache.put(CommonConst.USER_TOKEN + existUser.getId(), userToken, CommonConst.TOKEN_EXPIRE);
         }

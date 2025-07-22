@@ -505,11 +505,16 @@ public class WebInfoController {
         try {
             log.debug("获取第三方登录状态，平台: {}", provider);
 
+            // 获取所有配置
+            List<ThirdPartyOauthConfig> allConfigs = thirdPartyOauthConfigService.getAllConfigs();
+
             // 获取激活的配置（全局启用且平台启用）
             List<ThirdPartyOauthConfig> activeConfigs = thirdPartyOauthConfigService.getActiveConfigs();
 
             // 构建状态响应
             Map<String, Object> status = new HashMap<>();
+
+            // 检查是否有任何平台全局启用且平台启用
             boolean globalEnabled = !activeConfigs.isEmpty();
             status.put("enable", globalEnabled);
 
@@ -519,12 +524,20 @@ public class WebInfoController {
                     .anyMatch(config -> provider.equals(config.getPlatformType()));
                 status.put(provider, Map.of("enabled", platformEnabled));
             } else {
-                // 返回所有平台状态
-                for (ThirdPartyOauthConfig config : activeConfigs) {
-                    status.put(config.getPlatformType(), Map.of("enabled", true));
+                // 返回所有平台状态（包括未启用的）
+                for (ThirdPartyOauthConfig config : allConfigs) {
+                    Map<String, Object> platformStatus = new HashMap<>();
+                    platformStatus.put("enabled", config.getEnabled() && config.getGlobalEnabled());
+
+                    // 添加平台基本信息
+                    platformStatus.put("platformName", config.getPlatformName());
+                    platformStatus.put("sortOrder", config.getSortOrder());
+
+                    status.put(config.getPlatformType(), platformStatus);
                 }
             }
 
+            log.debug("第三方登录状态响应: {}", status);
             return PoetryResult.success(status);
         } catch (Exception e) {
             log.error("获取第三方登录状态失败", e);

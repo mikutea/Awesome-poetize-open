@@ -7,6 +7,7 @@
       :action="action"
       :track-sensitivity="checkboxOptions.trackSensitivity"
       :min-track-points="checkboxOptions.minTrackPoints"
+      :is-reply-comment="isReplyComment"
       @success="onCheckboxSuccess"
       @fail="onCheckboxFail"
       @refresh="onCheckboxRefresh"
@@ -70,6 +71,11 @@ export default {
     imgs: {
       type: Array,
       default: () => []
+    },
+    // 是否为回复评论场景
+    isReplyComment: {
+      type: Boolean,
+      default: false
     }
   },
   data() {

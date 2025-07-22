@@ -69,12 +69,17 @@ export default {
     // 轨迹敏感度阈值
     trackSensitivity: {
       type: Number,
-      default: 0.98
+      default: 0.95  // 降低敏感度，从0.98改为0.95
     },
     // 最少轨迹点数
     minTrackPoints: {
       type: Number,
-      default: 3
+      default: 2  // 降低最少轨迹点要求，从3改为2
+    },
+    // 是否为回复评论场景（更宽松的验证）
+    isReplyComment: {
+      type: Boolean,
+      default: false
     }
   },
   data() {
@@ -86,7 +91,9 @@ export default {
       startTime: 0,
       checkTime: 0,
       verificationToken: '',
-      verifying: false
+      verifying: false,
+      isTrackingMouse: false,  // 添加鼠标轨迹跟踪状态
+      retryCount: 0  // 添加重试计数
     }
   },
   methods: {
@@ -102,13 +109,16 @@ export default {
      */
     trackMouseMovement(e) {
       if (this.verified || this.verifying) return;
-      
-      if (this.mouseTrack.length === 0) {
+
+      // 开始轨迹跟踪
+      if (!this.isTrackingMouse) {
+        this.isTrackingMouse = true;
         this.startTime = Date.now();
+        console.log('开始记录鼠标轨迹');
       }
-      
+
       // 限制记录点数，避免过多消耗内存
-      if (this.mouseTrack.length < 20) {
+      if (this.mouseTrack.length < 30) {  // 增加记录点数上限
         this.mouseTrack.push({
           x: e.clientX,
           y: e.clientY,
@@ -153,7 +163,11 @@ export default {
         mouseTrack: this.mouseTrack,
         straightRatio: straightRatio,
         timestamp: Date.now(),
-        action: this.action  // 添加操作类型
+        action: this.action,  // 添加操作类型
+        isReplyComment: this.isReplyComment,  // 是否为回复评论场景
+        retryCount: this.retryCount,  // 重试次数
+        trackSensitivity: this.getTrackSensitivity(),  // 动态敏感度
+        minTrackPoints: this.getMinTrackPoints()  // 动态最少轨迹点数
       };
       
       // 调用验证接口
@@ -218,24 +232,67 @@ export default {
      * 判断是否符合人类行为模式（前端验证）
      */
     isHumanLike() {
-      // 1. 轨迹点数量检查
-      if (this.mouseTrack.length < this.minTrackPoints) {
+      console.log('验证人类行为模式:', {
+        trackLength: this.mouseTrack.length,
+        minRequired: this.getMinTrackPoints(),
+        isReplyComment: this.isReplyComment,
+        retryCount: this.retryCount
+      });
+
+      // 1. 轨迹点数量检查 - 根据场景调整要求
+      const minPoints = this.getMinTrackPoints();
+      if (this.mouseTrack.length < minPoints) {
+        console.log('轨迹点数不足:', this.mouseTrack.length, '<', minPoints);
         return false;
       }
-      
-      // 2. 检查直线率
+
+      // 2. 检查直线率 - 根据场景调整敏感度
       const straightRatio = this.calculateStraightRatio();
-      if (straightRatio > this.trackSensitivity) {
+      const sensitivity = this.getTrackSensitivity();
+      if (straightRatio > sensitivity) {
+        console.log('轨迹过于直线:', straightRatio, '>', sensitivity);
         return false;
       }
-      
-      // 3. 检查动作速度
+
+      // 3. 检查动作速度 - 回复评论场景放宽时间要求
       const timeSpent = this.checkTime - this.startTime;
-      if (timeSpent < 500) { // 如果勾选太快（小于500ms），可能是机器
+      const minTime = this.isReplyComment ? 200 : 500;  // 回复评论场景降低到200ms
+      if (timeSpent < minTime) {
+        console.log('动作过快:', timeSpent, '<', minTime);
         return false;
       }
-      
+
+      console.log('验证通过');
       return true;
+    },
+
+    /**
+     * 获取最少轨迹点数（根据场景调整）
+     */
+    getMinTrackPoints() {
+      if (this.isReplyComment) {
+        return Math.max(1, this.minTrackPoints - 1);  // 回复评论场景进一步降低要求
+      }
+      return this.minTrackPoints;
+    },
+
+    /**
+     * 获取轨迹敏感度（根据场景和重试次数调整）
+     */
+    getTrackSensitivity() {
+      let sensitivity = this.trackSensitivity;
+
+      // 回复评论场景降低敏感度
+      if (this.isReplyComment) {
+        sensitivity = Math.max(0.85, sensitivity - 0.05);
+      }
+
+      // 重试次数越多，要求越宽松
+      if (this.retryCount > 0) {
+        sensitivity = Math.max(0.80, sensitivity - (this.retryCount * 0.03));
+      }
+
+      return sensitivity;
     },
     
     /**
@@ -257,11 +314,28 @@ export default {
       this.verified = false;
       this.showError = true;
       this.verificationToken = '';
-      
+      this.retryCount++;  // 增加重试计数
+
+      console.log('验证失败，重试次数:', this.retryCount);
+
+      // 重置轨迹跟踪状态，准备下次验证
+      this.resetTrackingState();
+
       setTimeout(() => {
         this.showError = false;
         this.$emit('fail');
       }, 2000);
+    },
+
+    /**
+     * 重置轨迹跟踪状态
+     */
+    resetTrackingState() {
+      this.mouseTrack = [];
+      this.startTime = 0;
+      this.checkTime = 0;
+      this.isTrackingMouse = false;
+      console.log('重置轨迹跟踪状态');
     },
     
     /**
@@ -276,7 +350,10 @@ export default {
       this.checkTime = 0;
       this.verificationToken = '';
       this.verifying = false;
-      
+      this.isTrackingMouse = false;
+      this.retryCount = 0;  // 重置重试计数
+
+      console.log('刷新验证码，重置所有状态');
       this.$emit('refresh');
     },
     

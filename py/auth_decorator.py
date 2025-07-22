@@ -272,19 +272,23 @@ async def admin_required(
     # 从Authorization头获取token
     if credentials:
         token = credentials.credentials
-        logger.info(f"从请求头获取到token: {token[:10]}...")
-    
+        # 适配新的HMAC签名token格式，显示更多字符用于调试
+        token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
+        logger.info(f"从请求头获取到token: {token_preview} (长度: {len(token)})")
+
     # 也从请求参数中检查token
     if not token:
         token = request.query_params.get('token')
         if token:
-            logger.info(f"从请求参数获取到token: {token[:10]}...")
-    
+            token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
+            logger.info(f"从请求参数获取到token: {token_preview} (长度: {len(token)})")
+
     # 从cookie中检查token
     if not token:
         token = request.cookies.get('Admin-Token') or request.cookies.get('User-Token')
         if token:
-            logger.info(f"从cookie获取到token: {token[:10]}...")
+            token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
+            logger.info(f"从cookie获取到token: {token_preview} (长度: {len(token)})")
     
     # 没有token则拒绝访问
     if not token:
@@ -313,7 +317,10 @@ async def admin_required(
             'User-Agent': 'poetize-python/1.0.0'
         }
         logger.info(f"正在调用Java后端验证API: {JAVA_AUTH_URL}")
-        logger.info(f"请求头: {headers}")
+        # 安全地记录请求头，避免暴露完整token
+        safe_headers = {k: v for k, v in headers.items() if k != 'Authorization'}
+        safe_headers['Authorization'] = f"Bearer {token[:20]}...{token[-8:]}" if len(token) > 30 else f"Bearer {token}"
+        logger.info(f"请求头: {safe_headers}")
         
         async with httpx.AsyncClient() as client:
             response = await client.get(JAVA_AUTH_URL, headers=headers, timeout=5)

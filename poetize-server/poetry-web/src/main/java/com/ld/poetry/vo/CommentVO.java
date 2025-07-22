@@ -46,6 +46,12 @@ public class CommentVO {
     //子评论必须传评论楼层ID
     private Integer floorCommentId;
 
+    /**
+     * 验证码token（可选）
+     * 当前端需要验证码时，会传递此字段用于验证
+     */
+    private String verificationToken;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

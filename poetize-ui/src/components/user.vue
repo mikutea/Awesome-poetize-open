@@ -34,24 +34,23 @@
             <a href="#" @click="changeDialog('找回密码')">忘记密码？</a>
             <el-button type="primary" round @click="showLoginVerify()" style="border-radius:8px; width:90%; background: var(--gradualRed); border: none; box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); transition: all 0.3s ease; padding: 12px 30px; font-weight: 600; letter-spacing: 1px;">登 录</el-button>
             
-            <p style="text-align:center; margin-top:20px;margin-bottom: 10px; font-size:14px; color:var(--articleGreyFontColor);">第三方账号登录</p>
-            
-            <div style="padding:0; position:relative; height:50px; width:100%; text-align:center; overflow:visible;">
-              <a href="javascript:void(0)" @click="showThirdPartyLoginVerify('github')" style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;">
-                <img src="/static/svg/github.svg" alt="GitHub" height="25" style=" position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
-              </a>
-              <a href="javascript:void(0)" @click="showThirdPartyLoginVerify('google')" style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;">
-                <img src="/static/svg/google.svg" alt="Google" height="25" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
-              </a>
-              <a href="javascript:void(0)" @click="showThirdPartyLoginVerify('x')" style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;">
-                <img src="/static/svg/x.svg" alt="Twitter" height="25" style=" position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
-              </a>
-              <a href="javascript:void(0)" @click="showThirdPartyLoginVerify('yandex')" style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;">
-                <img src="/static/svg/yandex.svg" alt="Yandex" height="25" style=" position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
-              </a>
-              <a href="javascript:void(0)" @click="showThirdPartyLoginVerify('gitee')" style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;">
-                <img src="/static/svg/gitee.png" alt="Gitee" height="25" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
-              </a>
+            <!-- 第三方登录区域 - 根据配置动态显示 -->
+            <div v-if="thirdPartyLoginConfig.enable && enabledThirdPartyProviders.length > 0">
+              <p style="text-align:center; margin-top:20px;margin-bottom: 10px; font-size:14px; color:var(--articleGreyFontColor);">第三方账号登录</p>
+
+              <div class="third-party-login-container" style="padding:0; position:relative; height:50px; width:100%; text-align:center; overflow:visible;">
+                <a
+                  v-for="provider in enabledThirdPartyProviders"
+                  :key="provider.key"
+                  href="javascript:void(0)"
+                  @click="showThirdPartyLoginVerify(provider.key)"
+                  :title="provider.title"
+                  class="third-party-login-btn"
+                  style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;"
+                >
+                  <img :src="provider.icon" :alt="provider.name" height="25" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -265,12 +264,27 @@
         intervalCode: null,
         showCaptchaWrapper: false,
         verifyAction: null,
-        verifyParams: null
+        verifyParams: null,
+        thirdPartyLoginConfig: {
+          enable: false
+        },
+        enabledThirdPartyProviders: []
       }
     },
     computed: {},
     created() {
 
+    },
+    mounted() {
+      // 获取第三方登录配置
+      this.loadThirdPartyLoginConfig();
+
+      // 监听第三方登录配置变更事件
+      this.$bus.$on('thirdPartyLoginConfigChanged', this.handleThirdPartyConfigChange);
+    },
+    beforeDestroy() {
+      // 移除事件监听
+      this.$bus.$off('thirdPartyLoginConfigChanged', this.handleThirdPartyConfigChange);
     },
     methods: {
       addPicture(res) {
@@ -979,15 +993,73 @@
         });
       },
       
+      // 处理第三方登录配置变更事件
+      handleThirdPartyConfigChange() {
+        console.log('收到第三方登录配置变更通知，重新加载配置...');
+        this.loadThirdPartyLoginConfig();
+      },
+
+      // 加载第三方登录配置
+      loadThirdPartyLoginConfig() {
+        this.getThirdPartyLoginConfig().then(config => {
+          this.thirdPartyLoginConfig = config;
+
+          // 提取启用的第三方登录提供商列表
+          this.enabledThirdPartyProviders = [];
+          if (config.enable) {
+            // 定义支持的第三方登录平台及其显示信息
+            const supportedProviders = [
+              { key: 'github', name: 'GitHub', icon: '/static/svg/github.svg', title: 'GitHub登录' },
+              { key: 'google', name: 'Google', icon: '/static/svg/google.svg', title: 'Google登录' },
+              { key: 'x', name: 'Twitter', icon: '/static/svg/x.svg', title: 'Twitter登录', configKey: 'twitter' },
+              { key: 'yandex', name: 'Yandex', icon: '/static/svg/yandex.svg', title: 'Yandex登录' },
+              { key: 'gitee', name: 'Gitee', icon: '/static/svg/gitee.png', title: 'Gitee登录' }
+            ];
+
+            // 检查每个平台是否启用
+            supportedProviders.forEach(provider => {
+              const configKey = provider.configKey || provider.key;
+              if (config[configKey] && config[configKey].enabled === true) {
+                this.enabledThirdPartyProviders.push(provider);
+              }
+            });
+          }
+
+          console.log('第三方登录配置已加载:', this.thirdPartyLoginConfig);
+          console.log('启用的第三方登录提供商:', this.enabledThirdPartyProviders);
+        });
+      },
+
+      // 获取第三方登录配置
+      getThirdPartyLoginConfig() {
+        return new Promise((resolve, reject) => {
+          this.$http.get(this.$constant.baseURL + "/webInfo/getThirdLoginStatus")
+            .then(res => {
+              if (res.code === 200 && res.data) {
+                resolve(res.data);
+              } else {
+                console.warn("获取第三方登录配置失败:", res.message);
+                resolve({ enable: false });
+              }
+            })
+            .catch(error => {
+              console.error("获取第三方登录配置失败:", error);
+              resolve({ enable: false });
+            });
+        });
+      },
+
       // 检查第三方登录是否启用
       checkThirdPartyLoginEnabled(provider) {
         return new Promise((resolve, reject) => {
-          this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getThirdLoginStatus", { provider: provider })
+          this.$http.get(this.$constant.baseURL + "/webInfo/getThirdLoginStatus", {
+            params: { provider: provider }
+          })
             .then(res => {
               if (res.code === 200 && res.data) {
                 // 检查整体启用状态及特定提供商状态
-                const enabled = res.data.enable === true && 
-                                res.data[provider] && 
+                const enabled = res.data.enable === true &&
+                                res.data[provider] &&
                                 res.data[provider].enabled === true;
                 resolve(enabled);
               } else {
@@ -1619,5 +1691,106 @@
   .form-container .submit:hover {
     background: var(--gradualRed);
     border: none;
+  }
+
+  /* 移动端第三方登录按钮优化 */
+  /* 768px及以下屏幕的响应式设计 */
+  @media screen and (max-width: 768px) {
+    .third-party-login-container {
+      height: auto !important;
+      min-height: 50px !important;
+      padding: 10px 5px !important;
+      display: flex !important;
+      flex-wrap: wrap !important;
+      justify-content: center !important;
+      align-items: center !important;
+      gap: 8px !important;
+    }
+
+    .third-party-login-btn {
+      width: 35px !important;
+      height: 35px !important;
+      margin: 4px !important;
+      flex-shrink: 0 !important;
+    }
+
+    .third-party-login-btn img {
+      height: 20px !important;
+    }
+  }
+
+  /* 480px及以下屏幕的进一步优化 */
+  @media screen and (max-width: 480px) {
+    .third-party-login-container {
+      padding: 8px 2px !important;
+      gap: 4px !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    .third-party-login-btn {
+      width: 30px !important;
+      height: 30px !important;
+      margin: 2px !important;
+    }
+
+    .third-party-login-btn img {
+      height: 17px !important;
+    }
+  }
+
+  /* 420px及以下屏幕的特殊优化（针对480px-360px区间问题） */
+  @media screen and (max-width: 420px) {
+    .third-party-login-container {
+      padding: 6px 1px !important;
+      gap: 3px !important;
+    }
+
+    .third-party-login-btn {
+      width: 28px !important;
+      height: 28px !important;
+      margin: 1px !important;
+    }
+
+    .third-party-login-btn img {
+      height: 16px !important;
+    }
+  }
+
+  /* 360px及以下屏幕的极小屏幕优化 */
+  @media screen and (max-width: 360px) {
+    .third-party-login-container {
+      padding: 4px 1px !important;
+      gap: 2px !important;
+    }
+
+    .third-party-login-btn {
+      width: 26px !important;
+      height: 26px !important;
+      margin: 1px !important;
+    }
+
+    .third-party-login-btn img {
+      height: 15px !important;
+    }
+  }
+
+  /* 320px及以下屏幕的最小屏幕优化 */
+  @media screen and (max-width: 320px) {
+    .third-party-login-container {
+      padding: 3px 1px !important;
+      gap: 1px !important;
+      max-width: 100% !important;
+    }
+
+    .third-party-login-btn {
+      width: 24px !important;
+      height: 24px !important;
+      margin: 1px !important;
+    }
+
+    .third-party-login-btn img {
+      height: 13px !important;
+    }
   }
 </style>

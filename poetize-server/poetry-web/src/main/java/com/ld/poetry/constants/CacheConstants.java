@@ -170,6 +170,8 @@ public class CacheConstants {
     
     /**
      * 用户会话过期时间（秒）- 7天
+     * 注意：此值应与CommonConst.TOKEN_EXPIRE保持一致，避免认证状态不同步
+     * 建议使用CommonConst.TOKEN_EXPIRE替代此常量
      */
     public static final long SESSION_EXPIRE_TIME = 604800;
     

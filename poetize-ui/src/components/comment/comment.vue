@@ -758,6 +758,7 @@
 
             this.$store.commit('setVerifyParams', {
               action: 'comment',
+              isReplyComment: false,  // 主评论
               onSuccess: (token) => this.saveCommentToServer(comment, token),
               onCancel: () => this.restorePendingComment()
             });
@@ -835,6 +836,7 @@
             this.handleClose();
             this.$store.commit('setVerifyParams', {
               action: 'comment',
+              isReplyComment: true,  // 回复评论
               onSuccess: (token) => this.saveReplyToServer(comment, floorComment, token),
               onCancel: () => this.restorePendingReply()
             });

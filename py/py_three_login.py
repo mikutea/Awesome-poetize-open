@@ -320,21 +320,77 @@ def determine_action_type_from_state_info(state_info: dict) -> str:
         print("⚠️ 状态信息为空，默认为登录操作")
         return "login"
 
-def get_state_info_before_validation(state: str) -> dict:
+def get_state_info_before_validation(state: str, expected_provider: str = None) -> dict:
     """
-    在状态验证前获取状态信息（不删除）
+    安全地获取OAuth状态信息（不消费state token）
+    用于在验证前确定操作类型，但不删除state以保证后续验证的完整性
+
+    Args:
+        state: OAuth状态token
+        expected_provider: 期望的OAuth提供商，用于防止provider混淆攻击
+
+    Returns:
+        dict: 状态信息，如果验证失败则返回None
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         if not state:
-            print("⚠️ 缺少state参数")
+            logger.warning("OAuth回调缺少state参数，可能存在CSRF攻击风险")
             return None
 
-        # 使用本地状态管理器获取状态信息
-        # 注意：这里只是尝试获取信息，不进行验证
-        return {"action": "login"}  # 默认为登录操作
+        # 从Redis OAuth状态管理器安全地获取状态信息
+        state_data = oauth_state_manager.get_state_info(state)
+
+        if not state_data:
+            logger.warning(f"OAuth状态不存在或已过期: state={state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
+            return None
+
+        # 验证状态数据的完整性
+        if not isinstance(state_data, dict):
+            logger.error(f"OAuth状态数据格式错误: type={type(state_data)}")
+            return None
+
+        # 检查必要字段
+        stored_provider = state_data.get('provider')
+        if not stored_provider:
+            logger.error("OAuth状态数据缺少provider字段")
+            return None
+
+        # 🔒 关键安全检查：验证provider匹配，防止CSRF攻击
+        if expected_provider and stored_provider != expected_provider:
+            logger.warning(f"🚨 检测到潜在的CSRF攻击：OAuth provider不匹配！")
+            logger.warning(f"   期望provider: {expected_provider}")
+            logger.warning(f"   状态中的provider: {stored_provider}")
+            logger.warning(f"   state token: {state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
+            logger.warning(f"   这可能是攻击者尝试使用其他provider的state token进行CSRF攻击")
+            return None
+
+        # 检查过期时间（如果存在）
+        expires_at = state_data.get('expires_at')
+        if expires_at:
+            import time
+            current_time = time.time()
+            if current_time > expires_at:
+                logger.warning(f"OAuth状态已过期: provider={stored_provider}, expired_at={expires_at}")
+                return None
+
+        # 安全地记录状态信息获取成功
+        logger.info(f"OAuth状态验证通过: provider={stored_provider}, state={state[:8]}***")
+
+        # 返回包含操作类型的状态信息，默认为登录操作
+        # 注意：这里不删除state，保留给后续的正式验证流程
+        return {
+            "action": state_data.get("action", "login"),  # 从状态中获取真实的操作类型
+            "provider": stored_provider,
+            "session_id": state_data.get("session_id"),
+            "timestamp": state_data.get("timestamp"),
+            "created_at": state_data.get("created_at")
+        }
 
     except Exception as e:
-        print(f"⚠️ 获取状态信息失败: {e}")
+        logger.error(f"获取OAuth状态信息时发生异常: {str(e)}")
         return None
 
 def should_delete_state_after_validation(action_type: str) -> bool:
@@ -347,14 +403,87 @@ def should_delete_state_after_validation(action_type: str) -> bool:
     Returns:
         bool: 是否删除状态token
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if action_type == "bind":
         # 绑定操作：不删除状态token，让Java后端处理
-        print("🔗 绑定操作：保留状态token供Java后端验证")
+        logger.info("绑定操作：保留状态token供Java后端验证")
         return False
     else:
         # 登录操作：删除状态token（一次性使用）
-        print("🔑 登录操作：验证后删除状态token")
+        logger.info("登录操作：验证后删除状态token")
         return True
+
+def secure_validate_oauth_state(state: str, provider: str, action_type: str = "login") -> dict:
+    """
+    安全地验证OAuth状态token
+
+    Args:
+        state: OAuth状态token
+        provider: OAuth提供商
+        action_type: 操作类型 ("bind" 或 "login")
+
+    Returns:
+        dict: 验证结果，包含success字段和相关信息
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        if not state:
+            logger.warning(f"OAuth状态验证失败: 缺少state参数 - provider={provider}")
+            return {
+                "success": False,
+                "error": "missing_state",
+                "message": "缺少必要的安全验证参数"
+            }
+
+        if not provider:
+            logger.warning(f"OAuth状态验证失败: 缺少provider参数 - state={state[:8]}***")
+            return {
+                "success": False,
+                "error": "missing_provider",
+                "message": "缺少OAuth提供商信息"
+            }
+
+        # 根据操作类型决定是否消费state token
+        if should_delete_state_after_validation(action_type):
+            # 登录操作：验证并消费state（一次性使用）
+            state_data = oauth_state_manager.verify_and_consume_state(state, provider)
+        else:
+            # 绑定操作：只验证不消费（让Java后端处理）
+            state_data = oauth_state_manager.get_state_info(state)
+            if state_data and state_data.get('provider') != provider:
+                logger.warning(f"🚨 检测到潜在的CSRF攻击：OAuth provider不匹配！")
+                logger.warning(f"   期望provider: {provider}")
+                logger.warning(f"   状态中的provider: {state_data.get('provider')}")
+                logger.warning(f"   state token: {state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
+                state_data = None
+
+        if not state_data:
+            logger.warning(f"OAuth状态验证失败: state无效或已过期 - provider={provider}, state={state[:8]}***")
+            return {
+                "success": False,
+                "error": "invalid_state",
+                "message": "安全验证失败，请重新授权"
+            }
+
+        logger.info(f"OAuth状态验证成功: provider={provider}, action={action_type}, state={state[:8]}***")
+        return {
+            "success": True,
+            "state_data": state_data,
+            "provider": provider,
+            "action_type": action_type
+        }
+
+    except Exception as e:
+        logger.error(f"OAuth状态验证异常: provider={provider}, action={action_type}, error={str(e)}")
+        return {
+            "success": False,
+            "error": "validation_exception",
+            "message": "状态验证过程中发生错误"
+        }
 
 
 
@@ -441,21 +570,46 @@ async def call_java_login_api(unified_data: dict):
         return MockResponse(500, {"code": 500, "message": f"登录失败: {str(e)}"})
 
 async def oauth_callback(provider: str, request: Request):
-    """统一回调处理"""
-    print(f"处理 {provider} OAuth回调")
+    """统一OAuth回调处理 - 使用安全的state验证机制"""
+    import logging
+    logger = logging.getLogger(__name__)
 
-    # 在状态验证前先获取操作类型
+    logger.info(f"开始处理OAuth回调: provider={provider}")
+
+    # 获取OAuth参数
+    code = request.query_params.get("code")
     state = request.query_params.get("state")
-    state_info = get_state_info_before_validation(state)
+    error = request.query_params.get("error")
+
+    # 检查OAuth错误
+    if error:
+        logger.warning(f"OAuth授权失败: provider={provider}, error={error}")
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error}&platform={provider}")
+
+    # 🔒 在状态验证前先安全地获取操作类型，并验证provider匹配
+    state_info = get_state_info_before_validation(state, provider)
     action_type = determine_action_type_from_state_info(state_info)
 
-    print(f"🎯 检测到操作类型: {action_type}")
+    logger.info(f"检测到操作类型: provider={provider}, action={action_type}")
 
-    # 检查session状态
+    # 执行安全的state验证
+    validation_result = secure_validate_oauth_state(state, provider, action_type)
+    if not validation_result["success"]:
+        error_code = validation_result.get("error", "unknown")
+        error_message = validation_result.get("message", "状态验证失败")
+
+        logger.warning(f"OAuth状态验证失败: provider={provider}, error={error_code}, message={error_message}")
+
+        # 返回安全的错误信息，不泄露具体的验证失败原因
+        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=state_validation_failed&platform={provider}")
+
+    logger.info(f"OAuth状态验证成功: provider={provider}, action={action_type}")
+
+    # 检查session状态（保持向后兼容）
     try:
         dict(request.session)
     except Exception as e:
-        print(f"Session访问错误: {e}")
+        logger.error(f"Session访问错误: provider={provider}, error={str(e)}")
         return JSONResponse({"error": "Session error"}, status_code=500)
 
     config = None
@@ -526,37 +680,11 @@ async def oauth_callback(provider: str, request: Request):
 
         # Yandex 处理
         elif provider == "yandex":
-            code = request.query_params.get("code")
-            state = request.query_params.get("state")
-
             if not code:
-                print(f"Yandex OAuth错误: 缺少授权码")
+                logger.warning(f"Yandex OAuth错误: 缺少授权码")
                 return JSONResponse({"error": "Missing authorization code"}, status_code=400)
 
-            if not state:
-                print(f"Yandex OAuth错误: 缺少state参数")
-                return JSONResponse({"error": "Missing state parameter"}, status_code=400)
-
-            # 使用Python本地状态管理器验证
-            session_id = get_session_id(request)
-            state_valid = oauth_state_manager.validate_state(state, provider, session_id)
-
-            # 如果以上都失败，尝试session验证（最后的备用方案）
-            if not state_valid:
-                try:
-                    stored_state = request.session.get(f"{provider}_state")
-                    if state == stored_state:
-                        state_valid = True
-                        print(f"✅ 使用session备用验证成功")
-                        # 清理session中的state
-                        if f"{provider}_state" in request.session:
-                            del request.session[f"{provider}_state"]
-                except Exception as e:
-                    print(f"Yandex session备用验证失败: {e}")
-
-            if not state_valid:
-                print(f"❌ Yandex OAuth错误: 所有state验证方式都失败")
-                return JSONResponse({"error": "Invalid state"}, status_code=403)
+            # state验证已在函数开始时完成，这里直接处理授权码
 
             async with httpx.AsyncClient() as client:
                 token_response = await client.post(
@@ -595,37 +723,11 @@ async def oauth_callback(provider: str, request: Request):
 
         # GitHub 处理
         elif provider == "github":
-            code = request.query_params.get("code")
-            state = request.query_params.get("state")
-
             if not code:
-                print(f"GitHub OAuth错误: 缺少授权码")
+                logger.warning(f"GitHub OAuth错误: 缺少授权码")
                 return JSONResponse({"error": "Missing authorization code"}, status_code=400)
 
-            if not state:
-                print(f"GitHub OAuth错误: 缺少state参数")
-                return JSONResponse({"error": "Missing state parameter"}, status_code=400)
-
-            # 使用Python本地状态管理器验证
-            session_id = get_session_id(request)
-            state_valid = oauth_state_manager.validate_state(state, provider, session_id)
-
-            # 如果以上都失败，尝试session验证（最后的备用方案）
-            if not state_valid:
-                try:
-                    stored_state = request.session.get(f"{provider}_state")
-                    if state == stored_state:
-                        state_valid = True
-                        print(f"✅ 使用session备用验证成功")
-                        # 清理session中的state
-                        if f"{provider}_state" in request.session:
-                            del request.session[f"{provider}_state"]
-                except Exception as e:
-                    print(f"GitHub session备用验证失败: {e}")
-
-            if not state_valid:
-                print(f"❌ GitHub OAuth错误: 所有state验证方式都失败")
-                return JSONResponse({"error": "Invalid state"}, status_code=403)
+            # state验证已在函数开始时完成，这里直接处理授权码
 
             async with httpx.AsyncClient() as client:
                 token_response = await client.post(
@@ -670,37 +772,11 @@ async def oauth_callback(provider: str, request: Request):
 
         # Google 处理
         elif provider == "google":
-            code = request.query_params.get("code")
-            state = request.query_params.get("state")
-
             if not code:
-                print(f"Google OAuth错误: 缺少授权码")
+                logger.warning(f"Google OAuth错误: 缺少授权码")
                 return JSONResponse({"error": "Missing authorization code"}, status_code=400)
 
-            if not state:
-                print(f"Google OAuth错误: 缺少state参数")
-                return JSONResponse({"error": "Missing state parameter"}, status_code=400)
-
-            # 使用Python本地状态管理器验证
-            session_id = get_session_id(request)
-            state_valid = oauth_state_manager.validate_state(state, provider, session_id)
-
-            # 如果以上都失败，尝试session验证（最后的备用方案）
-            if not state_valid:
-                try:
-                    stored_state = request.session.get(f"{provider}_state")
-                    if state == stored_state:
-                        state_valid = True
-                        print(f"✅ 使用session备用验证成功")
-                        # 清理session中的state
-                        if f"{provider}_state" in request.session:
-                            del request.session[f"{provider}_state"]
-                except Exception as e:
-                    print(f"Google session备用验证失败: {e}")
-
-            if not state_valid:
-                print(f"❌ Google OAuth错误: 所有state验证方式都失败")
-                return JSONResponse({"error": "Invalid state"}, status_code=403)
+            # state验证已在函数开始时完成，这里直接处理授权码
 
             async with httpx.AsyncClient() as client:
                 token_response = await client.post(
@@ -750,37 +826,11 @@ async def oauth_callback(provider: str, request: Request):
 
         # Gitee 处理
         elif provider == "gitee":
-            code = request.query_params.get("code")
-            state = request.query_params.get("state")
-
             if not code:
-                print(f"Gitee OAuth错误: 缺少授权码")
+                logger.warning(f"Gitee OAuth错误: 缺少授权码")
                 return JSONResponse({"error": "Missing authorization code"}, status_code=400)
 
-            if not state:
-                print(f"Gitee OAuth错误: 缺少state参数")
-                return JSONResponse({"error": "Missing state parameter"}, status_code=400)
-
-            # 使用Python本地状态管理器验证
-            session_id = get_session_id(request)
-            state_valid = oauth_state_manager.validate_state(state, provider, session_id)
-
-            # 如果以上都失败，尝试session验证（最后的备用方案）
-            if not state_valid:
-                try:
-                    stored_state = request.session.get(f"{provider}_state")
-                    if state == stored_state:
-                        state_valid = True
-                        print(f"✅ 使用session备用验证成功")
-                        # 清理session中的state
-                        if f"{provider}_state" in request.session:
-                            del request.session[f"{provider}_state"]
-                except Exception as e:
-                    print(f"Gitee session备用验证失败: {e}")
-
-            if not state_valid:
-                print(f"❌ Gitee OAuth错误: 所有state验证方式都失败")
-                return JSONResponse({"error": "Invalid state"}, status_code=403)
+            # state验证已在函数开始时完成，这里直接处理授权码
 
             async with httpx.AsyncClient() as client:
                 token_response = await client.post(
@@ -860,44 +910,42 @@ async def oauth_callback(provider: str, request: Request):
         if action_type == "bind":
             # 绑定操作：立即调用Java后端绑定接口，避免授权码过期
             # 跳过Python端的用户信息获取，减少延迟
-            code = request.query_params.get("code")
-            state = request.query_params.get("state")
-            error = request.query_params.get("error")
+            # code、state、error参数已在函数开始时获取
 
             if error:
-                print(f"❌ {provider} OAuth授权失败: {error}")
+                logger.warning(f"{provider} OAuth授权失败: {error}")
                 return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error}&platform={provider}")
             elif code and state:
-                print(f"⚡ {provider} OAuth授权成功，立即调用Java绑定接口（跳过Python用户信息获取）")
+                logger.info(f"{provider} OAuth授权成功，立即调用Java绑定接口（跳过Python用户信息获取）")
 
                 # 记录时间戳，用于分析时序
                 import time
                 start_time = time.time()
-                print(f"🕐 开始调用Java绑定接口: {start_time}")
+                logger.info(f"开始调用Java绑定接口: provider={provider}, timestamp={start_time}")
 
                 # 立即调用Java后端绑定接口，避免授权码过期
                 java_response = await call_java_bind_api_direct(provider, code, state, state_info)
 
                 end_time = time.time()
                 elapsed_time = end_time - start_time
-                print(f"🕐 Java绑定接口调用完成: {end_time}, 耗时: {elapsed_time:.2f}秒")
+                logger.info(f"Java绑定接口调用完成: provider={provider}, 耗时={elapsed_time:.2f}秒")
 
                 # 解析Java响应
                 try:
                     response_data = java_response.json()
-                    print(f"📋 Java响应数据: status={java_response.status_code}, data={response_data}")
+                    logger.info(f"Java响应数据: provider={provider}, status={java_response.status_code}, success={response_data.get('code') == 200}")
                 except Exception as json_error:
-                    print(f"❌ 解析Java响应JSON失败: {json_error}")
-                    print(f"🔍 原始响应: status={java_response.status_code}, content={getattr(java_response, 'text', 'N/A')}")
+                    logger.error(f"解析Java响应JSON失败: provider={provider}, error={json_error}")
+                    logger.error(f"原始响应: status={java_response.status_code}, content={getattr(java_response, 'text', 'N/A')}")
                     return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=Java后端响应格式错误&platform={provider}")
 
                 if java_response.status_code == 200 and response_data.get("code") == 200:
-                    print(f"✅ {provider} 账号绑定成功，总耗时: {elapsed_time:.2f}秒")
+                    logger.info(f"{provider} 账号绑定成功，总耗时: {elapsed_time:.2f}秒")
                     return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?success=true&platform={provider}&message=绑定成功")
                 else:
                     error_message = response_data.get("message", "绑定失败")
-                    print(f"❌ {provider} 账号绑定失败: {error_message}，总耗时: {elapsed_time:.2f}秒")
-                    print(f"🔍 失败详情: Java状态码={java_response.status_code}, 业务状态码={response_data.get('code')}")
+                    logger.warning(f"{provider} 账号绑定失败: {error_message}，总耗时: {elapsed_time:.2f}秒")
+                    logger.warning(f"失败详情: Java状态码={java_response.status_code}, 业务状态码={response_data.get('code')}")
                     return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error_message}&platform={provider}")
             else:
                 print(f"❌ {provider} OAuth回调参数不完整")
@@ -930,42 +978,28 @@ async def oauth_callback(provider: str, request: Request):
             return JSONResponse(response_data)
 
     except httpx.TimeoutException as e:
-        print(f"❌ Java后端调用超时: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"🔍 超时异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"Java后端响应超时: {str(e)}"}, status_code=504)
+        logger.error(f"Java后端调用超时: provider={provider}, error={str(e)}")
+        return JSONResponse({"error": "服务响应超时，请稍后重试"}, status_code=504)
 
     except httpx.ConnectError as e:
-        print(f"❌ Java后端连接失败: {type(e).__name__}: {str(e)}")
-        print(f"🔍 连接详情: Java后端URL={JAVA_BACKEND_URL}")
-        import traceback
-        print(f"🔍 连接异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"无法连接到Java后端: {str(e)}"}, status_code=502)
+        logger.error(f"Java后端连接失败: provider={provider}, url={JAVA_BACKEND_URL}, error={str(e)}")
+        return JSONResponse({"error": "服务暂时不可用，请稍后重试"}, status_code=502)
 
     except httpx.HTTPStatusError as e:
-        print(f"❌ Java后端HTTP错误: status={e.response.status_code}")
-        print(f"🔍 响应内容: {e.response.text}")
-        import traceback
-        print(f"🔍 HTTP异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"Java后端返回错误: HTTP {e.response.status_code}"}, status_code=e.response.status_code)
+        logger.error(f"Java后端HTTP错误: provider={provider}, status={e.response.status_code}")
+        return JSONResponse({"error": "服务处理错误，请稍后重试"}, status_code=502)
 
     except httpx.RequestError as e:
-        print(f"❌ HTTP请求异常: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"🔍 请求异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"网络请求失败: {str(e)}"}, status_code=502)
+        logger.error(f"HTTP请求异常: provider={provider}, error={str(e)}")
+        return JSONResponse({"error": "网络请求失败，请检查网络连接"}, status_code=502)
 
     except ValueError as e:
-        print(f"❌ 数据解析失败: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"🔍 解析异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"数据格式错误: {str(e)}"}, status_code=400)
+        logger.error(f"数据解析失败: provider={provider}, error={str(e)}")
+        return JSONResponse({"error": "数据格式错误，请重新授权"}, status_code=400)
 
     except Exception as e:
-        print(f"❌ OAuth回调处理失败: {type(e).__name__}: {str(e)}")
-        import traceback
-        print(f"🔍 未知异常堆栈: {traceback.format_exc()}")
-        return JSONResponse({"error": f"服务器内部错误: {str(e)}"}, status_code=500)
+        logger.error(f"OAuth回调处理失败: provider={provider}, error={str(e)}")
+        return JSONResponse({"error": "OAuth回调处理失败，请重新授权"}, status_code=500)
 
 # 注册第三方登录API到FastAPI应用
 def register_third_login_api(app: FastAPI):

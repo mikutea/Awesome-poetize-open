@@ -69,7 +69,8 @@ export default new Vuex.Store({
       action: 'comment',  // 验证码操作类型
       params: null,       // 验证成功后的回调参数
       onSuccess: null,    // 验证成功后的回调函数
-      onCancel: null      // 验证取消后的回调函数
+      onCancel: null,     // 验证取消后的回调函数
+      isReplyComment: false  // 是否为回复评论场景
     }
   },
   getters: {
@@ -188,6 +189,7 @@ export default new Vuex.Store({
         state.captcha.params = null;
         state.captcha.onSuccess = null;
         state.captcha.onCancel = null;
+        state.captcha.isReplyComment = false;
       }
     },
     
@@ -198,6 +200,7 @@ export default new Vuex.Store({
         state.captcha.params = params;
         state.captcha.onSuccess = params.onSuccess || null;
         state.captcha.onCancel = params.onCancel || null;
+        state.captcha.isReplyComment = params.isReplyComment || false;
       }
     },
     
@@ -211,6 +214,7 @@ export default new Vuex.Store({
       state.captcha.params = null;
       state.captcha.onSuccess = null;
       state.captcha.onCancel = null;
+      state.captcha.isReplyComment = false;
     }
   },
   actions: {

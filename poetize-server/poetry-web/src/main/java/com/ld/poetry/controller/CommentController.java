@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.SaveCheck;
+import com.ld.poetry.service.CaptchaVerificationService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.LocationService;
 import com.ld.poetry.constants.CommonConst;
@@ -46,6 +47,9 @@ public class CommentController {
     @Autowired
     private LocationService locationService;
 
+    @Autowired
+    private CaptchaVerificationService captchaVerificationService;
+
 
     /**
      * 保存评论
@@ -54,13 +58,33 @@ public class CommentController {
     @LoginCheck
     @SaveCheck
     public PoetryResult saveComment(@Validated @RequestBody CommentVO commentVO) {
+        // 验证评论内容
         String content = StringUtil.removeHtml(commentVO.getCommentContent());
         if (!StringUtils.hasText(content)) {
             return PoetryResult.fail("评论内容不合法！");
         }
         commentVO.setCommentContent(content);
 
+        // 验证码token校验
+        if (StringUtils.hasText(commentVO.getVerificationToken())) {
+            log.info("检测到验证码token，开始验证: {}",
+                    commentVO.getVerificationToken().substring(0, Math.min(commentVO.getVerificationToken().length(), 10)) + "...");
+
+            boolean isTokenValid = captchaVerificationService.verifyToken(commentVO.getVerificationToken());
+            if (!isTokenValid) {
+                log.warn("验证码token验证失败，拒绝评论提交");
+                return PoetryResult.fail("验证码验证失败，请重新验证后再试");
+            }
+
+            log.info("验证码token验证通过，允许评论提交");
+        } else {
+            log.debug("未提供验证码token，按现有逻辑处理");
+        }
+
+        // 清除评论计数缓存
         PoetryCache.remove(CommonConst.COMMENT_COUNT_CACHE + commentVO.getSource().toString() + "_" + commentVO.getType());
+
+        // 保存评论
         return commentService.saveComment(commentVO);
     }
 

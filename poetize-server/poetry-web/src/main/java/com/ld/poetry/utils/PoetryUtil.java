@@ -83,24 +83,57 @@ public class PoetryUtil {
         // 首先尝试从异步上下文获取Token
         String asyncToken = AsyncUserContext.getToken();
         if (StringUtils.hasText(asyncToken)) {
+            // 验证异步上下文中的token格式
+            if (!TokenValidationUtil.isReasonableLength(asyncToken)) {
+                log.warn("异步上下文中的token长度异常，可能存在安全风险");
+                return null;
+            }
             return asyncToken;
         }
-        
+
         // 如果异步上下文中没有，尝试从请求中获取
         HttpServletRequest request = getRequest();
         if (request != null) {
             String token = request.getHeader(CommonConst.TOKEN_HEADER);
-            return "null".equals(token) ? null : token;
+            if ("null".equals(token) || !StringUtils.hasText(token)) {
+                return null;
+            }
+
+            // 验证从请求头获取的token格式
+            if (!TokenValidationUtil.isReasonableLength(token)) {
+                String clientIp = getIpAddr(request);
+                TokenValidationUtil.logSuspiciousTokenActivity(token, "token长度异常", clientIp);
+                return null;
+            }
+
+            return token;
         }
-        
+
         return null;
     }
 
     public static String getTokenWithoutBearer() {
         String token = getToken();
         if (token != null && token.startsWith("Bearer ")) {
-            return token.substring(7);
+            String actualToken = token.substring(7);
+            // 验证去除Bearer前缀后的token格式
+            if (!TokenValidationUtil.isValidToken(actualToken)) {
+                HttpServletRequest request = getRequest();
+                String clientIp = request != null ? getIpAddr(request) : "unknown";
+                TokenValidationUtil.logTokenValidationFailure(actualToken, "Bearer token格式无效", clientIp);
+                return null;
+            }
+            return actualToken;
         }
+
+        // 验证不带Bearer前缀的token格式
+        if (token != null && !TokenValidationUtil.isValidToken(token)) {
+            HttpServletRequest request = getRequest();
+            String clientIp = request != null ? getIpAddr(request) : "unknown";
+            TokenValidationUtil.logTokenValidationFailure(token, "token格式无效", clientIp);
+            return null;
+        }
+
         return token;
     }
     
@@ -233,8 +266,15 @@ public class PoetryUtil {
                         return user.getId();
                     }
                     
-                    // 如果直接获取失败，检查是否为管理员token
-                    if (tokenWithoutBearer.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
+                    // 如果缓存中都没有，尝试直接从安全token中提取用户ID
+                    Integer userIdFromToken = TokenValidationUtil.extractUserId(tokenWithoutBearer);
+                    if (userIdFromToken != null) {
+                        log.debug("从安全token中直接提取用户ID: {}", userIdFromToken);
+                        return userIdFromToken;
+                    }
+
+                    // 如果直接获取失败，检查是否为管理员token - 使用安全的验证方法
+                    if (TokenValidationUtil.isAdminToken(tokenWithoutBearer)) {
                         User adminUser = getAdminUser();
                         if (adminUser != null) {
                             return adminUser.getId();
