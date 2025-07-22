@@ -663,8 +663,8 @@ get_database_config() {
         info "从 .config/db_credentials.txt 读取数据库配置"
 
         # 读取poetize用户密码
-        db_password=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: *//' | tr -d '\r\n ')
-        db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: *//' | tr -d '\r\n ')
+        db_password=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: //')
+        db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: //')
 
         if [ -n "$db_password" ]; then
             success "成功从凭据文件读取数据库配置"
