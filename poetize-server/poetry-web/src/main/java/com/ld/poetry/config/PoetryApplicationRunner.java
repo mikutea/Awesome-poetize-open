@@ -82,9 +82,10 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         User admin = userService.lambdaQuery().eq(User::getUserType, PoetryEnum.USER_TYPE_ADMIN.getCode()).one();
         if (admin != null) {
             cacheService.cacheAdminUser(admin);
-            log.info("管理员用户信息已加载到缓存 - Username: {}, ID: {}", admin.getUsername(), admin.getId());
+            log.info("管理员用户信息已加载到Redis缓存(永久) - Username: {}, ID: {}, Email: {}", 
+                admin.getUsername(), admin.getId(), admin.getEmail());
         } else {
-            log.warn("未找到管理员用户，请检查数据库");
+            log.error("未找到管理员用户，请检查数据库！应用可能无法正常工作");
         }
 
         // 初始化管理员家庭信息缓存

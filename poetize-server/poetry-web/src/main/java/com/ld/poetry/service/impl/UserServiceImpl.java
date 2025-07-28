@@ -321,6 +321,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             cacheService.cacheUser(one);
             cacheService.cacheTokenInterval(one.getId(), true);
 
+            // 同时更新管理员缓存（设置为永久缓存）
+            cacheService.cacheAdminUser(one);
+            log.info("已同步更新管理员缓存 - 用户ID: {}", one.getId());
+
             // 保持UserCacheManager兼容性
             userCacheManager.cacheUserByToken(adminToken, one);
         } else if (!isActualAdmin && !StringUtils.hasText(userToken)) {

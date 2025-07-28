@@ -40,8 +40,9 @@ public class CacheService {
     public void cacheUser(User user) {
         if (user != null && user.getId() != null) {
             String key = CacheConstants.buildUserKey(user.getId());
-            redisUtil.set(key, user, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存用户信息: {}", user.getId());
+            // 使用与token相同的过期时间，确保用户信息和会话同步
+            redisUtil.set(key, user, CommonConst.TOKEN_EXPIRE);
+            log.info("缓存用户信息: {}, 过期时间与token一致: {}秒", user.getId(), CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -361,7 +362,7 @@ public class CacheService {
         if (configKey != null) {
             String key = CacheConstants.buildSysConfigKey(configKey);
             redisUtil.set(key, configValue, CacheConstants.PERMANENT_EXPIRE_TIME);
-            log.debug("缓存系统配置(永久): {}", configKey);
+            log.info("缓存系统配置(永久): {}", configKey);
         }
     }
 
@@ -396,13 +397,14 @@ public class CacheService {
      */
     public void cacheSortList(List<?> sortList) {
         if (sortList != null) {
-            redisUtil.set(CacheConstants.SORT_LIST_KEY, sortList, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存分类信息列表");
+            redisUtil.set(CacheConstants.SORT_LIST_KEY, sortList, CacheConstants.VERY_LONG_EXPIRE_TIME);
+            log.info("缓存分类信息列表(24小时)");
         }
     }
 
     /**
      * 获取缓存的分类信息列表
+     * 如果缓存不存在或已过期，会自动尝试从数据库重新加载
      */
     @SuppressWarnings("unchecked")
     public List<?> getCachedSortList() {
@@ -411,6 +413,61 @@ public class CacheService {
             log.debug("从缓存获取分类信息列表");
             return (List<?>) cached;
         }
+        
+        // 缓存不存在或已过期，尝试从数据库重新加载
+        try {
+            org.springframework.context.ApplicationContext context = SpringContextUtil.getApplicationContext();
+            if (context != null) {
+                com.ld.poetry.dao.SortMapper sortMapper = context.getBean(com.ld.poetry.dao.SortMapper.class);
+                List<?> sortList = new com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper<>(sortMapper).list();
+                if (sortList != null && !sortList.isEmpty()) {
+                    // 重新缓存
+                    cacheSortList(sortList);
+                    log.info("分类信息缓存已过期，已从数据库重新加载: {} 条记录", sortList.size());
+                    return sortList;
+                }
+            }
+        } catch (Exception e) {
+            log.error("从数据库重新加载分类信息失败", e);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 获取缓存的标签信息列表
+     * 如果缓存不存在或已过期，会自动尝试从数据库重新加载
+     */
+    @SuppressWarnings("unchecked")
+    public List<?> getCachedLabelList(Integer sortId) {
+        if (sortId == null) return null;
+
+        String key = CacheConstants.LABEL_LIST_PREFIX + sortId;
+        Object cached = redisUtil.get(key);
+        if (cached instanceof List) {
+            log.debug("从缓存获取标签信息列表: sortId={}", sortId);
+            return (List<?>) cached;
+        }
+        
+        // 缓存不存在或已过期，尝试从数据库重新加载
+        try {
+            org.springframework.context.ApplicationContext context = SpringContextUtil.getApplicationContext();
+            if (context != null) {
+                com.ld.poetry.dao.LabelMapper labelMapper = context.getBean(com.ld.poetry.dao.LabelMapper.class);
+                List<?> labelList = new com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper<>(labelMapper)
+                    .eq(com.ld.poetry.entity.Label::getSortId, sortId)
+                    .list();
+                if (labelList != null) {
+                    // 重新缓存
+                    cacheLabelList(sortId, labelList);
+                    log.info("标签信息缓存已过期，已从数据库重新加载: sortId={}, {} 条记录", sortId, labelList.size());
+                    return labelList;
+                }
+            }
+        } catch (Exception e) {
+            log.error("从数据库重新加载标签信息失败: sortId={}", sortId, e);
+        }
+        
         return null;
     }
 
@@ -428,25 +485,9 @@ public class CacheService {
     public void cacheLabelList(Integer sortId, List<?> labelList) {
         if (sortId != null && labelList != null) {
             String key = CacheConstants.LABEL_LIST_PREFIX + sortId;
-            redisUtil.set(key, labelList, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存标签信息列表: sortId={}", sortId);
+            redisUtil.set(key, labelList, CacheConstants.VERY_LONG_EXPIRE_TIME);
+            log.info("缓存标签信息列表(24小时): sortId={}", sortId);
         }
-    }
-
-    /**
-     * 获取缓存的标签信息列表
-     */
-    @SuppressWarnings("unchecked")
-    public List<?> getCachedLabelList(Integer sortId) {
-        if (sortId == null) return null;
-
-        String key = CacheConstants.LABEL_LIST_PREFIX + sortId;
-        Object cached = redisUtil.get(key);
-        if (cached instanceof List) {
-            log.debug("从缓存获取标签信息列表: sortId={}", sortId);
-            return (List<?>) cached;
-        }
-        return null;
     }
 
     /**
@@ -559,8 +600,8 @@ public class CacheService {
     public void cacheAdminFamily(Object family) {
         if (family != null) {
             String key = CacheConstants.CACHE_PREFIX + "admin:family";
-            redisUtil.set(key, family, CacheConstants.VERY_LONG_EXPIRE_TIME);
-            log.debug("缓存管理员家庭信息");
+            redisUtil.set(key, family, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存管理员家庭信息(永久)");
         }
     }
 
@@ -585,8 +626,8 @@ public class CacheService {
     public void cacheAdminToken(Integer userId, String token) {
         if (userId != null && token != null) {
             String key = CacheConstants.buildAdminTokenKey(userId);
-            redisUtil.set(key, token, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存管理员token: userId={}", userId);
+            redisUtil.set(key, token, CommonConst.TOKEN_EXPIRE);
+            log.info("缓存管理员token: userId={}, 过期时间: {}秒", userId, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -622,8 +663,8 @@ public class CacheService {
     public void cacheUserToken(Integer userId, String token) {
         if (userId != null && token != null) {
             String key = CacheConstants.buildUserTokenKey(userId);
-            redisUtil.set(key, token, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存用户token: userId={}", userId);
+            redisUtil.set(key, token, CommonConst.TOKEN_EXPIRE);
+            log.info("缓存用户token: userId={}, 过期时间: {}秒", userId, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -646,8 +687,8 @@ public class CacheService {
             String key = isAdmin ?
                 CacheConstants.buildAdminTokenIntervalKey(userId) :
                 CacheConstants.buildUserTokenIntervalKey(userId);
-            redisUtil.set(key, System.currentTimeMillis(), CacheConstants.DEFAULT_EXPIRE_TIME);
-            log.debug("缓存token间隔检查: userId={}, isAdmin={}", userId, isAdmin);
+            redisUtil.set(key, System.currentTimeMillis(), CommonConst.TOKEN_EXPIRE);
+            log.debug("缓存token间隔检查: userId={}, isAdmin={}, 过期时间: {}秒", userId, isAdmin, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -734,7 +775,7 @@ public class CacheService {
         if (userId != null && token != null) {
             String key = CacheConstants.CACHE_PREFIX + "user:token:" + userId;
             redisUtil.set(key, token, CommonConst.TOKEN_EXPIRE);
-            log.debug("缓存用户Token映射: userId={}, token={}, 过期时间: {}秒", userId, token, CommonConst.TOKEN_EXPIRE);
+            log.info("缓存用户Token映射: userId={}, token={}, 过期时间: {}秒", userId, token, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -795,8 +836,8 @@ public class CacheService {
      */
     public void cacheAdminUser(User admin) {
         if (admin != null) {
-            redisUtil.set(CacheConstants.CACHE_PREFIX + "admin", admin, CacheConstants.VERY_LONG_EXPIRE_TIME);
-            log.debug("缓存管理员用户信息: {}", admin.getId());
+            redisUtil.set(CacheConstants.CACHE_PREFIX + "admin", admin, CacheConstants.PERMANENT_EXPIRE_TIME);
+            log.info("缓存管理员用户信息(永久): {}", admin.getId());
         }
     }
 
