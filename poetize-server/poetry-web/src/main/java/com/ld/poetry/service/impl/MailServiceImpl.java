@@ -301,6 +301,7 @@ public class MailServiceImpl implements MailService {
                 log.warn("数据库中未找到验证码模板配置，使用默认模板");
             }
             
+            log.info("使用验证码模板: {}", template); // 添加日志记录使用的模板
             String content = String.format(template, code);
             
             // 发送邮件

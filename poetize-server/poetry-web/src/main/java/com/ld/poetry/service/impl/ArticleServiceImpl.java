@@ -563,6 +563,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             log.warn("数据库中未找到订阅模板配置，使用默认模板");
         }
         
+        log.info("使用订阅邮件模板: {}", subscribeTemplate); // 添加日志记录使用的模板
+        
         return String.format(mailUtil.getMailText(),
                 webName,
                 String.format(MailUtil.notificationMail, PoetryUtil.getAdminUser().getUsername()),

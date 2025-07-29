@@ -25,6 +25,7 @@ import com.ld.poetry.im.websocket.TioWebsocketStarter;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.PasswordService;
 import com.ld.poetry.service.PasswordUpgradeService;
+import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.service.WeiYanService;
@@ -84,6 +85,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private SysConfigService sysConfigService;
 
 
     @Autowired
@@ -94,9 +97,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Autowired
     private PasswordUpgradeService passwordUpgradeService;
-
-    @Value("${user.code.format}")
-    private String codeFormat;
 
     /**
      * 检查IP是否在管理员IP白名单中
@@ -602,7 +602,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             List<String> mail = new ArrayList<>();
             mail.add(user.getEmail());
-            String text = getCodeMail(i);
+            String text = getCodeMail(i); // 这里使用已经修改过的getCodeMail方法，会从数据库获取模板
             WebInfo webInfo = cacheService.getCachedWebInfo();
 
             // 检查邮箱配置是否存在
@@ -638,7 +638,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             log.info(place + "---" + "邮箱验证码---" + i);
             List<String> mail = new ArrayList<>();
             mail.add(place);
-            String text = getCodeMail(i);
+            String text = getCodeMail(i); // 这里使用已经修改过的getCodeMail方法，会从数据库获取模板
             WebInfo webInfo = cacheService.getCachedWebInfo();
 
             // 检查邮箱配置是否存在
@@ -1212,11 +1212,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private String getCodeMail(int i) {
         WebInfo webInfo = cacheService.getCachedWebInfo();
         String webName = (webInfo == null ? "POETIZE" : webInfo.getWebName());
+        
+        // 从数据库获取验证码模板
+        String template = sysConfigService.getConfigValueByKey("user.code.format");
+        if (template == null || template.trim().isEmpty()) {
+            // 如果数据库中没有配置，使用默认模板
+            template = "【POETIZE】%s为本次验证的验证码，请在5分钟内完成验证。为保证账号安全，请勿泄漏此验证码。";
+            log.warn("数据库中未找到验证码模板配置，使用默认模板");
+        }
+        
+        log.info("使用验证码模板: {}", template); // 添加日志记录使用的模板
+        
         return String.format(mailUtil.getMailText(),
                 webName,
                 String.format(MailUtil.imMail, PoetryUtil.getAdminUser().getUsername()),
                 PoetryUtil.getAdminUser().getUsername(),
-                String.format(codeFormat, i),
+                String.format(template, i),
                 "",
                 webName);
     }

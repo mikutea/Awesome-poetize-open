@@ -74,16 +74,6 @@ public class SysConfigController {
         
         boolean success = sysConfigService.saveOrUpdate(sysConfig);
         
-        if (success) {
-            // 配置更新成功后，主动更新缓存
-            try {
-                // 更新系统配置缓存
-                cacheService.cacheSysConfig(sysConfig.getConfigKey(), sysConfig.getConfigValue());
-            } catch (Exception e) {
-                return PoetryResult.success("配置已保存，但缓存更新失败，可能需要重启应用");
-            }
-        }
-        
         return PoetryResult.success();
     }
 
@@ -97,14 +87,6 @@ public class SysConfigController {
         SysConfig config = sysConfigService.getById(id);
         if (config != null) {
             boolean success = sysConfigService.removeById(id);
-            if (success) {
-                // 删除相关缓存
-                try {
-                    cacheService.evictSysConfig(config.getConfigKey());
-                } catch (Exception e) {
-                    return PoetryResult.success("配置已删除，但缓存清理失败，可能需要重启应用");
-                }
-            }
         }
         return PoetryResult.success();
     }

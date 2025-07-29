@@ -33,24 +33,13 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
         }
         
         try {
-            // 优先从缓存获取
-            String cachedValue = cacheService.getCachedSysConfig(configKey);
-            if (cachedValue != null) {
-                log.debug("从缓存获取配置成功，key: {}, value: {}", configKey, cachedValue);
-                return cachedValue;
-            }
-            
-            // 缓存未命中，从数据库获取
+            // 删除缓存获取代码，直接从数据库获取
             LambdaQueryWrapper<SysConfig> queryWrapper = new LambdaQueryWrapper<>();
             queryWrapper.eq(SysConfig::getConfigKey, configKey);
             
             SysConfig sysConfig = this.getOne(queryWrapper);
             if (sysConfig != null) {
                 log.debug("从数据库获取配置成功，key: {}, value: {}", configKey, sysConfig.getConfigValue());
-                
-                // 将配置值存入缓存
-                cacheService.cacheSysConfig(configKey, sysConfig.getConfigValue());
-                
                 return sysConfig.getConfigValue();
             } else {
                 log.warn("未找到配置项，key: {}", configKey);
