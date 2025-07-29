@@ -176,24 +176,30 @@ public class UserController {
     @PostMapping("/updateSecretInfo")
     @LoginCheck
     public PoetryResult<UserVO> updateSecretInfo(@RequestParam("place") String place, @RequestParam("flag") Integer flag, @RequestParam(value = "code", required = false) String code, @RequestParam("password") String password) {
-        try {
-            // 获取当前用户信息，并进行额外验证
-            User currentUser = PoetryUtil.getCurrentUser();
-            if (currentUser == null) {
-                log.error("用户上下文验证失败 - 无法获取当前用户信息, place={}, flag={}", place, flag);
-                return PoetryResult.fail("用户认证失败，请重新登录");
-            }
-            
-            Integer userId = currentUser.getId();
-            log.debug("准备更新用户密钥信息: userId={}, place={}, flag={}", userId, place, flag);
-            
-            // 使用CacheService清理用户缓存
-            cacheService.evictUser(userId);
-            log.debug("清理用户密钥信息缓存: userId={}", userId);
-        } catch (Exception e) {
-            log.error("清理用户密钥信息缓存时发生错误: userId={}", PoetryUtil.getUserId(), e);
+        // 1. 先获取当前用户信息用于后续缓存处理
+        User currentUser = PoetryUtil.getCurrentUser();
+        if (currentUser == null) {
+            log.error("用户上下文验证失败 - 无法获取当前用户信息, place={}, flag={}", place, flag);
+            return PoetryResult.fail("用户认证失败，请重新登录");
         }
-        return userService.updateSecretInfo(place, flag, code, password);
+
+        Integer userId = currentUser.getId();
+        log.debug("准备更新用户密钥信息: userId={}, place={}, flag={}", userId, place, flag);
+
+        // 2. 调用 service 执行真正的更新操作
+        PoetryResult<UserVO> result = userService.updateSecretInfo(place, flag, code, password);
+
+        // 3. 仅当更新成功时才清理缓存，避免 service 内再次获取用户信息出现空指针
+        if (result.getCode() == 200) {
+            try {
+                cacheService.evictUser(userId);
+                log.debug("更新密钥信息成功，清理用户缓存: userId={}", userId);
+            } catch (Exception e) {
+                log.error("清理用户密钥信息缓存时发生错误: userId={}", userId, e);
+            }
+        }
+
+        return result;
     }
 
     /**
