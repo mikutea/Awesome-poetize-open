@@ -44,7 +44,7 @@ public class SecureTokenGenerator {
      * Token有效时间窗口（毫秒）- 用于防止重放攻击
      * 设置为1小时，超过此时间的token将被拒绝
      */
-    private static final long TOKEN_TIME_WINDOW = 60 * 60 * 1000; // 1小时
+    private static final long TOKEN_TIME_WINDOW = 7 * 24 * 60 * 60 * 1000; // 7天
     
     /**
      * 安全随机数生成器
@@ -184,7 +184,7 @@ public class SecureTokenGenerator {
             // 验证时间窗口（防止重放攻击）
             long currentTime = System.currentTimeMillis();
             if (currentTime - timestamp > TOKEN_TIME_WINDOW) {
-                return TokenValidationResult.failure("Token已超过有效时间窗口");
+                return TokenValidationResult.failure("登录已过期，请重新登录");
             }
 
             // 重新计算签名
