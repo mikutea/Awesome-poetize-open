@@ -164,13 +164,4 @@ public class ScheduleTask {
         log.info("应用启动，初始化统计缓存");
         ensureStatisticsCache();
     }
-
-    /**
-     * 定时刷新统计缓存（每小时执行一次）
-     */
-    @Scheduled(cron = "0 0 * * * ?")
-    public void refreshStatisticsCacheScheduled() {
-        log.info("定时刷新统计缓存");
-        refreshStatisticsCache();
-    }
 }
