@@ -146,11 +146,11 @@ public class LocationService {
             if (StringUtils.hasText(region)) {
                 // 处理特殊地区
                 if (region.contains("香港") || region.contains("Hong Kong")) {
-                    return "香港";
+                    return "中国香港";
                 } else if (region.contains("澳门") || region.contains("Macao")) {
-                    return "澳门";
+                    return "中国澳门";
                 } else if (region.contains("台湾") || region.contains("Taiwan")) {
-                    return "台湾";
+                    return "中国台湾";
                 } else {
                     // 中国大陆省份，去掉"省"、"市"、"自治区"等后缀
                     String province = region.replaceAll("省|市|自治区|特别行政区", "");

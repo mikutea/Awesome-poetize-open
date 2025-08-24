@@ -47,6 +47,50 @@ public class LocationServiceTest {
         String cachedLocation = locationService.getLocationByIp("8.8.8.8");
         assertEquals(location, cachedLocation);
     }
+    
+    @Test
+    public void testChinaSpecialRegions() {
+        // 测试中国特殊地区前缀处理
+        // 注意：这些是模拟测试，实际需要mock LocationService的parsePublicIpLocation方法
+        
+        // 可以通过反射测试formatLocation方法
+        try {
+            java.lang.reflect.Method formatLocationMethod = LocationService.class.getDeclaredMethod("formatLocation", String.class, String.class);
+            formatLocationMethod.setAccessible(true);
+            
+            // 测试香港
+            String result1 = (String) formatLocationMethod.invoke(locationService, "中国", "香港特别行政区");
+            assertEquals("中国香港", result1);
+            
+            // 测试澳门
+            String result2 = (String) formatLocationMethod.invoke(locationService, "中国", "澳门特别行政区");
+            assertEquals("中国澳门", result2);
+            
+            // 测试台湾
+            String result3 = (String) formatLocationMethod.invoke(locationService, "中国", "台湾省");
+            assertEquals("中国台湾", result3);
+            
+            // 测试英文名称
+            String result4 = (String) formatLocationMethod.invoke(locationService, "China", "Hong Kong");
+            assertEquals("中国香港", result4);
+            
+            String result5 = (String) formatLocationMethod.invoke(locationService, "China", "Macao");
+            assertEquals("中国澳门", result5);
+            
+            String result6 = (String) formatLocationMethod.invoke(locationService, "China", "Taiwan");
+            assertEquals("中国台湾", result6);
+            
+            // 测试普通省份（不加前缀）
+            String result7 = (String) formatLocationMethod.invoke(locationService, "中国", "广东省");
+            assertEquals("广东", result7);
+            
+            String result8 = (String) formatLocationMethod.invoke(locationService, "中国", "北京市");
+            assertEquals("北京", result8);
+            
+        } catch (Exception e) {
+            fail("反射调用formatLocation方法失败: " + e.getMessage());
+        }
+    }
 
     @Test
     public void testCacheSize() {
