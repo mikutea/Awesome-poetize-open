@@ -145,13 +145,22 @@ public class CommonQuery {
             return true;
         }
         
-        // 本地回环地址
-        if (ip.equals("127.0.0.1") || ip.equals("localhost") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
+        ip = ip.trim();
+        
+        // IPv4本地回环地址
+        if (ip.equals("127.0.0.1") || ip.equals("localhost")) {
+            return true;
+        }
+        
+        // IPv6本地回环地址
+        if (ip.equals("::1") || ip.equals("0:0:0:0:0:0:0:1") || 
+            ip.equalsIgnoreCase("localhost")) {
             return true;
         }
         
         // 其他明确无效的IP
-        if (ip.equals("unknown") || ip.equals("0.0.0.0") || ip.equals("null")) {
+        if (ip.equals("unknown") || ip.equals("0.0.0.0") || ip.equals("null") || 
+            ip.equals("-") || ip.equals("undefined")) {
             return true;
         }
         
@@ -171,14 +180,33 @@ public class CommonQuery {
     }
     
     /**
-     * 验证IP格式是否有效
+     * 验证IP格式是否有效（支持IPv4和IPv6）
      */
     private boolean isValidIpFormat(String ip) {
         if (ip == null || ip.trim().isEmpty()) {
             return false;
         }
         
-        // 简单的IPv4格式验证
+        ip = ip.trim();
+        
+        // 使用Java内置的InetAddress来验证IP格式
+        try {
+            java.net.InetAddress.getByName(ip);
+            return true;
+        } catch (java.net.UnknownHostException e) {
+            // 如果InetAddress无法解析，再尝试手动验证IPv4格式
+            return isValidIPv4(ip);
+        }
+    }
+    
+    /**
+     * 验证IPv4格式
+     */
+    private boolean isValidIPv4(String ip) {
+        if (ip == null || ip.trim().isEmpty()) {
+            return false;
+        }
+        
         String[] parts = ip.split("\\.");
         if (parts.length != 4) {
             return false;
@@ -188,6 +216,10 @@ public class CommonQuery {
             for (String part : parts) {
                 int num = Integer.parseInt(part);
                 if (num < 0 || num > 255) {
+                    return false;
+                }
+                // 检查前导零（除了"0"本身）
+                if (part.length() > 1 && part.startsWith("0")) {
                     return false;
                 }
             }
