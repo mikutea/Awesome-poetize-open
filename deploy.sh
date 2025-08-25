@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-23
+## 修改时间: 2025-08-25
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.4.6
+## 版本: 1.5.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -2888,9 +2888,99 @@ setup_docker_compose_command() {
     info "将使用命令: $DOCKER_COMPOSE_CMD"
 }
 
+# 配置系统时区为东八区
+setup_timezone() {
+  info "配置系统时区为东八区（北京时间）..."
+  
+  # 检测当前时区
+  if command -v timedatectl &>/dev/null; then
+    current_tz=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "unknown")
+    if [ "$current_tz" = "Asia/Shanghai" ]; then
+      success "系统时区已经是 Asia/Shanghai，无需修改"
+      return 0
+    fi
+    
+    info "当前时区: $current_tz，正在设置为 Asia/Shanghai..."
+    if sudo timedatectl set-timezone Asia/Shanghai 2>/dev/null; then
+      success "系统时区已成功设置为 Asia/Shanghai"
+    else
+      warning "无法通过timedatectl设置时区，尝试其他方法..."
+    fi
+  fi
+  
+  # 检测系统类型进行兼容性设置
+  local os_type=$(detect_os_type)
+  
+  case "$os_type" in
+    "debian"|"ubuntu"|"deepin"|"kylin")
+      # Debian/Ubuntu系统
+      if [ -f "/usr/share/zoneinfo/Asia/Shanghai" ]; then
+        if sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 2>/dev/null; then
+          echo "Asia/Shanghai" | sudo tee /etc/timezone > /dev/null
+          success "Debian/Ubuntu系统时区配置完成"
+        else
+          warning "无法设置时区链接，可能权限不足"
+        fi
+      fi
+      ;;
+    "centos7"|"centos8"|"centos-stream"|"rhel"|"rocky"|"almalinux"|"oracle"|"fedora"|"anolis"|"openeuler"|"tencentos")
+      # RedHat系系统
+      if [ -f "/usr/share/zoneinfo/Asia/Shanghai" ]; then
+        if sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 2>/dev/null; then
+          success "RedHat系系统时区配置完成"
+        else
+          warning "无法设置时区链接，可能权限不足"
+        fi
+      fi
+      ;;
+    "arch")
+      # Arch Linux
+      if sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 2>/dev/null; then
+        sudo hwclock --systohc 2>/dev/null || true
+        success "Arch Linux时区配置完成"
+      else
+        warning "无法设置Arch Linux时区"
+      fi
+      ;;
+    "alpine")
+      # Alpine Linux
+      if [ -f "/usr/share/zoneinfo/Asia/Shanghai" ]; then
+        if sudo cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 2>/dev/null; then
+          echo "Asia/Shanghai" | sudo tee /etc/TZ > /dev/null
+          success "Alpine Linux时区配置完成"
+        else
+          warning "无法设置Alpine Linux时区"
+        fi
+      fi
+      ;;
+    *)
+      warning "未知系统类型: $os_type，跳过时区设置"
+      ;;
+  esac
+  
+  # 验证时区设置
+  local new_tz="unknown"
+  if command -v timedatectl &>/dev/null; then
+    new_tz=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "unknown")
+  elif [ -f "/etc/timezone" ]; then
+    new_tz=$(cat /etc/timezone 2>/dev/null || echo "unknown")
+  fi
+  
+  if [ "$new_tz" = "Asia/Shanghai" ] || [[ "$new_tz" =~ Shanghai ]]; then
+    success "时区验证成功: $new_tz"
+    info "当前系统时间: $(date)"
+  else
+    warning "时区设置可能未完全生效，当前显示: $new_tz"
+    info "如果时间显示不正确，请手动检查系统时区设置"
+  fi
+}
+
 # 初始化部署
 init_deploy() {
   info "正在初始化部署环境..."
+  
+  # 配置系统时区
+  setup_timezone
   
   # 配置swap空间
   setup_swap

@@ -9,6 +9,8 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - poetize_ui_dist:/usr/share/nginx/html/poetize
       - poetize_im_dist:/usr/share/nginx/html/im
@@ -19,6 +21,8 @@ services:
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
       - ./docker/nginx/lua:/etc/nginx/lua
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     ports:
       - "80:80/tcp"
       - "443:443/tcp"
@@ -45,10 +49,14 @@ services:
       args:
         - VUE_APP_POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
     container_name: poetize-ui
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - ./poetize-ui:/app/src
       - poetize_node_modules:/app/src/node_modules
       - poetize_ui_dist:/app/dist
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.3
@@ -94,10 +102,14 @@ services:
       args:
         - VUE_APP_POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
     container_name: poetize-im-ui
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - ./poetize-im-ui:/app/src
       - im_node_modules:/app/src/node_modules
       - poetize_im_dist:/app/dist
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.4
@@ -133,12 +145,16 @@ services:
   certbot:
     image: certbot/certbot
     container_name: poetize-certbot
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/usr/share/nginx/html
       - ./docker/nginx/certbot-logs:/var/log/letsencrypt
       - ./docker/nginx/certbot-entrypoint.sh:/certbot-entrypoint.sh
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.5
@@ -158,6 +174,7 @@ services:
         max-size: "50m"
         max-file: "3"
     environment:
+      - TZ=Asia/Shanghai
       - PORT=5000
       - JAVA_BACKEND_HOST=poetize-java
       - JAVA_BACKEND_PORT=8081
@@ -173,6 +190,8 @@ services:
       - REDIS_MAX_CONNECTIONS=20
     volumes:
       - ./py/data:/app/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.6
@@ -225,7 +244,10 @@ services:
         max-file: "3"
     volumes:
       - poetize_uploads:/app/static
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
+      - TZ=Asia/Shanghai
       - JAVA_OPTS=-Xmx256m -Xms128m -XX:MaxMetaspaceSize=96m -XX:CompressedClassSpaceSize=48m -Xss512k -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+DisableExplicitGC
       - SPRING_DATASOURCE_URL=jdbc:mariadb://mysql:3306/poetize?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=poetize
@@ -281,9 +303,13 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
+    environment:
+      - TZ=Asia/Shanghai
     volumes:
       - redis_data:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.10
@@ -309,7 +335,10 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/conf/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
+      - TZ=Asia/Shanghai
       - MARIADB_ROOT_PASSWORD=root123
       - MARIADB_DATABASE=poetize
       - MARIADB_USER=poetize
@@ -335,6 +364,7 @@ services:
         max-size: "50m"
         max-file: "3"
     environment:
+      - TZ=Asia/Shanghai
       - PORT=4000
       - LOG_LEVEL=info
       - PRERENDER_BASE_URL=http://nginx
@@ -346,6 +376,8 @@ services:
     volumes:
       - poetize_ui_dist:/app/dist
       - ./poetize-ui:/app/poetize-ui
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.9
