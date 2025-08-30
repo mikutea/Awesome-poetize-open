@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-08-25
+## 修改时间: 2025-08-30
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.5.1
+## 版本: 1.5.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -5491,6 +5491,8 @@ update_amazon_based() {
 
 # 更换国内源
 update_debian12_base_source() {
+  local codename=$1
+  local version_id=$2
   if [ -f /etc/apt/sources.list.d/debian.sources ]; then
     sudo cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/debian.sources.bak;
     sudo rm -f /etc/apt/sources.list.d/debian.sources;
@@ -5499,27 +5501,27 @@ update_debian12_base_source() {
   if [ -f /etc/apt/sources.list ]; then
     sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak;
     cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
-deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename main contrib non-free non-free-firmware
 
-deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-updates main contrib non-free non-free-firmware
 
-deb http://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
+deb http://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-backports main contrib non-free non-free-firmware
 
-deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
+deb http://mirrors.tuna.tsinghua.edu.cn/debian-security/ $codename-security main contrib non-free non-free-firmware
 EOF
     sudo apt-get update;
     sudo apt-get install apt-transport-https ca-certificates;
     cat <<EOF | sudo tee /etc/apt/sources.list > /dev/null
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename main contrib non-free non-free-firmware
 
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-updates main contrib non-free non-free-firmware
 
-deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ $codename-backports main contrib non-free non-free-firmware
 
-deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ bookworm-security main contrib non-free non-free-firmware
+deb https://mirrors.tuna.tsinghua.edu.cn/debian-security/ $codename-security main contrib non-free non-free-firmware
 EOF
   else
-    error "Debian 12 源列表不存在，请检查是否为Debian 12系统"
+    error "Debian $version_id 源列表不存在，请检查是否为Debian $version_id 系统"
     exit 0
   fi
 }
@@ -5952,10 +5954,11 @@ update_base_source() {
   local os_type=$(detect_os_type)
   case "$os_type" in
     "debian")
-        if [ -f /etc/os-release ] && grep -q "bookworm" /etc/os-release; then
-            update_debian12_base_source
+        codename=$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2);
+        version_id=$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '"');
+        if [ "$version_id" -ge 12 ]; then
+            update_debian12_base_source $codename $version_id
         else
-            codename=$(grep '^VERSION=' /etc/os-release | grep -o '(.*)' | tr -d '()')
             update_debian_base_source $codename
         fi
         ;;
