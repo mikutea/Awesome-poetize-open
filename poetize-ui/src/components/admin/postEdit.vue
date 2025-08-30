@@ -678,6 +678,9 @@
                   offset: 20
                 });
                 
+                // 发布全局事件，通知首页刷新文章列表
+                this.$root.$emit('articleSaved');
+                
                 // SEO推送提示（现在由后端异步处理）
                 if (article.viewStatus && article.submitToSearchEngine) {
                   this.$message({
@@ -752,6 +755,9 @@
                 // 获取任务ID
                 this.currentTaskId = res.data;
                 console.log('获取到任务ID:', this.currentTaskId);
+                
+                // 发布全局事件，通知首页刷新文章列表
+                this.$root.$emit('articleSaved');
                 
                 // 添加通知（会自动启动轮询）
                 this.$notify.loading('保存文章', '正在保存文章，请稍候...', this.currentTaskId);
