@@ -98,15 +98,25 @@ public class TranslationServiceImpl implements TranslationService {
                             // 获取需要渲染的语言（使用系统配置的源语言 + 暂存翻译的目标语言）
                             List<String> languagesToRender = getLanguagesToRender(sourceLanguage, translationLanguage);
 
-                            // 触发静态预渲染（传递语言参数）
-                            prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                            prerenderClient.renderHomePage();
-                            if (article.getSortId() != null) {
-                                prerenderClient.renderCategoryPage(article.getSortId());
-                            }
-
-                            log.info("暂存翻译预渲染完成，文章ID: {}, 源语言: {}, 目标语言: {}, 渲染语言: {}",
-                                    articleId, sourceLanguage, translationLanguage, languagesToRender);
+                            // 延迟触发静态预渲染，确保与事件监听器的预渲染不冲突
+                            // 等待5秒，确保事件驱动的预渲染已完成
+                            new Thread(() -> {
+                                try {
+                                    Thread.sleep(5000);
+                                    prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
+                                    prerenderClient.renderHomePage();
+                                    if (article.getSortId() != null) {
+                                        prerenderClient.renderCategoryPage(article.getSortId());
+                                    }
+                                    log.info("翻译完成后预渲染执行完成，文章ID: {}, 源语言: {}, 目标语言: {}, 渲染语言: {}",
+                                            articleId, sourceLanguage, translationLanguage, languagesToRender);
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    log.warn("翻译预渲染延迟执行被中断: {}", e.getMessage());
+                                } catch (Exception e) {
+                                    log.warn("翻译预渲染延迟执行失败: {}", e.getMessage());
+                                }
+                            }).start();
                         } else {
                             log.error("暂存翻译保存失败，文章ID: {}, 目标语言: {}", articleId, translationLanguage);
                         }
@@ -117,14 +127,23 @@ public class TranslationServiceImpl implements TranslationService {
 
                     List<String> languagesToRender = getLanguagesToRender(sourceLanguage, null);
 
-                    // 触发静态预渲染（只渲染源语言版本）
-                    prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                    prerenderClient.renderHomePage();
-                    if (article.getSortId() != null) {
-                        prerenderClient.renderCategoryPage(article.getSortId());
-                    }
-
-                    log.info("跳过翻译预渲染完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
+                    // 延迟触发静态预渲染，避免与事件监听器的预渲染冲突
+                    new Thread(() -> {
+                        try {
+                            Thread.sleep(3000); // 延迟3秒
+                            prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
+                            prerenderClient.renderHomePage();
+                            if (article.getSortId() != null) {
+                                prerenderClient.renderCategoryPage(article.getSortId());
+                            }
+                            log.info("跳过翻译预渲染执行完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            log.warn("跳过翻译预渲染延迟执行被中断: {}", e.getMessage());
+                        } catch (Exception e) {
+                            log.warn("跳过翻译预渲染延迟执行失败: {}", e.getMessage());
+                        }
+                    }).start();
                 }
                 return;
             }
@@ -153,15 +172,26 @@ public class TranslationServiceImpl implements TranslationService {
                 // 获取系统默认语言配置
                 List<String> languagesToRender = getLanguagesToRender(sourceLanguage, targetLanguage);
 
-                // 触发静态预渲染（传递语言参数）
-                prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                // 重新渲染首页（显示最新文章）
-                prerenderClient.renderHomePage();
-                // 重新渲染相关分类页面
-                if (article.getSortId() != null) {
-                    prerenderClient.renderCategoryPage(article.getSortId());
-                }
-                log.info("文章翻译及预渲染完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
+                // 延迟触发静态预渲染，确保与事件监听器的预渲染不冲突
+                // 延迟时间设为5秒，确保事件监听器的预渲染（2秒延迟）已完成
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(5000); // 延迟5秒，给事件预渲染充足时间
+                        prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
+                        // 重新渲染首页（显示最新文章）
+                        prerenderClient.renderHomePage();
+                        // 重新渲染相关分类页面
+                        if (article.getSortId() != null) {
+                            prerenderClient.renderCategoryPage(article.getSortId());
+                        }
+                        log.info("AI翻译完成后预渲染执行完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        log.warn("AI翻译预渲染延迟执行被中断: {}", e.getMessage());
+                    } catch (Exception e) {
+                        log.warn("AI翻译预渲染延迟执行失败: {}", e.getMessage());
+                    }
+                }).start();
             }
             
         } catch (Exception e) {

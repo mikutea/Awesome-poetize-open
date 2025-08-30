@@ -52,6 +52,8 @@ import com.ld.poetry.utils.TextRankSummaryGenerator;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
 import com.ld.poetry.service.SeoService;
+import com.ld.poetry.event.ArticleSavedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * <p>
@@ -104,6 +106,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Override
     public PoetryResult saveArticle(ArticleVO articleVO) {
@@ -220,6 +225,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             log.info("已清除分类文章列表缓存，确保首页显示最新文章");
         } catch (Exception e) {
             log.error("清除分类文章列表缓存失败: {}", e.getMessage(), e);
+        }
+        
+        // 发布文章保存事件，触发预渲染更新（在事务提交后执行）
+        try {
+            eventPublisher.publishEvent(new ArticleSavedEvent(article.getId(), article.getSortId(), 
+                                                            article.getViewStatus(), "CREATE"));
+            log.info("已发布文章保存事件，将触发首页预渲染更新");
+        } catch (Exception e) {
+            log.error("发布文章保存事件失败: {}", e.getMessage(), e);
         }
         
         long endTime = System.currentTimeMillis();
@@ -340,6 +354,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     log.info("【异步保存】已清除分类文章列表缓存，确保首页显示最新文章，任务ID: {}", taskId);
                 } catch (Exception e) {
                     log.error("【异步保存】清除分类文章列表缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                }
+                
+                // 发布文章保存事件，触发预渲染更新（在事务提交后执行）
+                try {
+                    eventPublisher.publishEvent(new ArticleSavedEvent(article.getId(), article.getSortId(), 
+                                                                    article.getViewStatus(), "CREATE"));
+                    log.info("【异步保存】已发布文章保存事件，将触发首页预渲染更新，任务ID: {}", taskId);
+                } catch (Exception e) {
+                    log.error("【异步保存】发布文章保存事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
                 
                 // 更新状态：后台处理中
@@ -665,6 +688,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             log.info("已清除分类文章列表缓存，确保首页显示更新后的文章");
         } catch (Exception e) {
             log.error("清除分类文章列表缓存失败: {}", e.getMessage(), e);
+        }
+
+        // 发布文章更新事件，触发预渲染更新（在事务提交后执行）
+        try {
+            eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), 
+                                                            articleVO.getViewStatus(), "UPDATE"));
+            log.info("已发布文章更新事件，将触发首页预渲染更新");
+        } catch (Exception e) {
+            log.error("发布文章更新事件失败: {}", e.getMessage(), e);
         }
 
         // 更新后重新翻译，TranslationService 内部完毕后预渲染
@@ -1431,6 +1463,15 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     log.info("【异步更新】已清除分类文章列表缓存，确保首页显示更新后的文章，任务ID: {}", taskId);
                 } catch (Exception e) {
                     log.error("【异步更新】清除分类文章列表缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                }
+                
+                // 发布文章更新事件，触发预渲染更新（在事务提交后执行）
+                try {
+                    eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), 
+                                                                    articleVO.getViewStatus(), "UPDATE"));
+                    log.info("【异步更新】已发布文章更新事件，将触发首页预渲染更新，任务ID: {}", taskId);
+                } catch (Exception e) {
+                    log.error("【异步更新】发布文章更新事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
                 
                 // 更新状态：后台处理中

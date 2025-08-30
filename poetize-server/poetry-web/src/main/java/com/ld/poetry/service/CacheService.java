@@ -165,7 +165,7 @@ public class CacheService {
      */
     public void cacheSortArticleList(Map<Integer, List<Article>> sortArticleMap) {
         if (sortArticleMap != null) {
-            redisUtil.set(CacheConstants.CACHE_PREFIX + "sort:article:list", sortArticleMap, CacheConstants.LONG_EXPIRE_TIME);
+            redisUtil.set(CacheConstants.SORT_ARTICLE_LIST_KEY, sortArticleMap, CacheConstants.LONG_EXPIRE_TIME);
             log.debug("缓存分类文章列表");
         }
     }
@@ -176,7 +176,7 @@ public class CacheService {
      */
     @SuppressWarnings("unchecked")
     public Map<Integer, List<Article>> getCachedSortArticleList() {
-        Object cached = redisUtil.get(CacheConstants.CACHE_PREFIX + "sort:article:list");
+        Object cached = redisUtil.get(CacheConstants.SORT_ARTICLE_LIST_KEY);
         if (cached instanceof Map) {
             log.debug("从缓存获取分类文章列表");
             Map<?, ?> rawMap = (Map<?, ?>) cached;
@@ -235,7 +235,7 @@ public class CacheService {
      * 删除分类文章列表缓存
      */
     public void evictSortArticleList() {
-        redisUtil.del(CacheConstants.CACHE_PREFIX + "sort:article:list");
+        redisUtil.del(CacheConstants.SORT_ARTICLE_LIST_KEY);
         log.debug("删除分类文章列表缓存");
     }
 

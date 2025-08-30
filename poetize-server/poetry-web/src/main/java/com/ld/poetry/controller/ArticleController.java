@@ -264,7 +264,7 @@ public class ArticleController {
             // 使用Redis缓存清理替换PoetryCache
             if (articleVO.getUserId() != null) {
                 // 清理用户文章列表缓存
-                String userArticleKey = "poetry:cache:user:article:list:" + articleVO.getUserId();
+                String userArticleKey = CacheConstants.buildUserArticleListKey(articleVO.getUserId());
                 cacheService.deleteKey(userArticleKey);
             }
             // 清理文章相关缓存
@@ -309,7 +309,7 @@ public class ArticleController {
         // 使用Redis缓存清理替换PoetryCache
         Integer userId = PoetryUtil.getUserId();
         if (userId != null) {
-            String userArticleKey = "poetry:cache:user:article:list:" + userId;
+            String userArticleKey = CacheConstants.buildUserArticleListKey(userId);
             cacheService.deleteKey(userArticleKey);
         }
         // 清理文章相关缓存
@@ -385,7 +385,7 @@ public class ArticleController {
         // 使用Redis缓存清理替换PoetryCache
         Integer userId = PoetryUtil.getUserId();
         if (userId != null) {
-            String userArticleKey = "poetry:cache:user:article:list:" + userId;
+            String userArticleKey = CacheConstants.buildUserArticleListKey(userId);
             cacheService.deleteKey(userArticleKey);
         }
         // 清理文章相关缓存
@@ -869,7 +869,7 @@ public class ArticleController {
             
             // 使用Redis缓存清理替换PoetryCache
             if (articleVO.getUserId() != null) {
-                String userArticleKey = "poetry:cache:user:article:list:" + articleVO.getUserId();
+                String userArticleKey = CacheConstants.buildUserArticleListKey(articleVO.getUserId());
                 cacheService.deleteKey(userArticleKey);
             }
             // 清理文章相关缓存
