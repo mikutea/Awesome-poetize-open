@@ -132,16 +132,17 @@ public class ScheduleTask {
             String yesterday = java.time.LocalDate.now().minusDays(1).toString();
             log.info("开始同步{}的访问记录到数据库", yesterday);
             
-            // 获取昨天的访问记录
-            List<Map<String, Object>> visitRecords = cacheService.getDailyVisitRecords(yesterday);
+            // 获取昨天的未同步访问记录
+            List<Map<String, Object>> visitRecords = cacheService.getUnsyncedDailyVisitRecords(yesterday);
             
             if (visitRecords.isEmpty()) {
-                log.info("{}没有访问记录需要同步", yesterday);
+                log.info("{}没有未同步访问记录需要同步", yesterday);
                 return;
             }
             
             // 预处理访问记录，转换为实体对象列表
             List<com.ld.poetry.entity.HistoryInfo> historyInfoList = new java.util.ArrayList<>();
+            List<Map<String, Object>> validRecords = new java.util.ArrayList<>();
             java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
             
             for (Map<String, Object> record : visitRecords) {
@@ -168,6 +169,7 @@ public class ScheduleTask {
                     }
                     
                     historyInfoList.add(historyInfo);
+                    validRecords.add(record);
                     
                 } catch (Exception e) {
                     log.error("处理访问记录失败: {}", record, e);
@@ -177,6 +179,7 @@ public class ScheduleTask {
             // 真正的批量插入
             int successCount = 0;
             int failCount = 0;
+            List<Map<String, Object>> successfullyInsertedRecords = new java.util.ArrayList<>();
             
             if (!historyInfoList.isEmpty()) {
                 try {
@@ -185,9 +188,16 @@ public class ScheduleTask {
                     for (int i = 0; i < historyInfoList.size(); i += batchSize) {
                         int endIndex = Math.min(i + batchSize, historyInfoList.size());
                         List<com.ld.poetry.entity.HistoryInfo> batch = historyInfoList.subList(i, endIndex);
+                        List<Map<String, Object>> batchRecords = validRecords.subList(i, endIndex);
                         
                         int insertedCount = historyInfoMapper.batchInsert(batch);
                         successCount += insertedCount;
+                        
+                        // 记录成功插入的记录数
+                        if (insertedCount > 0) {
+                            successfullyInsertedRecords.addAll(batchRecords.subList(0, insertedCount));
+                        }
+                        
                         log.info("批量插入第{}批访问记录: {} 条", (i / batchSize + 1), insertedCount);
                     }
                 } catch (Exception e) {
@@ -198,8 +208,11 @@ public class ScheduleTask {
             
             log.info("{}的访问记录同步完成: 成功{}, 失败{}", yesterday, successCount, failCount);
             
-            // 同步完成后清空Redis中的记录
+            // 标记成功同步的记录，并清空昨天的缓存（因为昨天已经过去了）
             if (successCount > 0) {
+                // 先标记已同步
+                cacheService.markVisitRecordsAsSynced(yesterday, successfullyInsertedRecords);
+                // 清空昨天的缓存（定时任务可以清空昨天的缓存）
                 cacheService.clearDailyVisitRecords(yesterday);
                 log.info("已清空{}的Redis访问记录缓存", yesterday);
             }

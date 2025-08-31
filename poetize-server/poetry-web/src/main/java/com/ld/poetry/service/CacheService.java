@@ -1022,6 +1022,8 @@ public class CacheService {
             // 使用数据库兼容的时间格式 yyyy-MM-dd HH:mm:ss
             java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
             visitRecord.put("createTime", java.time.LocalDateTime.now().format(formatter));
+            // 添加同步标记，默认未同步
+            visitRecord.put("synced", false);
             
             // 将记录序列化为JSON字符串并添加到Redis List中
             String recordJson = com.alibaba.fastjson.JSON.toJSONString(visitRecord);
@@ -1084,6 +1086,101 @@ public class CacheService {
         }
     }
 
+    /**
+     * 获取指定日期的未同步访问记录
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @return 未同步的访问记录列表
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<java.util.Map<String, Object>> getUnsyncedDailyVisitRecords(String date) {
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            java.util.List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            
+            java.util.List<java.util.Map<String, Object>> unsyncedRecords = new java.util.ArrayList<>();
+            
+            if (recordJsonList != null) {
+                for (Object recordJson : recordJsonList) {
+                    try {
+                        java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                        // 只返回未同步的记录
+                        Boolean synced = (Boolean) record.get("synced");
+                        if (synced == null || !synced) {
+                            unsyncedRecords.add(record);
+                        }
+                    } catch (Exception e) {
+                        log.warn("解析访问记录JSON失败: {}", recordJson, e);
+                    }
+                }
+            }
+            
+            log.info("获取{}的未同步访问记录: {} 条", date, unsyncedRecords.size());
+            return unsyncedRecords;
+            
+        } catch (Exception e) {
+            log.error("获取未同步访问记录失败: date={}", date, e);
+            return new java.util.ArrayList<>();
+        }
+    }
+
+    /**
+     * 标记指定日期的访问记录为已同步
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @param syncedRecords 已同步的记录列表
+     */
+    @SuppressWarnings("unchecked")
+    public void markVisitRecordsAsSynced(String date, java.util.List<java.util.Map<String, Object>> syncedRecords) {
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            java.util.List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            
+            if (recordJsonList == null || recordJsonList.isEmpty()) {
+                return;
+            }
+
+            // 创建已同步记录的标识集合（用于快速查找）
+            java.util.Set<String> syncedRecordIds = new java.util.HashSet<>();
+            for (java.util.Map<String, Object> syncedRecord : syncedRecords) {
+                // 使用ip+createTime作为唯一标识
+                String recordId = syncedRecord.get("ip") + "_" + syncedRecord.get("createTime");
+                syncedRecordIds.add(recordId);
+            }
+
+            // 更新Redis中的记录，标记已同步的记录
+            java.util.List<String> updatedRecords = new java.util.ArrayList<>();
+            for (Object recordJson : recordJsonList) {
+                try {
+                    java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                    String recordId = record.get("ip") + "_" + record.get("createTime");
+                    
+                    // 如果这条记录已同步，则标记为已同步
+                    if (syncedRecordIds.contains(recordId)) {
+                        record.put("synced", true);
+                    }
+                    
+                    updatedRecords.add(com.alibaba.fastjson.JSON.toJSONString(record));
+                } catch (Exception e) {
+                    log.warn("更新访问记录同步标记失败: {}", recordJson, e);
+                    // 保留原记录
+                    updatedRecords.add(recordJson.toString());
+                }
+            }
+
+            // 清空原记录并重新插入更新后的记录
+            redisUtil.del(recordsKey);
+            for (String updatedRecord : updatedRecords) {
+                redisUtil.lSet(recordsKey, updatedRecord);
+            }
+
+            // 重新设置过期时间
+            redisUtil.expire(recordsKey, 7 * 24 * 3600);
+            
+            log.info("已标记{}的{}条访问记录为已同步", date, syncedRecords.size());
+            
+        } catch (Exception e) {
+            log.error("标记访问记录为已同步失败: date={}", date, e);
+        }
+    }
 
 
     /**

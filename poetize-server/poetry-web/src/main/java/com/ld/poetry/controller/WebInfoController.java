@@ -926,16 +926,17 @@ public class WebInfoController {
             String today = java.time.LocalDate.now().toString();
             log.info("开始同步{}的Redis访问记录到数据库", today);
             
-            // 获取今天的访问记录
-            List<Map<String, Object>> visitRecords = cacheService.getDailyVisitRecords(today);
+            // 获取今天的未同步访问记录
+            List<Map<String, Object>> visitRecords = cacheService.getUnsyncedDailyVisitRecords(today);
             
             if (visitRecords.isEmpty()) {
-                log.info("{}没有Redis访问记录需要同步", today);
+                log.info("{}没有未同步的Redis访问记录需要同步", today);
                 return;
             }
             
             int successCount = 0;
             int failCount = 0;
+            List<Map<String, Object>> successfullyInsertedRecords = new ArrayList<>();
             
             // 批量插入访问记录到数据库
             for (Map<String, Object> record : visitRecords) {
@@ -966,6 +967,9 @@ public class WebInfoController {
                     historyInfoMapper.insert(historyInfo);
                     successCount++;
                     
+                    // 记录成功插入的记录，用于后续标记
+                    successfullyInsertedRecords.add(record);
+                    
                 } catch (Exception e) {
                     log.error("插入访问记录失败: {}", record, e);
                     failCount++;
@@ -974,10 +978,10 @@ public class WebInfoController {
             
             log.info("{}的Redis访问记录同步完成: 成功{}, 失败{}", today, successCount, failCount);
             
-            // 同步完成后清空Redis中的记录
+            // 标记成功同步的记录，而不是清空整个缓存
             if (successCount > 0) {
-                cacheService.clearDailyVisitRecords(today);
-                log.info("已清空{}的Redis访问记录缓存", today);
+                cacheService.markVisitRecordsAsSynced(today, successfullyInsertedRecords);
+                log.info("已标记{}的{}条Redis访问记录为已同步", today, successCount);
             }
             
         } catch (Exception e) {
