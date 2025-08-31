@@ -3,6 +3,7 @@ package com.ld.poetry.service;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.dao.HistoryInfoMapper;
 import com.ld.poetry.dao.WebInfoMapper;
 import com.ld.poetry.entity.Article;
 import com.ld.poetry.entity.User;
@@ -13,11 +14,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.util.CollectionUtils;
 
 /**
@@ -33,6 +41,9 @@ public class CacheService {
 
     @Autowired
     private RedisUtil redisUtil;
+    
+    @Autowired
+    private HistoryInfoMapper historyInfoMapper;
 
     // ================================ 用户缓存 ================================
 
@@ -982,5 +993,360 @@ public class CacheService {
         } catch (Exception e) {
             log.error("根据模式删除缓存键失败: pattern={}", pattern, e);
         }
+    }
+    
+    // ================================ 访问统计Redis缓存方法 ================================
+    
+    /**
+     * 记录访问信息到Redis（不立即写数据库）
+     * @param ip IP地址
+     * @param userId 用户ID（可为null）
+     * @param nation 国家
+     * @param province 省份
+     * @param city 城市
+     */
+    public void recordVisitToRedis(String ip, Integer userId, String nation, String province, String city) {
+        try {
+            String today = java.time.LocalDate.now().toString();
+            
+            // 将访问记录添加到当日记录集合中（每次访问都记录）
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(today);
+            
+            // 构建访问记录JSON
+            java.util.Map<String, Object> visitRecord = new java.util.HashMap<>();
+            visitRecord.put("ip", ip);
+            visitRecord.put("userId", userId);
+            visitRecord.put("nation", nation);
+            visitRecord.put("province", province);
+            visitRecord.put("city", city);
+            // 使用数据库兼容的时间格式 yyyy-MM-dd HH:mm:ss
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            visitRecord.put("createTime", java.time.LocalDateTime.now().format(formatter));
+            
+            // 将记录序列化为JSON字符串并添加到Redis List中
+            String recordJson = com.alibaba.fastjson.JSON.toJSONString(visitRecord);
+            redisUtil.lSet(recordsKey, recordJson);
+            
+            // 设置记录的过期时间为7天
+            redisUtil.expire(recordsKey, 7 * 24 * 3600);
+            
+            log.info("访问记录已保存到Redis: ip={}, userId={}, province={}", ip, userId, province);
+            
+        } catch (Exception e) {
+            log.error("记录访问信息到Redis失败: ip={}, userId={}", ip, userId, e);
+        }
+    }
+    
+    /**
+     * 获取指定日期的访问记录（用于同步到数据库）
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @return 访问记录列表
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.List<java.util.Map<String, Object>> getDailyVisitRecords(String date) {
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            java.util.List<Object> recordJsonList = redisUtil.lGet(recordsKey, 0, -1);
+            
+            java.util.List<java.util.Map<String, Object>> records = new java.util.ArrayList<>();
+            
+            if (recordJsonList != null) {
+                for (Object recordJson : recordJsonList) {
+                    try {
+                        java.util.Map<String, Object> record = com.alibaba.fastjson.JSON.parseObject(recordJson.toString(), java.util.Map.class);
+                        records.add(record);
+                    } catch (Exception e) {
+                        log.warn("解析访问记录JSON失败: {}", recordJson, e);
+                    }
+                }
+            }
+            
+            log.info("获取{}的访问记录: {} 条", date, records.size());
+            return records;
+            
+        } catch (Exception e) {
+            log.error("获取每日访问记录失败: date={}", date, e);
+            return new java.util.ArrayList<>();
+        }
+    }
+    
+    /**
+     * 清空指定日期的访问记录缓存（同步到数据库后调用）
+     * @param date 日期（格式：yyyy-MM-dd）
+     */
+    public void clearDailyVisitRecords(String date) {
+        try {
+            String recordsKey = CacheConstants.buildDailyVisitRecordsKey(date);
+            redisUtil.del(recordsKey);
+            log.info("已清空{}的访问记录缓存", date);
+        } catch (Exception e) {
+            log.error("清空每日访问记录缓存失败: date={}", date, e);
+        }
+    }
+
+
+
+    /**
+     * 刷新地理位置统计缓存 (混合Redis+数据库)
+     */
+    public void refreshLocationStatisticsCache() {
+        try {
+            Map<String, Object> statistics = new HashMap<>();
+            
+            // 1. 获取数据库的历史统计（省份、IP统计）
+            try {
+                List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince();
+                List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp();
+                
+                statistics.put(CommonConst.IP_HISTORY_PROVINCE, provinceStats != null ? provinceStats : new ArrayList<>());
+                statistics.put(CommonConst.IP_HISTORY_IP, ipStats != null ? ipStats : new ArrayList<>());
+                
+                log.info("成功获取数据库统计: 省份{}, IP{}", 
+                    provinceStats != null ? provinceStats.size() : 0, 
+                    ipStats != null ? ipStats.size() : 0);
+            } catch (Exception e) {
+                log.error("获取数据库统计失败", e);
+                statistics.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
+                statistics.put(CommonConst.IP_HISTORY_IP, new ArrayList<>());
+            }
+            
+            // 2. 获取昨日访问统计（按日历天计算）
+            try {
+                List<Map<String, Object>> yesterdayStats = getYesterdayStatisticsFromDatabase();
+                statistics.put(CommonConst.IP_HISTORY_HOUR, yesterdayStats);
+                log.info("成功获取昨日访问统计: {}", yesterdayStats.size());
+            } catch (Exception e) {
+                log.error("获取昨日访问统计失败", e);
+                statistics.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
+            }
+            
+            // 3. 计算总访问量（仅统计数据库数据）
+            try {
+                // 只获取数据库总数，不再统计Redis实时数据
+                Long dbCount = historyInfoMapper.getHistoryCount();
+                long totalCount = dbCount != null ? dbCount : 0;
+                
+                statistics.put(CommonConst.IP_HISTORY_COUNT, totalCount);
+                log.info("成功计算总访问量: 数据库总计={}", totalCount);
+            } catch (Exception e) {
+                log.error("计算总访问量失败", e);
+                statistics.put(CommonConst.IP_HISTORY_COUNT, 0L);
+            }
+            
+            // 缓存统计结果
+            cacheIpHistoryStatistics(statistics);
+            log.info("成功刷新地理位置统计缓存 (仅数据库统计)");
+            
+        } catch (Exception e) {
+            log.error("刷新地理位置统计缓存失败", e);
+            
+            // 完全失败时的fallback
+            try {
+                log.warn("混合统计失败，完全fallback到数据库查询");
+                Map<String, Object> fallbackStats = generateLocationStatisticsFromDatabase();
+                cacheIpHistoryStatistics(fallbackStats);
+                log.info("成功使用数据库fallback刷新统计缓存");
+            } catch (Exception dbException) {
+                log.error("数据库fallback也失败", dbException);
+            }
+        }
+    }
+
+    /**
+     * Fallback: 基于数据库生成地理位置统计 (保留作为备用方案)
+     */
+    private Map<String, Object> generateLocationStatisticsFromDatabase() {
+        Map<String, Object> statistics = new HashMap<>();
+        
+        try {
+            statistics.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
+            log.debug("数据库省份统计查询完成");
+        } catch (Exception e) {
+            log.error("数据库省份统计查询失败", e);
+            statistics.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
+        }
+        
+        try {
+            statistics.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
+            log.debug("数据库IP统计查询完成");
+        } catch (Exception e) {
+            log.error("数据库IP统计查询失败", e);
+            statistics.put(CommonConst.IP_HISTORY_IP, new ArrayList<>());
+        }
+        
+        try {
+            statistics.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday());
+            log.debug("数据库昨日访问统计查询完成");
+        } catch (Exception e) {
+            log.error("数据库昨日访问统计查询失败", e);
+            statistics.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
+        }
+        
+        try {
+            Long totalCount = historyInfoMapper.getHistoryCount();
+            statistics.put(CommonConst.IP_HISTORY_COUNT, totalCount != null ? totalCount : 0L);
+            log.debug("数据库总访问量查询完成");
+        } catch (Exception e) {
+            log.error("数据库总访问量查询失败", e);
+            statistics.put(CommonConst.IP_HISTORY_COUNT, 0L);
+        }
+        
+        return statistics;
+    }
+
+    /**
+     * 从数据库获取昨日访问统计（按日历天计算）
+     */
+    private List<Map<String, Object>> getYesterdayStatisticsFromDatabase() {
+        try {
+            List<Map<String, Object>> yesterdayRecords = historyInfoMapper.getHistoryByYesterday();
+            log.debug("成功获取昨日访问记录: {} 条", yesterdayRecords != null ? yesterdayRecords.size() : 0);
+            return yesterdayRecords != null ? yesterdayRecords : new ArrayList<>();
+        } catch (Exception e) {
+            log.error("获取昨日访问统计失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 基于今天Redis数据生成24小时统计
+     */
+    private List<Map<String, Object>> generate24HourStatisticsFromToday() {
+        try {
+            String today = LocalDate.now().toString();
+            List<Map<String, Object>> todayRecords = getDailyVisitRecords(today);
+            
+            if (todayRecords.isEmpty()) {
+                log.info("今天暂无访问记录用于24小时统计");
+                return new ArrayList<>();
+            }
+            
+            return generate24HourStatisticsFromRecords(todayRecords);
+            
+        } catch (Exception e) {
+            log.error("生成24小时统计失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 基于访问记录生成24小时统计
+     */
+    private List<Map<String, Object>> generate24HourStatisticsFromRecords(List<Map<String, Object>> records) {
+        List<Map<String, Object>> recentHourData = new ArrayList<>();
+        LocalDateTime cutoffTime = LocalDateTime.now().minusHours(24);
+
+        for (Map<String, Object> record : records) {
+            Object timestampObj = record.get("timestamp");
+            if (timestampObj != null) {
+                try {
+                    long timestamp = Long.parseLong(timestampObj.toString());
+                    LocalDateTime recordTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault());
+                    if (recordTime.isAfter(cutoffTime)) {
+                        Map<String, Object> hourData = new HashMap<>();
+                        hourData.put("ip", record.get("ip"));
+                        hourData.put("user_id", record.get("userId"));
+                        hourData.put("nation", record.get("nation"));
+                        hourData.put("province", record.get("province"));
+                        recentHourData.add(hourData);
+                    }
+                } catch (Exception e) {
+                    log.warn("解析时间戳失败: {}", timestampObj);
+                }
+            }
+        }
+        return recentHourData;
+    }
+    
+    /**
+     * 获取今日访问数据的实时统计（从Redis）
+     * @return 今日访问统计数据
+     */
+    public Map<String, Object> getTodayVisitStatisticsFromRedis() {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            String today = java.time.LocalDate.now().toString();
+            List<Map<String, Object>> todayRecords = getDailyVisitRecords(today);
+            
+            if (todayRecords.isEmpty()) {
+                log.info("今日暂无访问记录");
+                result.put("ip_count_today", 0L);
+                result.put("username_today", new ArrayList<>());
+                result.put("province_today", new ArrayList<>());
+                return result;
+            }
+            
+            // 1. 计算今日访问IP数量（去重）
+            long ipCountToday = todayRecords.stream()
+                .map(record -> (String) record.get("ip"))
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .count();
+            result.put("ip_count_today", ipCountToday);
+            
+            // 2. 获取今日访问用户列表（统计每个用户的访问次数）
+            Map<String, Long> userVisitCount = todayRecords.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(record -> {
+                    try {
+                        Object userIdObj = record.get("userId");
+                        if (userIdObj != null) {
+                            return Integer.valueOf(userIdObj.toString()).toString();
+                        }
+                    } catch (Exception e) {
+                        log.warn("处理今日用户信息时出错: {}", e.getMessage());
+                    }
+                    return null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.groupingBy(
+                    userId -> userId, 
+                    java.util.stream.Collectors.counting()
+                ));
+            
+            List<Map<String, Object>> usernameToday = userVisitCount.entrySet().stream()
+                .map(entry -> {
+                    Map<String, Object> userInfo = new HashMap<>();
+                    userInfo.put("userId", entry.getKey());
+                    userInfo.put("visitCount", entry.getValue());
+                    return userInfo;
+                })
+                .sorted((o1, o2) -> Long.valueOf(o2.get("visitCount").toString())
+                    .compareTo(Long.valueOf(o1.get("visitCount").toString()))) // 按访问次数降序排列
+                .collect(java.util.stream.Collectors.toList());
+            result.put("username_today", usernameToday);
+            
+            // 3. 处理今日省份统计
+            List<Map<String, Object>> provinceToday = todayRecords.stream()
+                .map(record -> (String) record.get("province"))
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.groupingBy(
+                    province -> province, 
+                    java.util.stream.Collectors.counting()
+                ))
+                .entrySet().stream()
+                .map(entry -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("province", entry.getKey());
+                    map.put("num", entry.getValue());
+                    return map;
+                })
+                .sorted((o1, o2) -> Long.valueOf(o2.get("num").toString())
+                    .compareTo(Long.valueOf(o1.get("num").toString())))
+                .collect(java.util.stream.Collectors.toList());
+            result.put("province_today", provinceToday);
+            
+            log.info("获取今日访问统计: IP数量={}, 用户数量={}, 省份数量={}", 
+                ipCountToday, usernameToday.size(), provinceToday.size());
+            
+        } catch (Exception e) {
+            log.error("获取今日访问统计失败", e);
+            result.put("ip_count_today", 0L);
+            result.put("username_today", new ArrayList<>());
+            result.put("province_today", new ArrayList<>());
+        }
+        
+        return result;
     }
 }

@@ -223,7 +223,7 @@ export default {
             this.updateNotificationByTaskId(taskId, {
               type: 'success',
               title: '保存成功',
-              message: '文章保存成功！AI摘要已生成'
+              message: '文章保存成功！'
             });
           } else if (status.status === 'failed') {
             console.error('任务失败：', status.message);

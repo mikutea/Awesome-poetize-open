@@ -76,60 +76,37 @@ public class CommonQuery {
             String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
             log.debug("[saveHistory] 用户标识: {}", ipUser);
     
-            @SuppressWarnings("unchecked")
-            CopyOnWriteArraySet<String> ipHistory = (CopyOnWriteArraySet<String>) cacheService.getCachedIpHistory();
-            
-            if (ipHistory == null) {
-                log.warn("[saveHistory] ipHistory缓存为null，初始化新的缓存");
-                ipHistory = new CopyOnWriteArraySet<>();
-                cacheService.cacheIpHistory(ipHistory);
-            }
-            
-            if (!ipHistory.contains(ipUser)) {
-                synchronized (ipUser.intern()) {
-                    if (!ipHistory.contains(ipUser)) {
-                        log.info("[saveHistory] 新的访问记录，开始保存: {}", ipUser);
-                        
-                        ipHistory.add(ipUser);
-                        HistoryInfo historyInfo = new HistoryInfo();
-                        historyInfo.setIp(ip);
-                        historyInfo.setUserId(userId);
-                        
+            // 记录每次访问
+            synchronized (ipUser.intern()) {
+                log.info("[saveHistory] 记录访问到Redis: {}", ipUser);
+                
+                // 解析IP地理位置信息
+                String nation = null, province = null, city = null;
                         if (searcher != null) {
                             try {
                                 String search = searcher.search(ip);
                                 String[] region = search.split("\\|");
                                 if (!"0".equals(region[0])) {
-                                    historyInfo.setNation(region[0]);
+                                    nation = region[0];
                                 }
                                 if (region.length > 2 && !"0".equals(region[2])) {
-                                    historyInfo.setProvince(region[2]);
+                                    province = region[2];
                                 }
                                 if (region.length > 3 && !"0".equals(region[3])) {
-                                    historyInfo.setCity(region[3]);
+                                    city = region[3];
                                 }
                                 log.debug("[saveHistory] IP地理位置解析成功: {}", search);
                             } catch (Exception e) {
-                                // IP解析失败时记录日志，但仍然保存IP记录
                                 log.warn("[saveHistory] IP地理位置解析失败: {}, 错误: {}", ip, e.getMessage());
                             }
                         } else {
                             log.debug("[saveHistory] IP地理位置解析器为null，跳过解析");
                         }
                         
-                        // 保存到数据库
-                        historyInfoMapper.insert(historyInfo);
-                        log.info("[saveHistory] 访问记录保存成功，ID: {}", historyInfo.getId());
+                        // 记录访问信息到Redis（不立即写数据库）
+                        cacheService.recordVisitToRedis(ip, userId, nation, province, city);
                         
-                        // 更新缓存
-                        cacheService.cacheIpHistory(ipHistory);
-                        
-                    } else {
-                        log.debug("[saveHistory] 访问记录已存在，跳过: {}", ipUser);
-                    }
-                }
-            } else {
-                log.debug("[saveHistory] 访问记录已存在于缓存中，跳过: {}", ipUser);
+                log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);
             }
         } catch (Exception e) {
             log.error("[saveHistory] 保存访问记录时发生异常: {}", e.getMessage(), e);

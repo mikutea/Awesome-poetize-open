@@ -219,6 +219,24 @@ public class CacheConstants {
     public static final String VISIT_STATS_PREFIX = CACHE_PREFIX + "stats:visit:";
     
     /**
+     * 今日访问计数缓存键
+     * 格式: poetize:visit:count:today:{date}
+     */
+    public static final String TODAY_VISIT_COUNT_PREFIX = CACHE_PREFIX + "visit:count:today:";
+    
+    /**
+     * 每日访问记录缓存键前缀（Redis中存储当天的访问记录）
+     * 格式: poetize:visit:records:{date}
+     */
+    public static final String DAILY_VISIT_RECORDS_PREFIX = CACHE_PREFIX + "visit:records:";
+    
+    /**
+     * IP今日访问标记缓存键前缀
+     * 格式: poetize:visit:ip:today:{date}:{ip}_{userId}
+     */
+    public static final String IP_TODAY_VISIT_PREFIX = CACHE_PREFIX + "visit:ip:today:";
+    
+    /**
      * 在线用户数缓存键
      */
     public static final String ONLINE_USERS_KEY = CACHE_PREFIX + "stats:online";
@@ -483,5 +501,37 @@ public class CacheConstants {
      */
     public static String buildUserTokenIntervalKey(Integer userId) {
         return USER_TOKEN_INTERVAL_PREFIX + userId;
+    }
+    
+    // ================================ 访问统计缓存键构建方法 ================================
+    
+    /**
+     * 构建今日访问计数缓存键
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @return 缓存键
+     */
+    public static String buildTodayVisitCountKey(String date) {
+        return TODAY_VISIT_COUNT_PREFIX + date;
+    }
+    
+    /**
+     * 构建每日访问记录缓存键
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @return 缓存键
+     */
+    public static String buildDailyVisitRecordsKey(String date) {
+        return DAILY_VISIT_RECORDS_PREFIX + date;
+    }
+    
+    /**
+     * 构建IP今日访问标记缓存键
+     * @param date 日期（格式：yyyy-MM-dd）
+     * @param ip IP地址
+     * @param userId 用户ID（可为null）
+     * @return 缓存键
+     */
+    public static String buildIpTodayVisitKey(String date, String ip, Integer userId) {
+        String userSuffix = userId != null ? "_" + userId : "";
+        return IP_TODAY_VISIT_PREFIX + date + ":" + ip + userSuffix;
     }
 }

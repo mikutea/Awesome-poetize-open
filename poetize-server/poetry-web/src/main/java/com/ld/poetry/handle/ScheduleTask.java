@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 @SuppressWarnings("unchecked")
 @Component
@@ -29,79 +28,19 @@ public class ScheduleTask {
 
     /**
      * 每天凌晨执行的完整清理和统计任务
+     * 此时访问量统计会刷新，包括总访问量和今日访问量
      */
     @Scheduled(cron = "0 0 0 * * ?")
     public void cleanIpHistory() {
         try {
-            log.info("开始执行IP历史记录清理和统计任务");
+            log.info("====================开始执行每日访问记录同步和统计任务====================");
             
-            // 清理今日IP历史缓存
-            CopyOnWriteArraySet<String> ipHistory = (CopyOnWriteArraySet<String>) cacheService.getCachedIpHistory();
-            if (ipHistory == null) {
-                ipHistory = new CopyOnWriteArraySet<>();
-                cacheService.cacheIpHistory(ipHistory);
-            }
-            int clearedCount = ipHistory.size();
-            ipHistory.clear();
-            log.info("清理了 {} 条今日IP缓存记录", clearedCount);
+            // 同步昨天的Redis访问记录到数据库
+            syncVisitRecordsToDatabase();
 
-            // 重新生成统计数据
-            cacheService.evictIpHistoryStatistics();
-            Map<String, Object> history = new HashMap<>();
-            
-            try {
-                history.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
-                log.info("成功更新省份访问统计");
-            } catch (Exception e) {
-                log.error("省份访问统计更新失败", e);
-                history.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
-            }
-            
-            try {
-                history.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
-                log.info("成功更新IP访问统计");
-            } catch (Exception e) {
-                log.error("IP访问统计更新失败", e);
-                history.put(CommonConst.IP_HISTORY_IP, new ArrayList<>());
-            }
-            
-            try {
-                history.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour());
-                log.info("成功更新24小时访问统计");
-            } catch (Exception e) {
-                log.error("24小时访问统计更新失败", e);
-                history.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
-            }
-            
-            try {
-                Long totalCount = historyInfoMapper.getHistoryCount();
-                history.put(CommonConst.IP_HISTORY_COUNT, totalCount);
-                log.info("成功更新总访问量统计: {}", totalCount);
-                
-                // 额外验证总访问量是否合理
-                if (totalCount == null) {
-                    log.error("总访问量查询返回null，数据库查询可能存在问题");
-                    history.put(CommonConst.IP_HISTORY_COUNT, 0L);
-                } else if (totalCount < 0) {
-                    log.error("总访问量为负数: {}，数据异常", totalCount);
-                    history.put(CommonConst.IP_HISTORY_COUNT, 0L);
-                } else {
-                    log.debug("总访问量数据正常: {}", totalCount);
-                }
-            } catch (Exception e) {
-                log.error("总访问量统计更新失败，详细错误信息:", e);
-                // 记录数据库连接状态
-                try {
-                    Long testCount = historyInfoMapper.selectCount(null);
-                    log.error("数据库连接正常，表记录总数: {}", testCount);
-                } catch (Exception dbException) {
-                    log.error("数据库连接异常", dbException);
-                }
-                history.put(CommonConst.IP_HISTORY_COUNT, 0L);
-            }
-            
-            cacheService.cacheIpHistoryStatistics(history);
-            log.info("IP历史记录清理和统计任务执行完成");
+            // 重新生成统计数据（仅基于数据库数据，无Redis实时计数）
+            cacheService.refreshLocationStatisticsCache();
+            log.info("IP历史记录清理和统计任务执行完成，访问量统计已更新");
             
         } catch (Exception e) {
             log.error("IP历史记录清理和统计任务执行失败", e);
@@ -131,11 +70,11 @@ public class ScheduleTask {
     }
 
     /**
-     * 刷新统计缓存
+     * 刷新统计缓存（仅基于数据库数据，无Redis实时计数）
      */
     private void refreshStatisticsCache() {
         try {
-            // 获取实时统计数据
+            // 获取数据库统计数据
             List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince();
             List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp();
             List<Map<String, Object>> hourStats = historyInfoMapper.getHistoryBy24Hour();
@@ -150,7 +89,7 @@ public class ScheduleTask {
 
             // 缓存统计数据
             cacheService.cacheIpHistoryStatistics(stats);
-            log.info("统计缓存刷新成功，总访问量: {}", totalCount);
+            log.info("统计缓存刷新成功，数据库总访问量: {}", totalCount);
 
         } catch (Exception e) {
             log.error("刷新统计缓存失败，使用默认数据", e);
@@ -182,5 +121,91 @@ public class ScheduleTask {
     public void initializeCacheOnStartup() {
         log.info("应用启动，初始化统计缓存");
         ensureStatisticsCache();
+    }
+    
+    /**
+     * 同步Redis中的访问记录到数据库
+     */
+    private void syncVisitRecordsToDatabase() {
+        try {
+            // 获取昨天的日期
+            String yesterday = java.time.LocalDate.now().minusDays(1).toString();
+            log.info("开始同步{}的访问记录到数据库", yesterday);
+            
+            // 获取昨天的访问记录
+            List<Map<String, Object>> visitRecords = cacheService.getDailyVisitRecords(yesterday);
+            
+            if (visitRecords.isEmpty()) {
+                log.info("{}没有访问记录需要同步", yesterday);
+                return;
+            }
+            
+            // 预处理访问记录，转换为实体对象列表
+            List<com.ld.poetry.entity.HistoryInfo> historyInfoList = new java.util.ArrayList<>();
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            
+            for (Map<String, Object> record : visitRecords) {
+                try {
+                    com.ld.poetry.entity.HistoryInfo historyInfo = new com.ld.poetry.entity.HistoryInfo();
+                    historyInfo.setIp((String) record.get("ip"));
+                    
+                    Object userIdObj = record.get("userId");
+                    if (userIdObj != null) {
+                        historyInfo.setUserId(Integer.valueOf(userIdObj.toString()));
+                    }
+                    
+                    historyInfo.setNation((String) record.get("nation"));
+                    historyInfo.setProvince((String) record.get("province"));
+                    historyInfo.setCity((String) record.get("city"));
+                    
+                    // 设置创建时间
+                    String createTimeStr = (String) record.get("createTime");
+                    if (createTimeStr != null) {
+                        // 解析数据库兼容格式的时间字符串 yyyy-MM-dd HH:mm:ss
+                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr, formatter));
+                    } else {
+                        historyInfo.setCreateTime(java.time.LocalDateTime.now().minusDays(1));
+                    }
+                    
+                    historyInfoList.add(historyInfo);
+                    
+                } catch (Exception e) {
+                    log.error("处理访问记录失败: {}", record, e);
+                }
+            }
+            
+            // 真正的批量插入
+            int successCount = 0;
+            int failCount = 0;
+            
+            if (!historyInfoList.isEmpty()) {
+                try {
+                    // 分批插入，避免单次插入数据量过大
+                    int batchSize = 500; // 每批插入500条
+                    for (int i = 0; i < historyInfoList.size(); i += batchSize) {
+                        int endIndex = Math.min(i + batchSize, historyInfoList.size());
+                        List<com.ld.poetry.entity.HistoryInfo> batch = historyInfoList.subList(i, endIndex);
+                        
+                        int insertedCount = historyInfoMapper.batchInsert(batch);
+                        successCount += insertedCount;
+                        log.info("批量插入第{}批访问记录: {} 条", (i / batchSize + 1), insertedCount);
+                    }
+                } catch (Exception e) {
+                    log.error("批量插入访问记录失败", e);
+                    failCount = historyInfoList.size() - successCount;
+                }
+            }
+            
+            log.info("{}的访问记录同步完成: 成功{}, 失败{}", yesterday, successCount, failCount);
+            
+            // 同步完成后清空Redis中的记录
+            if (successCount > 0) {
+                cacheService.clearDailyVisitRecords(yesterday);
+                log.info("已清空{}的Redis访问记录缓存", yesterday);
+            }
+            
+        } catch (Exception e) {
+            log.error("同步访问记录到数据库失败", e);
+        }
     }
 }

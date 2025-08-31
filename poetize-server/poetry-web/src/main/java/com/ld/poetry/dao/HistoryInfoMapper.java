@@ -21,6 +21,13 @@ import java.util.Map;
 public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
 
     /**
+     * 批量插入访问记录
+     * @param historyInfoList 访问记录列表
+     * @return 插入成功的记录数
+     */
+    int batchInsert(@Param("list") List<HistoryInfo> historyInfoList);
+
+    /**
      * 访问IP最多的10个省
      */
     @Select("select nation, province, count(distinct ip) as num" +
@@ -50,10 +57,30 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
     List<Map<String, Object>> getHistoryBy24Hour();
 
     /**
-     * 总访问量
+     * 总访问量（按唯一IP统计）
      */
-    @Select("select count(*) from history_info")
+    @Select("select count(distinct ip) from history_info")
     Long getHistoryCount();
+
+    /**
+     * 今日访问量（按唯一IP统计）
+     */
+    @Select("select count(distinct ip) from history_info where date(create_time) = curdate()")
+    Long getTodayHistoryCount();
+
+    /**
+     * 昨日访问量（按日历天计算）
+     */
+    @Select("select count(distinct ip) from history_info where date(create_time) = date_sub(curdate(), interval 1 day)")
+    Long getYesterdayHistoryCount();
+
+    /**
+     * 昨日访问记录详情（按日历天计算）
+     */
+    @Select("select ip, user_id, nation, province" +
+            " from history_info" +
+            " where date(create_time) = date_sub(curdate(), interval 1 day)")
+    List<Map<String, Object>> getHistoryByYesterday();
 
     /**
      * 指定天数内的每日访问统计
@@ -68,4 +95,19 @@ public interface HistoryInfoMapper extends BaseMapper<HistoryInfo> {
             "GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d') " +
             "ORDER BY visit_date")
     List<Map<String, Object>> getDailyVisitStats(@Param("days") Integer days);
+
+    /**
+     * 指定天数内的每日访问统计（排除今天）
+     * @param days 需要统计的天数，最大 365
+     * @return 每日唯一 IP 和总访问量（不包括今天）
+     */
+    @Select("SELECT DATE_FORMAT(create_time, '%Y-%m-%d') AS visit_date, " +
+            "COUNT(DISTINCT ip) AS unique_visits, " +
+            "COUNT(*) AS total_visits " +
+            "FROM history_info " +
+            "WHERE create_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY) " +
+            "AND DATE(create_time) < CURDATE() " +
+            "GROUP BY DATE_FORMAT(create_time, '%Y-%m-%d') " +
+            "ORDER BY visit_date")
+    List<Map<String, Object>> getDailyVisitStatsExcludeToday(@Param("days") Integer days);
 }

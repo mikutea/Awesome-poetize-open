@@ -18,4 +18,13 @@
         id, user_id, ip, nation, province, city, create_time
     </sql>
 
+    <!-- 批量插入访问记录 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO history_info (user_id, ip, nation, province, city, create_time)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.ip}, #{item.nation}, #{item.province}, #{item.city}, #{item.createTime})
+        </foreach>
+    </insert>
+
 </mapper>

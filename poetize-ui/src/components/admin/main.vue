@@ -95,7 +95,7 @@
               {{historyInfo.ip_count_today}}
             </div>
           </div>
-          <div class="history-info" style="width: 640px">
+          <div class="history-info" style="width: 720px">
             <div style="margin-right: 40px">
               <div class="history-name">今日访问省份统计</div>
               <div>
@@ -127,7 +127,7 @@
                   <el-table-column
                     align="center"
                     label="头像"
-                    width="100">
+                    width="80">
                     <template slot-scope="scope">
                       <el-avatar class="user-avatar" :size="30"
                                  :src="scope.row.avatar">
@@ -138,7 +138,13 @@
                     prop="username"
                     align="center"
                     label="用户"
-                    width="200">
+                    width="120">
+                  </el-table-column>
+                  <el-table-column
+                    prop="visitCount"
+                    align="center"
+                    label="次数"
+                    width="60">
                   </el-table-column>
                 </el-table>
               </div>
@@ -157,7 +163,7 @@
               {{historyInfo.ip_count_yest}}
             </div>
           </div>
-          <div class="history-info" style="width: 300px">
+          <div class="history-info" style="width: 320px">
             <div>
               <div class="history-name">昨日访问用户</div>
               <div class="history-avatar">
@@ -165,7 +171,7 @@
                   <el-table-column
                     align="center"
                     label="头像"
-                    width="100">
+                    width="80">
                     <template slot-scope="scope">
                       <el-avatar class="user-avatar" :size="30"
                                  :src="scope.row.avatar">
@@ -176,7 +182,13 @@
                     prop="username"
                     align="center"
                     label="用户"
-                    width="200">
+                    width="120">
+                  </el-table-column>
+                  <el-table-column
+                    prop="visitCount"
+                    align="center"
+                    label="次数"
+                    width="60">
                   </el-table-column>
                 </el-table>
               </div>

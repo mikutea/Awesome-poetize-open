@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapp
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.dao.*;
 import com.ld.poetry.entity.*;
 import com.ld.poetry.service.CacheService;
@@ -15,6 +16,7 @@ import com.ld.poetry.utils.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -72,6 +74,9 @@ public class WebInfoController {
 
     @Autowired
     private CacheService cacheService;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     /**
      * 更新网站信息
@@ -181,26 +186,36 @@ public class WebInfoController {
      */
     private void addHistoryStatsToWebInfo(WebInfo result) {
         try {
-            Map<String, Object> historyStats = (Map<String, Object>) cacheService.getCachedIpHistoryStatistics();
-            if (historyStats != null) {
+            // 使用安全的缓存获取方法，内置了默认值处理
+            Map<String, Object> historyStats = cacheService.getCachedIpHistoryStatisticsSafely();
+            
                 // 获取总访问量
                 Long historyCount = (Long) historyStats.get(CommonConst.IP_HISTORY_COUNT);
                 if (historyCount != null) {
                     result.setHistoryAllCount(historyCount.toString());
-                }
-
-                // 获取24小时内访问统计
-                List<Map<String, Object>> hourStats = (List<Map<String, Object>>) historyStats.get(CommonConst.IP_HISTORY_HOUR);
-                if (hourStats != null) {
-                    result.setHistoryDayCount(Integer.toString(hourStats.size()));
-                }
-
-                log.debug("成功添加访问统计数据到网站信息");
+                log.debug("设置总访问量: {}", historyCount);
             } else {
-                log.debug("访问统计缓存为空，使用默认值");
                 result.setHistoryAllCount("0");
+                log.warn("总访问量数据为空，使用默认值0");
+            }
+
+            // 获取今日访问量（从数据库获取）
+            try {
+                Long todayVisitCount = historyInfoMapper.getTodayHistoryCount();
+                result.setHistoryDayCount(String.valueOf(todayVisitCount != null ? todayVisitCount : 0));
+                log.debug("设置今日访问量(数据库): {}", todayVisitCount);
+            } catch (Exception e) {
+                log.warn("获取数据库今日访问量失败，使用默认值0", e);
                 result.setHistoryDayCount("0");
             }
+
+            // 检查是否需要刷新缓存
+            if (Boolean.TRUE.equals(historyStats.get("_cache_refresh_needed"))) {
+                log.info("检测到访问统计缓存需要刷新");
+                // 可以在这里触发异步缓存刷新
+            }
+
+            log.debug("成功添加访问统计数据到网站信息");
         } catch (Exception e) {
             // 访问统计获取失败不影响主要功能，使用默认值
             log.warn("获取访问统计时出错，使用默认值", e);
@@ -263,7 +278,7 @@ public class WebInfoController {
                     Map<String, Object> refreshedHistory = new HashMap<>();
                     refreshedHistory.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
                     refreshedHistory.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
-                    refreshedHistory.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryBy24Hour());
+                    refreshedHistory.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday());
                     refreshedHistory.put(CommonConst.IP_HISTORY_COUNT, historyInfoMapper.getHistoryCount());
                     
                     // 缓存新数据
@@ -277,18 +292,12 @@ public class WebInfoController {
                 }
             }
 
-            // 获取今日访问信息
-            List<HistoryInfo> infoList = new LambdaQueryChainWrapper<>(historyInfoMapper)
-                    .select(HistoryInfo::getIp, HistoryInfo::getUserId, HistoryInfo::getNation, HistoryInfo::getProvince, HistoryInfo::getCity)
-                    .ge(HistoryInfo::getCreateTime, LocalDateTime.now().with(LocalTime.MIN))
-                    .list();
-
-            // 从缓存中获取数据（getCachedIpHistoryStatisticsSafely已确保非null）
+            // 从缓存中获取历史数据（getCachedIpHistoryStatisticsSafely已确保非null）
             result.put(CommonConst.IP_HISTORY_PROVINCE, history.get(CommonConst.IP_HISTORY_PROVINCE));
             result.put(CommonConst.IP_HISTORY_IP, history.get(CommonConst.IP_HISTORY_IP));
             result.put(CommonConst.IP_HISTORY_COUNT, history.get(CommonConst.IP_HISTORY_COUNT));
 
-            // 处理24小时数据
+            // 处理24小时数据（昨日数据）
             List<Map<String, Object>> ipHistoryCount = (List<Map<String, Object>>) history.get(CommonConst.IP_HISTORY_HOUR);
 
             if (ipHistoryCount != null && !ipHistoryCount.isEmpty()) {
@@ -300,21 +309,40 @@ public class WebInfoController {
             } else {
                 result.put("ip_count_yest", 0L);
             }
-            // 安全地处理昨日用户信息
+            // 安全地处理昨日用户信息（添加访问次数统计）
             if (ipHistoryCount != null && !ipHistoryCount.isEmpty()) {
-                result.put("username_yest", ipHistoryCount.stream()
+                // 统计每个用户的访问次数
+                Map<Integer, Long> userVisitCount = ipHistoryCount.stream()
                     .filter(Objects::nonNull)
                     .map(m -> {
                         try {
                             Object userId = m.get("user_id");
                             if (userId != null) {
-                                User user = commonQuery.getUser(Integer.valueOf(userId.toString()));
+                                return Integer.valueOf(userId.toString());
+                            }
+                        } catch (Exception e) {
+                            log.warn("处理昨日用户ID时出错: {}", e.getMessage());
+                        }
+                        return null;
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.groupingBy(
+                        userId -> userId, 
+                        Collectors.counting()
+                    ));
+                
+                List<Map<String, Object>> usernameYest = userVisitCount.entrySet().stream()
+                    .map(entry -> {
+                        try {
+                            Integer userId = entry.getKey();
+                            Long visitCount = entry.getValue();
+                            User user = commonQuery.getUser(userId);
                                 if (user != null) {
-                                    Map<String, String> userInfo = new HashMap<>();
+                                Map<String, Object> userInfo = new HashMap<>();
                                     userInfo.put("avatar", user.getAvatar());
                                     userInfo.put("username", user.getUsername());
+                                userInfo.put("visitCount", visitCount);
                                     return userInfo;
-                                }
                             }
                         } catch (Exception e) {
                             log.warn("处理昨日用户信息时出错: {}", e.getMessage());
@@ -322,30 +350,36 @@ public class WebInfoController {
                         return null;
                     })
                     .filter(Objects::nonNull)
-                    .collect(Collectors.toList()));
+                    .sorted((o1, o2) -> Long.valueOf(o2.get("visitCount").toString())
+                        .compareTo(Long.valueOf(o1.get("visitCount").toString()))) // 按访问次数降序排列
+                    .collect(Collectors.toList());
+                result.put("username_yest", usernameYest);
             } else {
                 result.put("username_yest", new ArrayList<>());
             }
 
-            // 处理今日访问统计
-            if (infoList != null) {
-                result.put("ip_count_today", infoList.stream()
-                    .map(HistoryInfo::getIp)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .count());
-
-                result.put("username_today", infoList.stream()
-                    .filter(Objects::nonNull)
-                    .map(m -> {
+            // 🚀 获取今日访问数据的实时统计（从Redis）
+            try {
+                Map<String, Object> todayStats = cacheService.getTodayVisitStatisticsFromRedis();
+                
+                // 设置今日IP数量
+                result.put("ip_count_today", todayStats.get("ip_count_today"));
+                
+                // 处理今日用户信息（补充用户详细信息）
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> userInfos = (List<Map<String, Object>>) todayStats.get("username_today");
+                List<Map<String, Object>> usernameToday = userInfos.stream()
+                    .map(userInfoMap -> {
                         try {
-                            Integer userId = m.getUserId();
+                            String userId = (String) userInfoMap.get("userId");
+                            Long visitCount = (Long) userInfoMap.get("visitCount");
                             if (userId != null) {
-                                User user = commonQuery.getUser(userId);
+                                User user = commonQuery.getUser(Integer.valueOf(userId));
                                 if (user != null) {
-                                    Map<String, String> userInfo = new HashMap<>();
+                                    Map<String, Object> userInfo = new HashMap<>();
                                     userInfo.put("avatar", user.getAvatar());
                                     userInfo.put("username", user.getUsername());
+                                    userInfo.put("visitCount", visitCount);
                                     return userInfo;
                                 }
                             }
@@ -355,26 +389,18 @@ public class WebInfoController {
                         return null;
                     })
                     .filter(Objects::nonNull)
-                    .collect(Collectors.toList()));
+                    .collect(Collectors.toList());
+                result.put("username_today", usernameToday);
 
-                // 处理今日省份统计
-                List<Map<String, Object>> list = infoList.stream()
-                        .map(HistoryInfo::getProvince)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.groupingBy(m -> m, Collectors.counting()))
-                        .entrySet().stream()
-                        .map(entry -> {
-                            HashMap<String, Object> map = new HashMap<>();
-                            map.put("province", entry.getKey());
-                            map.put("num", entry.getValue());
-                            return map;
-                        })
-                        .sorted((o1, o2) -> Long.valueOf(o2.get("num").toString())
-                            .compareTo(Long.valueOf(o1.get("num").toString())))
-                        .collect(Collectors.toList());
-
-                result.put("province_today", list);
-            } else {
+                // 设置今日省份统计
+                result.put("province_today", todayStats.get("province_today"));
+                
+                log.info("✅ 使用Redis获取今日访问数据: IP数量={}, 用户数量={}, 省份数量={}", 
+                    todayStats.get("ip_count_today"), usernameToday.size(), 
+                    ((List<?>) todayStats.get("province_today")).size());
+                    
+            } catch (Exception e) {
+                log.error("❌ 从Redis获取今日访问统计失败，使用默认值", e);
                 result.put("ip_count_today", 0L);
                 result.put("username_today", new ArrayList<>());
                 result.put("province_today", new ArrayList<>());
@@ -634,7 +660,7 @@ public class WebInfoController {
     }
 
     /**
-     * 获取每日访问量统计
+     * 获取每日访问量统计（结合数据库历史数据和Redis实时数据）
      * @param days 查询天数(1-365)，默认7
      */
     @LoginCheck(0)
@@ -646,30 +672,133 @@ public class WebInfoController {
             days = 365;
         }
 
-        List<Map<String, Object>> stats = historyInfoMapper.getDailyVisitStats(days);
+        try {
+            // 1. 获取数据库中的历史数据（不包括今天）
+            List<Map<String, Object>> dbStats = historyInfoMapper.getDailyVisitStatsExcludeToday(days);
+            if (dbStats == null) {
+                dbStats = new ArrayList<>();
+            }
 
-        if (stats == null) {
-            return PoetryResult.success(Collections.emptyList());
+            // 2. 获取Redis中今天的实时数据
+            Map<String, Object> todayStats = getTodayVisitStatsFromRedis();
+            
+            // 3. 合并数据
+            List<Map<String, Object>> allStats = new ArrayList<>(dbStats);
+            if (todayStats != null) {
+                allStats.add(todayStats);
+            }
+
+            // 4. 填充缺失的日期（确保图表连续）
+            List<Map<String, Object>> completeStats = fillMissingDates(allStats, days);
+
+            // 5. 计算平均值
+            if (!completeStats.isEmpty()) {
+                double avg = completeStats.stream()
+                        .map(m -> (Number) m.get("unique_visits"))
+                        .filter(Objects::nonNull)
+                        .mapToDouble(Number::doubleValue)
+                        .average()
+                        .orElse(0);
+                avg = Math.round(avg * 100.0) / 100.0;
+
+                for (Map<String, Object> m : completeStats) {
+                    m.put("avg_unique_visits", avg);
+                }
+            }
+
+            return PoetryResult.success(completeStats);
+            
+        } catch (Exception e) {
+            log.error("获取每日访问统计失败", e);
+            return PoetryResult.fail("获取访问统计数据失败: " + e.getMessage());
         }
+    }
 
-        // 计算平均 unique_visits
-        double avg = stats.stream()
-                .map(m -> (Number) m.get("unique_visits"))
-                .filter(Objects::nonNull)
-                .mapToDouble(Number::doubleValue)
-                .average()
-                .orElse(0);
-        avg = Math.round(avg * 100.0) / 100.0;
+    /**
+     * 从Redis获取今天的访问统计
+     */
+    private Map<String, Object> getTodayVisitStatsFromRedis() {
+        try {
+            String todayKey = CacheConstants.DAILY_VISIT_RECORDS_PREFIX + 
+                java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+            
+            // 获取今天的访问记录
+            List<Object> todayRecords = redisTemplate.opsForList().range(todayKey, 0, -1);
+            if (todayRecords == null || todayRecords.isEmpty()) {
+                return null;
+            }
 
-        for (Map<String, Object> m : stats) {
-            m.put("avg_unique_visits", avg);
+            // 统计今日数据
+            Set<String> uniqueIps = new HashSet<>();
+            int totalVisits = 0;
+            
+            for (Object record : todayRecords) {
+                try {
+                    Map<String, Object> visitRecord = (Map<String, Object>) record;
+                    String ip = (String) visitRecord.get("ip");
+                    if (ip != null && !ip.isEmpty()) {
+                        uniqueIps.add(ip);
+                        totalVisits++;
+                    }
+                } catch (Exception e) {
+                    log.warn("解析Redis访问记录失败: {}", record, e);
+                }
+            }
+
+            Map<String, Object> todayStats = new HashMap<>();
+            todayStats.put("visit_date", java.time.LocalDate.now().toString());
+            todayStats.put("unique_visits", uniqueIps.size());
+            todayStats.put("total_visits", totalVisits);
+            
+            log.info("今日实时统计 - 独立访客: {}, 总访问量: {}", uniqueIps.size(), totalVisits);
+            return todayStats;
+            
+        } catch (Exception e) {
+            log.error("从Redis获取今日访问统计失败", e);
+            return null;
         }
+    }
 
-        return PoetryResult.success(stats);
+    /**
+     * 填充缺失的日期，确保图表数据连续
+     */
+    private List<Map<String, Object>> fillMissingDates(List<Map<String, Object>> stats, int days) {
+        Map<String, Map<String, Object>> statsMap = new HashMap<>();
+        
+        // 将现有数据放入Map中
+        for (Map<String, Object> stat : stats) {
+            String date = (String) stat.get("visit_date");
+            if (date != null) {
+                statsMap.put(date, stat);
+            }
+        }
+        
+        // 生成完整的日期范围
+        List<Map<String, Object>> completeStats = new ArrayList<>();
+        java.time.LocalDate endDate = java.time.LocalDate.now();
+        
+        for (int i = days - 1; i >= 0; i--) {
+            java.time.LocalDate date = endDate.minusDays(i);
+            String dateStr = date.toString();
+            
+            Map<String, Object> dayStats = statsMap.get(dateStr);
+            if (dayStats == null) {
+                // 创建空数据
+                dayStats = new HashMap<>();
+                dayStats.put("visit_date", dateStr);
+                dayStats.put("unique_visits", 0);
+                dayStats.put("total_visits", 0);
+            }
+            
+            completeStats.add(dayStats);
+        }
+        
+        return completeStats;
     }
 
     /**
      * 手动刷新访问统计缓存（管理员专用）
+     * 同步Redis访问记录到数据库，并重新生成统计数据
      */
     @LoginCheck(1)
     @PostMapping("/refreshHistoryCache")
@@ -677,42 +806,36 @@ public class WebInfoController {
         try {
             log.info("管理员手动刷新访问统计缓存");
             
-            // 清理旧缓存
-            cacheService.evictIpHistoryStatistics();
+            // 1. 先同步当前Redis中的访问记录到数据库
+            syncCurrentRedisRecordsToDatabase();
             
-            // 重新构建统计数据
-            Map<String, Object> history = new HashMap<>();
+            // 重新构建统计数据（仅基于数据库数据，无Redis实时计数）
+            cacheService.refreshLocationStatisticsCache();
             
-            // 获取省份统计
-            List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince();
-            history.put(CommonConst.IP_HISTORY_PROVINCE, provinceStats != null ? provinceStats : new ArrayList<>());
-            log.info("省份访问统计更新成功，数据条数: {}", provinceStats != null ? provinceStats.size() : 0);
-            
-            // 获取IP统计
-            List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp();
-            history.put(CommonConst.IP_HISTORY_IP, ipStats != null ? ipStats : new ArrayList<>());
-            log.info("IP访问统计更新成功，数据条数: {}", ipStats != null ? ipStats.size() : 0);
-            
-            // 获取24小时统计
-            List<Map<String, Object>> hourStats = historyInfoMapper.getHistoryBy24Hour();
-            history.put(CommonConst.IP_HISTORY_HOUR, hourStats != null ? hourStats : new ArrayList<>());
-            log.info("24小时访问统计更新成功，数据条数: {}", hourStats != null ? hourStats.size() : 0);
-            
-            // 获取总访问量
-            Long totalCount = historyInfoMapper.getHistoryCount();
-            history.put(CommonConst.IP_HISTORY_COUNT, totalCount != null ? totalCount : 0L);
-            log.info("总访问量统计更新成功: {}", totalCount);
-            
-            // 缓存新数据
-            cacheService.cacheIpHistoryStatistics(history);
+            // 获取刷新后的统计数据用于返回
+            Object cachedStats = cacheService.getCachedIpHistoryStatistics();
+            Map<String, Object> statistics = (Map<String, Object>) cachedStats;
             
             // 返回统计结果
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
-            result.put("totalCount", totalCount);
-            result.put("provinceCount", provinceStats != null ? provinceStats.size() : 0);
-            result.put("ipCount", ipStats != null ? ipStats.size() : 0);
-            result.put("hourCount", hourStats != null ? hourStats.size() : 0);
+            
+            if (statistics != null) {
+                Object totalCountObj = statistics.get(CommonConst.IP_HISTORY_COUNT);
+                Object provincesObj = statistics.get(CommonConst.IP_HISTORY_PROVINCE);
+                Object ipsObj = statistics.get(CommonConst.IP_HISTORY_IP);
+                Object hoursObj = statistics.get(CommonConst.IP_HISTORY_HOUR);
+                
+                result.put("totalCount", totalCountObj instanceof Number ? ((Number) totalCountObj).longValue() : 0L);
+                result.put("provinceCount", provincesObj instanceof List ? ((List<?>) provincesObj).size() : 0);
+                result.put("ipCount", ipsObj instanceof List ? ((List<?>) ipsObj).size() : 0);
+                result.put("hourCount", hoursObj instanceof List ? ((List<?>) hoursObj).size() : 0);
+            } else {
+                result.put("totalCount", 0L);
+                result.put("provinceCount", 0);
+                result.put("ipCount", 0);
+                result.put("hourCount", 0);
+            }
             result.put("refreshTime", System.currentTimeMillis());
             
             log.info("访问统计缓存刷新完成");
@@ -794,7 +917,69 @@ public class WebInfoController {
         }
     }
 
-
-
+    /**
+     * 同步当前Redis中的访问记录到数据库（手动刷新时调用）
+     */
+    private void syncCurrentRedisRecordsToDatabase() {
+        try {
+            String today = java.time.LocalDate.now().toString();
+            log.info("开始同步{}的Redis访问记录到数据库", today);
+            
+            // 获取今天的访问记录
+            List<Map<String, Object>> visitRecords = cacheService.getDailyVisitRecords(today);
+            
+            if (visitRecords.isEmpty()) {
+                log.info("{}没有Redis访问记录需要同步", today);
+                return;
+            }
+            
+            int successCount = 0;
+            int failCount = 0;
+            
+            // 批量插入访问记录到数据库
+            for (Map<String, Object> record : visitRecords) {
+                try {
+                    com.ld.poetry.entity.HistoryInfo historyInfo = new com.ld.poetry.entity.HistoryInfo();
+                    historyInfo.setIp((String) record.get("ip"));
+                    
+                    Object userIdObj = record.get("userId");
+                    if (userIdObj != null) {
+                        historyInfo.setUserId(Integer.valueOf(userIdObj.toString()));
+                    }
+                    
+                    historyInfo.setNation((String) record.get("nation"));
+                    historyInfo.setProvince((String) record.get("province"));
+                    historyInfo.setCity((String) record.get("city"));
+                    
+                    // 设置创建时间
+                    String createTimeStr = (String) record.get("createTime");
+                    if (createTimeStr != null) {
+                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr));
+                    } else {
+                        historyInfo.setCreateTime(java.time.LocalDateTime.now());
+                    }
+                    
+                    // 插入数据库
+                    historyInfoMapper.insert(historyInfo);
+                    successCount++;
+                    
+                } catch (Exception e) {
+                    log.error("插入访问记录失败: {}", record, e);
+                    failCount++;
+                }
+            }
+            
+            log.info("{}的Redis访问记录同步完成: 成功{}, 失败{}", today, successCount, failCount);
+            
+            // 同步完成后清空Redis中的记录
+            if (successCount > 0) {
+                cacheService.clearDailyVisitRecords(today);
+                log.info("已清空{}的Redis访问记录缓存", today);
+            }
+            
+        } catch (Exception e) {
+            log.error("同步Redis访问记录到数据库失败", e);
+        }
+    }
 }
 
