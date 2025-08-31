@@ -1,6 +1,6 @@
 package com.ld.poetry.controller;
 
-
+import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
@@ -734,7 +734,8 @@ public class WebInfoController {
             
             for (Object record : todayRecords) {
                 try {
-                    Map<String, Object> visitRecord = (Map<String, Object>) record;
+                    // 将JSON字符串解析为Map对象
+                    Map<String, Object> visitRecord = JSON.parseObject(record.toString(), Map.class);
                     String ip = (String) visitRecord.get("ip");
                     if (ip != null && !ip.isEmpty()) {
                         uniqueIps.add(ip);
@@ -954,7 +955,9 @@ public class WebInfoController {
                     // 设置创建时间
                     String createTimeStr = (String) record.get("createTime");
                     if (createTimeStr != null) {
-                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr));
+                        // 使用与CacheService相同的日期格式 yyyy-MM-dd HH:mm:ss
+                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                        historyInfo.setCreateTime(java.time.LocalDateTime.parse(createTimeStr, formatter));
                     } else {
                         historyInfo.setCreateTime(java.time.LocalDateTime.now());
                     }
