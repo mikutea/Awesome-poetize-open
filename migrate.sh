@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-07-03
+## 修改时间: 2025-09-15
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 0.5.0
+## 版本: 0.5.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -270,6 +270,9 @@ ssh_retry() {
     fi
     
     retry_command "$MAX_RETRIES" "$RETRY_DELAY" "$description" "$full_cmd"
+
+    local rc=$?
+    return $rc
 }
 
 # SCP重试传输函数
@@ -426,12 +429,13 @@ get_user_input() {
     read -p "目标服务器用户名 (默认: root): " TARGET_USER
     if [ -z "$TARGET_USER" ]; then
         TARGET_USER="root"
+        info "使用默认用户名: $TARGET_USER"
     fi
     
     # 选择认证方式
     echo
     info "请选择SSH认证方式:"
-    echo "1) SSH密钥认证 (推荐)"
+    echo "1) SSH密钥认证（更安全）"
     echo "2) 密码认证"
     read -p "请选择 (1-2, 默认: 1): " auth_choice
     
@@ -464,7 +468,7 @@ get_user_input() {
         
         # 如果用户不是root，可能需要密码用于sudo
         if [ "$TARGET_USER" != "root" ]; then
-            read -s -p "sudo密码 (如果需要): " TARGET_PASSWORD
+            read -p "sudo密码 (如果需要): " TARGET_PASSWORD
             echo
         fi
         
@@ -472,7 +476,7 @@ get_user_input() {
     else
         # 密码认证
         while [ -z "$TARGET_PASSWORD" ]; do
-            read -s -p "目标服务器密码: " TARGET_PASSWORD
+            read -p "目标服务器密码: " TARGET_PASSWORD
             echo
             if [ -z "$TARGET_PASSWORD" ]; then
                 warning "密码不能为空，请重新输入"
@@ -561,7 +565,7 @@ extract_domains_from_nginx() {
     fi
     
     # 提取server_name行中的域名，排除example.com
-    local domains=$(grep "server_name" "$nginx_config_file" | sed 's/server_name \(.*\);/\1/' | tr -d ' ' | tr ';' '\n' | grep -v "example.com" | grep -v "^$" | sort -u)
+    local domains=$(grep "server_name" "$nginx_config_file" | sed 's/server_name \(.*\);/\1/' | tr ';' '\n' | grep -v "example.com" | grep -v "^$" | sort -u)
     
     if [ -n "$domains" ]; then
         NGINX_DOMAINS="$domains"
@@ -640,7 +644,10 @@ test_ssh_connection() {
     
     save_state "$STEP_TEST_SSH" "in_progress"
     info "测试SSH连接到目标服务器..."
-    
+
+    # 清理旧指纹
+    ssh-keygen -R "$TARGET_IP" 2>/dev/null
+
     # 测试基本SSH连接
     if ssh_retry "SSH连接测试" "echo 'SSH连接测试成功'" "false"; then
         success "SSH连接测试成功"
@@ -667,14 +674,32 @@ test_ssh_connection() {
     local base_dir="Awesome-poetize-open"
     local blog_number=1
     
-    # 检查基础目录是否存在
-    if ssh_retry "检查基础目录" "[ -d $CURRENT_DIR/$base_dir ]" "false"; then
+    # 直接检查基础目录是否存在（不使用重试机制，因为目录不存在是正常情况）
+    info "检查基础目录是否存在..."
+    local check_cmd
+    if [ -n "$TARGET_SSH_KEY" ] && [ -f "$TARGET_SSH_KEY" ]; then
+        check_cmd="ssh -i '$TARGET_SSH_KEY' -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' '[ -d \"${CURRENT_DIR}/${base_dir}\" ]'"
+    elif [ -n "$TARGET_PASSWORD" ]; then
+        check_cmd="sshpass -p '$TARGET_PASSWORD' ssh -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' '[ -d \"${CURRENT_DIR}/${base_dir}\" ]'"
+    else
+        error "未设置SSH认证方式"
+        exit 1
+    fi
+    
+    if eval "$check_cmd" 2>/dev/null; then
         # 基础目录存在，需要找到可用的blog目录
         info "检测到目标服务器已存在 $base_dir 目录"
         
         while true; do
             local test_dir="${base_dir}-blog${blog_number}"
-            if ssh_retry "检查blog目录" "[ -d $CURRENT_DIR/$test_dir ]" "false"; then
+            local test_cmd
+            if [ -n "$TARGET_SSH_KEY" ] && [ -f "$TARGET_SSH_KEY" ]; then
+                test_cmd="ssh -i '$TARGET_SSH_KEY' -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' '[ -d \"${CURRENT_DIR}/${test_dir}\" ]'"
+            else
+                test_cmd="sshpass -p '$TARGET_PASSWORD' ssh -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' '[ -d \"${CURRENT_DIR}/${test_dir}\" ]'"
+            fi
+            
+            if eval "$test_cmd" 2>/dev/null; then
                 # 目录存在，尝试下一个编号
                 blog_number=$((blog_number + 1))
             else
@@ -719,8 +744,19 @@ detect_target_environment() {
     save_state "$STEP_DETECT_ENV" "in_progress"
     info "检测目标服务器网络环境..."
     
-    # 检测是否能访问Google（判断是否为国内环境）
-    if ssh_retry "网络环境检测" "curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1" "false"; then
+    # 直接检测是否能访问Google（判断是否为国内环境），不使用重试机制
+    info "测试Google连接性..."
+    local network_test_cmd
+    if [ -n "$TARGET_SSH_KEY" ] && [ -f "$TARGET_SSH_KEY" ]; then
+        network_test_cmd="ssh -i '$TARGET_SSH_KEY' -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' 'curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1'"
+    elif [ -n "$TARGET_PASSWORD" ]; then
+        network_test_cmd="sshpass -p '$TARGET_PASSWORD' ssh -p $TARGET_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=$CONNECT_TIMEOUT '$TARGET_USER@$TARGET_IP' 'curl -s --connect-timeout 5 --max-time 10 https://www.google.com >/dev/null 2>&1'"
+    else
+        error "未设置SSH认证方式"
+        exit 1
+    fi
+    
+    if eval "$network_test_cmd" 2>/dev/null; then
         IS_CHINA_ENV=false
         save_state "$STEP_DETECT_ENV" "completed:foreign"
         save_environment_info
