@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-08-30
+## 修改时间: 2025-09-16
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.5.2
+## 版本: 1.6.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -6115,6 +6115,11 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 patch_dockerfile_mirror() {
   if [ -f "docker/python/Dockerfile" ]; then
+    # 替换 uv 镜像源为国内镜像
+    info "为 Python Dockerfile 替换 uv 镜像源为国内镜像..."
+    sed_i 's|ghcr.io|ghcr.nju.edu.cn|g' "docker/python/Dockerfile"
+    success "已将 uv 镜像源替换为南京大学镜像站"
+    
     patch_dockerfile_slim_mirror "docker/python/Dockerfile" 3
     patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile" 4
     patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile" 4
