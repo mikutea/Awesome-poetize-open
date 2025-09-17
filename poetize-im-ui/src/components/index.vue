@@ -949,21 +949,48 @@
           groupId: groupId
         })
           .then((res) => {
-            if (res.data && res.data.code === 200 && typeof res.data.data === 'number') {
+            console.log('获取在线人数响应:', res); // 调试日志
+            
+            // 验证响应结构: {code: 200, data: number|string, ...}
+            if (res && res.code === 200 && res.hasOwnProperty('data')) {
+              const data = res.data;
+              let onlineCount = 0;
+              
+              // 处理数据为数字的情况
+              if (typeof data === 'number' && !isNaN(data)) {
+                onlineCount = Math.max(0, data);
+              }
+              // 处理数据为字符串数字的情况
+              else if (typeof data === 'string' && !isNaN(Number(data))) {
+                onlineCount = Math.max(0, Number(data));
+              }
+              // 处理数据为null或undefined的情况
+              else if (data === null || data === undefined) {
+                onlineCount = 0;
+              }
+              // 处理其他情况，记录警告但不抛出错误
+              else {
+                console.warn('在线人数数据类型异常:', typeof data, data);
+                onlineCount = 0;
+              }
+              
               store.commit('updateOnlineUserCount', {
                 groupId: groupId,
-                count: Math.max(0, res.data.data) // 确保非负数
+                count: onlineCount
               });
+              console.log(`群组 ${groupId} 在线人数更新为: ${onlineCount}`);
             } else {
-              throw new Error('响应数据格式错误');
+              console.warn('响应格式异常:', res);
+              // 设置默认值而不抛出错误
+              store.commit('updateOnlineUserCount', {
+                groupId: groupId,
+                count: 0
+              });
             }
           })
           .catch((error) => {
             console.error('获取在线用户数失败:', error);
-            // 用户友好提示
-            if (typeof ElMessage !== 'undefined') {
-              ElMessage.warning('获取在线人数失败，显示可能不准确');
-            }
+            
             // 设置默认值
             store.commit('updateOnlineUserCount', {
               groupId: groupId,
