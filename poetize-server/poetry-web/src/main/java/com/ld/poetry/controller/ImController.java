@@ -1,17 +1,17 @@
 package com.ld.poetry.controller;
 
-import com.ld.poetry.config.LoginCheck;
+import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.service.CacheService;
-import com.ld.poetry.utils.CommonUtils;
 import com.ld.poetry.utils.Result;
 import com.ld.poetry.utils.SecureTokenGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * WebSocket IM 控制器
@@ -60,7 +60,7 @@ public class ImController {
     @GetMapping("/validateWsToken")
     public Result<Boolean> validateWebSocketToken(String wsToken) {
         try {
-            if (CommonUtils.isEmpty(wsToken)) {
+            if (!StringUtils.hasText(wsToken)) {
                 return Result.fail("Token不能为空");
             }
 
@@ -90,7 +90,7 @@ public class ImController {
     @GetMapping("/renewWsToken")
     public Result<String> renewWebSocketToken(String oldToken) {
         try {
-            if (CommonUtils.isEmpty(oldToken)) {
+            if (!StringUtils.hasText(oldToken)) {
                 return Result.fail("旧Token不能为空");
             }
 
@@ -132,7 +132,7 @@ public class ImController {
     @GetMapping("/checkWsTokenExpiry")
     public Result<Integer> checkWebSocketTokenExpiry(String wsToken) {
         try {
-            if (CommonUtils.isEmpty(wsToken)) {
+            if (!StringUtils.hasText(wsToken)) {
                 return Result.fail("Token不能为空");
             }
 
@@ -157,7 +157,7 @@ public class ImController {
     @GetMapping("/heartbeat")
     public Result<String> heartbeat(String wsToken) {
         try {
-            if (CommonUtils.isEmpty(wsToken)) {
+            if (!StringUtils.hasText(wsToken)) {
                 return Result.fail("Token不能为空");
             }
 
