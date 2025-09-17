@@ -149,6 +149,9 @@ public class SecureTokenGenerator {
             } else if (token.startsWith(CommonConst.ADMIN_ACCESS_TOKEN)) {
                 prefix = CommonConst.ADMIN_ACCESS_TOKEN;
                 encodedData = token.substring(CommonConst.ADMIN_ACCESS_TOKEN.length());
+            } else if (token.startsWith(WS_TOKEN_PREFIX)) {
+                prefix = WS_TOKEN_PREFIX;
+                encodedData = token.substring(WS_TOKEN_PREFIX.length());
             } else {
                 return TokenValidationResult.failure("无效的token前缀");
             }
@@ -183,7 +186,8 @@ public class SecureTokenGenerator {
 
             // 验证时间窗口（防止重放攻击）
             long currentTime = System.currentTimeMillis();
-            if (currentTime - timestamp > TOKEN_TIME_WINDOW) {
+            long timeWindow = token.startsWith(WS_TOKEN_PREFIX) ? WS_TOKEN_TIME_WINDOW : TOKEN_TIME_WINDOW;
+            if (currentTime - timestamp > timeWindow) {
                 return TokenValidationResult.failure("登录已过期，请重新登录");
             }
 
@@ -196,11 +200,13 @@ public class SecureTokenGenerator {
                 return TokenValidationResult.failure("Token签名验证失败");
             }
 
-            // 验证用户类型与前缀的一致性
-            boolean isAdminToken = token.startsWith(CommonConst.ADMIN_ACCESS_TOKEN);
-            boolean isAdminUserType = "admin".equals(userType);
-            if (isAdminToken != isAdminUserType) {
-                return TokenValidationResult.failure("Token类型与前缀不匹配");
+            // 验证用户类型与前缀的一致性（WebSocket token跳过此检查）
+            if (!token.startsWith(WS_TOKEN_PREFIX)) {
+                boolean isAdminToken = token.startsWith(CommonConst.ADMIN_ACCESS_TOKEN);
+                boolean isAdminUserType = "admin".equals(userType);
+                if (isAdminToken != isAdminUserType) {
+                    return TokenValidationResult.failure("Token类型与前缀不匹配");
+                }
             }
 
             log.debug("Token验证成功 - 用户ID: {}, 类型: {}", userId, userType);
