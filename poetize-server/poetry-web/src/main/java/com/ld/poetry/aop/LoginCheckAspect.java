@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequest;
 
 
@@ -145,6 +147,10 @@ public class LoginCheckAspect {
             log.error("刷新token过期时间时发生错误: userId={}, token={}", user.getId(), token, e);
             // 发生错误时不阻止请求继续执行
         }
+
+        // 将用户信息设置到request attribute中，供Controller使用
+        request.setAttribute("currentUser", user);
+        
         return joinPoint.proceed();
     }
 }
