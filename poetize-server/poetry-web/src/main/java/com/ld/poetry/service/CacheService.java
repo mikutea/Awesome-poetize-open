@@ -1446,4 +1446,71 @@ public class CacheService {
         
         return result;
     }
+
+    // ==================== WebSocket会话缓存方法 ====================
+    
+    /**
+     * WebSocket会话缓存前缀
+     */
+    private static final String WS_SESSION_PREFIX = "poetize:ws_session:";
+
+    /**
+     * 缓存WebSocket会话
+     * 
+     * @param wsToken WebSocket token
+     * @param userId 用户ID
+     * @param expireSeconds 过期时间（秒）
+     */
+    public void cacheWebSocketSession(String wsToken, Integer userId, int expireSeconds) {
+        if (wsToken != null && userId != null) {
+            String key = WS_SESSION_PREFIX + wsToken;
+            redisUtil.set(key, userId, expireSeconds);
+            log.info("缓存WebSocket会话: wsToken={}, userId={}, 过期时间: {}秒", wsToken, userId, expireSeconds);
+        }
+    }
+
+    /**
+     * 从WebSocket会话缓存中获取用户ID
+     * 
+     * @param wsToken WebSocket token
+     * @return 用户ID，不存在返回null
+     */
+    public Integer getUserIdFromWebSocketSession(String wsToken) {
+        if (wsToken == null) return null;
+        
+        String key = WS_SESSION_PREFIX + wsToken;
+        Object cached = redisUtil.get(key);
+        if (cached instanceof Integer) {
+            log.debug("从WebSocket会话缓存获取用户ID: {}", cached);
+            return (Integer) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除WebSocket会话缓存
+     * 
+     * @param wsToken WebSocket token
+     */
+    public void removeWebSocketSession(String wsToken) {
+        if (wsToken != null) {
+            String key = WS_SESSION_PREFIX + wsToken;
+            redisUtil.del(key);
+            log.debug("删除WebSocket会话缓存: {}", wsToken);
+        }
+    }
+
+    /**
+     * 延长WebSocket会话有效期
+     * 
+     * @param wsToken WebSocket token
+     * @param expireSeconds 新的过期时间（秒）
+     */
+    public void extendWebSocketSession(String wsToken, int expireSeconds) {
+        if (wsToken != null) {
+            String key = WS_SESSION_PREFIX + wsToken;
+            redisUtil.expire(key, expireSeconds);
+            log.debug("延长WebSocket会话有效期: wsToken={}, 新过期时间: {}秒", wsToken, expireSeconds);
+        }
+    }
 }

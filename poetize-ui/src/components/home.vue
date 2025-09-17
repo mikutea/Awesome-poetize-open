@@ -519,15 +519,35 @@
         this.toolbarDrawer = false;
       },
 
-      goIm() {
+      async goIm() {
         if (this.$common.isEmpty(this.$store.state.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
           });
-        } else {
-          let userToken = this.$common.encrypt(localStorage.getItem("userToken"));
-          window.open(this.$constant.imBaseURL + "?userToken=" + userToken + "&defaultStoreType=" + (this.$store.state.sysConfig['store.type'] || 'local'));
+          return;
+        }
+
+        try {
+          // 获取WebSocket临时token
+          const response = await this.$http.get(this.$constant.baseURL + "/im/getWsToken", {}, true);
+          
+          if (response.flag && response.data) {
+            const wsToken = response.data;
+            // 使用临时token打开聊天室
+            window.open(this.$constant.imBaseURL + "?token=" + wsToken + "&defaultStoreType=" + (this.$store.state.sysConfig['store.type'] || 'local'));
+          } else {
+            this.$message({
+              message: response.message || "获取聊天室访问凭证失败",
+              type: "error"
+            });
+          }
+        } catch (error) {
+          console.error("获取WebSocket token失败:", error);
+          this.$message({
+            message: "进入聊天室失败，请稍后重试",
+            type: "error"
+          });
         }
       },
 

@@ -63,20 +63,36 @@ public class ImWsMsgHandler implements IWsMsgHandler {
         }
 
         try {
-            // 使用CacheService验证用户token
-            Integer userId = cacheService.getUserIdFromSession(token);
-            if (userId == null) {
-                log.warn("WebSocket握手失败：token无效 - {}", token);
+            // 首先使用SecureTokenGenerator验证token的完整性和有效性
+            com.ld.poetry.utils.SecureTokenGenerator.TokenValidationResult validationResult = 
+                com.ld.poetry.utils.SecureTokenGenerator.validateToken(token);
+            
+            if (!validationResult.isValid()) {
+                log.warn("WebSocket握手失败：token验证失败 - {}, 原因: {}", token, validationResult.getErrorMessage());
                 return null;
             }
 
+            Integer userId = validationResult.getUserId();
+            if (userId == null) {
+                log.warn("WebSocket握手失败：无法从token中获取用户ID - {}", token);
+                return null;
+            }
+
+            // 获取用户信息
             User user = cacheService.getCachedUser(userId);
             if (user == null) {
-                log.warn("WebSocket握手失败：用户信息不存在 - userId: {}", userId);
-                return null;
+                // 如果缓存中没有用户信息，尝试从数据库获取
+                user = commonQuery.getUser(userId);
+                if (user == null) {
+                    log.warn("WebSocket握手失败：用户信息不存在 - userId: {}", userId);
+                    return null;
+                }
+                // 缓存用户信息
+                cacheService.cacheUser(user);
             }
 
-            log.info("WebSocket握手成功：用户ID：{}, 用户名：{}", user.getId(), user.getUsername());
+            log.info("WebSocket握手成功：用户ID：{}, 用户名：{}, token类型：{}", 
+                user.getId(), user.getUsername(), validationResult.getUserType());
             return httpResponse;
         } catch (Exception e) {
             log.error("WebSocket握手时验证用户失败 - token: {}", token, e);
@@ -93,22 +109,40 @@ public class ImWsMsgHandler implements IWsMsgHandler {
         User user = null;
 
         try {
-            // 使用CacheService获取用户信息
-            Integer userId = cacheService.getUserIdFromSession(token);
+            // 使用SecureTokenGenerator验证token（与握手阶段保持一致）
+            com.ld.poetry.utils.SecureTokenGenerator.TokenValidationResult validationResult = 
+                com.ld.poetry.utils.SecureTokenGenerator.validateToken(token);
+            
+            if (!validationResult.isValid()) {
+                log.warn("WebSocket连接绑定失败：token验证失败 - {}, 原因: {}", token, validationResult.getErrorMessage());
+                return;
+            }
+
+            Integer userId = validationResult.getUserId();
             if (userId != null) {
                 user = cacheService.getCachedUser(userId);
+                if (user == null) {
+                    // 如果缓存中没有用户信息，尝试从数据库获取
+                    user = commonQuery.getUser(userId);
+                    if (user != null) {
+                        // 缓存用户信息
+                        cacheService.cacheUser(user);
+                    }
+                }
+                
                 if (user != null) {
                     // 关闭该用户的其他连接，确保单点登录
                     Tio.closeUser(channelContext.tioConfig, user.getId().toString(), null);
                     // 绑定用户到当前连接
                     Tio.bindUser(channelContext, user.getId().toString());
-                    log.info("WebSocket连接绑定成功：用户ID：{}, 用户名：{}", user.getId(), user.getUsername());
+                    log.info("WebSocket连接绑定成功：用户ID：{}, 用户名：{}, token类型：{}", 
+                        user.getId(), user.getUsername(), validationResult.getUserType());
                 } else {
                     log.warn("WebSocket连接绑定失败：用户信息不存在 - userId: {}", userId);
                     return;
                 }
             } else {
-                log.warn("WebSocket连接绑定失败：token无效 - {}", token);
+                log.warn("WebSocket连接绑定失败：无法从token中获取用户ID - {}", token);
                 return;
             }
         } catch (Exception e) {

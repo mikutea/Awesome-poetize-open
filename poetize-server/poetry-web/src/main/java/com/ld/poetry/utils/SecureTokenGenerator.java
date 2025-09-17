@@ -335,4 +335,241 @@ public class SecureTokenGenerator {
         public boolean isAdminToken() { return "admin".equals(userType); }
         public boolean isUserToken() { return "user".equals(userType); }
     }
+
+    // ==================== WebSocket专用Token方法 ====================
+    
+    /**
+     * WebSocket token前缀
+     */
+    private static final String WS_TOKEN_PREFIX = "ws_token_";
+    
+    /**
+     * WebSocket token有效期：30分钟（毫秒）
+     */
+    private static final long WS_TOKEN_TIME_WINDOW = 30 * 60 * 1000L;
+
+    /**
+     * 生成WebSocket专用临时token（30分钟有效期）
+     * 
+     * @param userId 用户ID
+     * @param userType 用户类型
+     * @return WebSocket临时token
+     */
+    public static String generateWebSocketToken(Integer userId, String userType) {
+        try {
+            long timestamp = System.currentTimeMillis();
+            String nonce = generateNonce();
+            
+            // 构建payload
+            String payload = userId + ":" + userType + ":" + timestamp + ":" + nonce;
+            
+            // 生成签名
+            String signature = generateHmacSignature(payload);
+            
+            // 组合完整数据
+            String tokenData = payload + ":" + signature;
+            
+            // Base64编码
+            String encodedData = Base64.getEncoder().encodeToString(tokenData.getBytes(StandardCharsets.UTF_8));
+            
+            String wsToken = WS_TOKEN_PREFIX + encodedData;
+            
+            log.debug("生成WebSocket token成功 - 用户ID: {}, 类型: {}, 有效期: 30分钟", userId, userType);
+            
+            return wsToken;
+            
+        } catch (Exception e) {
+            log.error("生成WebSocket token失败 - 用户ID: {}, 类型: {}, 错误: {}", userId, userType, e.getMessage(), e);
+            throw new RuntimeException("WebSocket Token生成失败", e);
+        }
+    }
+
+    /**
+     * 验证WebSocket token并返回用户ID
+     * 
+     * @param wsToken WebSocket token
+     * @return 用户ID，验证失败返回null
+     */
+    public static Integer validateWebSocketToken(String wsToken) {
+        if (!StringUtils.hasText(wsToken) || !wsToken.startsWith(WS_TOKEN_PREFIX)) {
+            log.warn("WebSocket token格式错误或前缀不匹配");
+            return null;
+        }
+
+        try {
+            String encodedData = wsToken.substring(WS_TOKEN_PREFIX.length());
+            
+            // Base64解码
+            String decodedData;
+            try {
+                decodedData = new String(Base64.getDecoder().decode(encodedData), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException e) {
+                log.warn("WebSocket token Base64解码失败");
+                return null;
+            }
+            
+            // 解析数据：userId:userType:timestamp:nonce:signature
+            String[] parts = decodedData.split(":");
+            if (parts.length != 5) {
+                log.warn("WebSocket token格式错误，组件数量不正确");
+                return null;
+            }
+
+            Integer userId = Integer.parseInt(parts[0]);
+            String userType = parts[1];
+            long timestamp = Long.parseLong(parts[2]);
+            String nonce = parts[3];
+            String providedSignature = parts[4];
+
+            // 验证时间戳（30分钟有效期）
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - timestamp > WS_TOKEN_TIME_WINDOW) {
+                log.warn("WebSocket token已过期 - 用户ID: {}, 过期时间: {}分钟前", 
+                    userId, (currentTime - timestamp) / (60 * 1000));
+                return null;
+            }
+
+            // 验证签名
+            String payload = userId + ":" + userType + ":" + timestamp + ":" + nonce;
+            String expectedSignature = generateHmacSignature(payload);
+            
+            if (!MessageDigest.isEqual(providedSignature.getBytes(), expectedSignature.getBytes())) {
+                log.warn("WebSocket token签名验证失败 - 用户ID: {}", userId);
+                return null;
+            }
+
+            log.debug("WebSocket token验证成功 - 用户ID: {}, 类型: {}", userId, userType);
+            return userId;
+            
+        } catch (Exception e) {
+            log.error("WebSocket token验证异常: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 验证WebSocket token并返回用户ID
+     * 
+     * @param wsToken WebSocket token
+     * @param allowExpiring 是否允许即将过期的token（用于续签）
+     * @return 用户ID，验证失败返回null
+     */
+    public static Integer validateWebSocketToken(String wsToken, boolean allowExpiring) {
+        if (!StringUtils.hasText(wsToken) || !wsToken.startsWith(WS_TOKEN_PREFIX)) {
+            log.warn("WebSocket token格式错误或前缀不匹配");
+            return null;
+        }
+
+        try {
+            String encodedData = wsToken.substring(WS_TOKEN_PREFIX.length());
+            String decodedData = new String(Base64.getDecoder().decode(encodedData), StandardCharsets.UTF_8);
+            String[] parts = decodedData.split(":");
+            
+            if (parts.length != 5) {
+                log.warn("WebSocket token格式错误，组件数量不正确");
+                return null;
+            }
+
+            Integer userId = Integer.parseInt(parts[0]);
+            String userType = parts[1];
+            long timestamp = Long.parseLong(parts[2]);
+            String nonce = parts[3];
+            String providedSignature = parts[4];
+
+            // 验证时间戳
+            long currentTime = System.currentTimeMillis();
+            long elapsed = currentTime - timestamp;
+            
+            if (!allowExpiring && elapsed > WS_TOKEN_TIME_WINDOW) {
+                log.warn("WebSocket token已过期 - 用户ID: {}", userId);
+                return null;
+            }
+            
+            // 续签模式：允许额外5分钟宽限期
+            if (allowExpiring && elapsed > WS_TOKEN_TIME_WINDOW + 5 * 60 * 1000) {
+                log.warn("WebSocket token过期太久，无法续签 - 用户ID: {}", userId);
+                return null;
+            }
+
+            // 验证签名
+            String payload = userId + ":" + userType + ":" + timestamp + ":" + nonce;
+            String expectedSignature = generateHmacSignature(payload);
+            
+            if (!MessageDigest.isEqual(providedSignature.getBytes(), expectedSignature.getBytes())) {
+                log.warn("WebSocket token签名验证失败 - 用户ID: {}", userId);
+                return null;
+            }
+
+            return userId;
+            
+        } catch (Exception e) {
+            log.error("WebSocket token验证异常: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 从WebSocket token中获取用户类型
+     * 
+     * @param wsToken WebSocket token
+     * @return 用户类型，获取失败返回null
+     */
+    public static String getUserTypeFromWebSocketToken(String wsToken) {
+        if (!StringUtils.hasText(wsToken) || !wsToken.startsWith(WS_TOKEN_PREFIX)) {
+            return null;
+        }
+
+        try {
+            String encodedData = wsToken.substring(WS_TOKEN_PREFIX.length());
+            String decodedData = new String(Base64.getDecoder().decode(encodedData), StandardCharsets.UTF_8);
+            String[] parts = decodedData.split(":");
+            
+            if (parts.length != 5) {
+                return null;
+            }
+
+            return parts[1]; // userType
+            
+        } catch (Exception e) {
+            log.error("从WebSocket token获取用户类型失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 获取WebSocket token剩余有效时间（分钟）
+     * 
+     * @param wsToken WebSocket token
+     * @return 剩余分钟数，token无效返回-1
+     */
+    public static int getWebSocketTokenRemainingMinutes(String wsToken) {
+        if (!StringUtils.hasText(wsToken) || !wsToken.startsWith(WS_TOKEN_PREFIX)) {
+            return -1;
+        }
+
+        try {
+            String encodedData = wsToken.substring(WS_TOKEN_PREFIX.length());
+            String decodedData = new String(Base64.getDecoder().decode(encodedData), StandardCharsets.UTF_8);
+            String[] parts = decodedData.split(":");
+            
+            if (parts.length != 5) {
+                return -1;
+            }
+
+            long timestamp = Long.parseLong(parts[2]);
+            long currentTime = System.currentTimeMillis();
+            long elapsed = currentTime - timestamp;
+            long remaining = WS_TOKEN_TIME_WINDOW - elapsed;
+
+            if (remaining <= 0) {
+                return 0;
+            }
+
+            return (int) (remaining / (60 * 1000)); // 转换为分钟
+            
+        } catch (Exception e) {
+            log.error("获取WebSocket token剩余时间失败: {}", e.getMessage(), e);
+            return -1;
+        }
+    }
 }
