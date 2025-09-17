@@ -1,17 +1,17 @@
 <template>
-  <div>
+  <div class="chat-wrapper">
     <!-- title -->
-    <div style="height: 60px;background-color: var(--maxWhite)">
+    <div class="chat-header">
       <template v-if="!$common.isEmpty(currentChatFriendId)">
-        <span style="line-height: 60px;margin-left: 20px;font-size: 18px">
+        <span class="chat-title">
           {{friends[currentChatFriendId].remark}}
         </span>
       </template>
       <template v-else-if="!$common.isEmpty(currentChatGroupId)">
-        <span style="line-height: 60px;margin-left: 20px;font-size: 18px">
+        <span class="chat-title">
           {{groups[currentChatGroupId].groupName}}
         </span>
-        <span style="line-height: 60px;margin-left: 20px;font-size: 12px;color: var(--greyFont)">
+        <span class="online-count">
           当前在线人数：{{ getOnlineUserCount() }}
         </span>
       </template>
@@ -74,7 +74,7 @@
     </div>
 
     <!-- 输入框 -->
-    <div style="height: 180px">
+    <div class="chat-input-area">
       <!-- 功能栏 -->
       <div style="padding: 10px 15px;display: flex;height: 25px">
         <!-- 表情 -->
@@ -615,10 +615,40 @@
 </script>
 
 <style scoped>
+  .chat-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .chat-header {
+    height: 60px;
+    background-color: var(--maxWhite);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+  }
+
+  .chat-title {
+    font-size: 18px;
+    margin-right: 20px;
+  }
+
+  .online-count {
+    font-size: 12px;
+    color: var(--greyFont);
+  }
+
   .msg-container {
     background: var(--midWhite);
     overflow-y: scroll;
-    height: calc(100% - 240px);
+    flex: 1;
+  }
+
+  .chat-input-area {
+    height: 180px;
+    flex-shrink: 0;
   }
 
   .msg-one {

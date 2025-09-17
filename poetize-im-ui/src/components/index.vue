@@ -1376,8 +1376,10 @@
     height: 100%;
   }
 
-  .chat-container chat {
+  .chat-container > * {
     flex: 1;
+    display: flex;
+    flex-direction: column;
   }
 
   .pagination-wrap {
