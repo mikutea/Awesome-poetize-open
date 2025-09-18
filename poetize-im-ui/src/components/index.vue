@@ -713,7 +713,6 @@
           }
           
           if (message.messageType === 1) {
-=======
             if (message.fromId === store.state.currentUser.id && (friendData.friends[message.toId] !== null && friendData.friends[message.toId] !== undefined)) {
               if (data.imMessages[message.toId] === null || data.imMessages[message.toId] === undefined) {
                 data.imMessages[message.toId] = [];
