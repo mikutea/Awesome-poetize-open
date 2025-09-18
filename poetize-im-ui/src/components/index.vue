@@ -594,6 +594,7 @@
   import group from "../hooks/group";
   import imUtil from "../hooks/imUtil";
   import changeData from "../hooks/changeData";
+  import { getMessagePreview } from "../utils/messagePreview";
 
   import proButton from "./common/proButton";
   import treeHole from "./common/treeHole";
@@ -601,7 +602,7 @@
   import uploadPicture from "./common/uploadPicture";
   import chat from "./common/chat";
   import groupInfo from "./common/groupInfo";
-  import {reactive, getCurrentInstance, onMounted, onBeforeUnmount, watchEffect, toRefs} from 'vue';
+  import {reactive, computed, getCurrentInstance, onMounted, onBeforeUnmount, watchEffect, toRefs} from 'vue';
 
   export default {
     components: {
@@ -624,25 +625,12 @@
       const {friendCircleData, launch, openFriendCircle, deleteTreeHole, submitWeiYan, pageWeiYan, cleanFriendCircle, addFriend} = friendCircle();
       const {friendData, getImFriend, removeFriend, getFriendRequests, changeFriendStatus} = friend();
       const {groupData, getImGroup, addGroupTopic, exitGroup, dissolveGroup} = group();
-      const {imUtilData, changeAside, mobileRight, getSystemMessages, hiddenBodyLeft, imgShow, getImageList, parseMessage, updateAsideActiveState} = imUtil();
+      const {imUtilData, changeAside, mobileRight, getSystemMessages, hiddenBodyLeft, imgShow, getImageList, parseMessage, updateAsideActiveState, saveShowBodyLeftState} = imUtil();
       const {changeDataData, changeAvatar, changeDataType, submitAvatar, submitChange} = changeData(friendData, groupData);
 
       let data = reactive({
-        //消息列表
-        imMessages: {},
-        //消息标记
-        imMessageBadge: {},
-        //聊天列表
-        imChats: [],
         //当前聊天信息
         currentChatFriendId: null,
-
-        //群消息列表
-        groupMessages: {},
-        //群消息标记
-        groupMessageBadge: {},
-        //群聊天列表
-        groupChats: [],
         //当前群聊天信息
         currentChatGroupId: null,
 
@@ -650,6 +638,14 @@
         subType: 1,
         showFriendValue: ''
       })
+
+      // 使用computed从store获取聊天数据，实现响应式
+      const imMessages = computed(() => store.state.imMessages);
+      const imMessageBadge = computed(() => store.state.imMessageBadge);
+      const imChats = computed(() => store.state.imChats);
+      const groupMessages = computed(() => store.state.groupMessages);
+      const groupMessageBadge = computed(() => store.state.groupMessageBadge);
+      const groupChats = computed(() => store.state.groupChats);
 
       let im;
 
@@ -714,39 +710,36 @@
           
           if (message.messageType === 1) {
             if (message.fromId === store.state.currentUser.id && (friendData.friends[message.toId] !== null && friendData.friends[message.toId] !== undefined)) {
-              if (data.imMessages[message.toId] === null || data.imMessages[message.toId] === undefined) {
-                data.imMessages[message.toId] = [];
+              // 添加消息到store
+              store.commit('addImMessage', {friendId: message.toId, message});
+              
+              // 更新聊天列表顺序
+              const currentChats = [...imChats.value];
+              const existingIndex = currentChats.indexOf(message.toId);
+              if (existingIndex > -1) {
+                currentChats.splice(existingIndex, 1);
               }
-              data.imMessages[message.toId].push(message);
-
-              for (let i = 0; i < data.imChats.length; i++) {
-                if (data.imChats[i] === message.toId) {
-                  data.imChats.splice(i, 1);
-                  break;
-                }
-              }
-              data.imChats.splice(0, 0, message.toId);
+              currentChats.unshift(message.toId);
+              store.commit('updateImChats', currentChats);
+              
               isActive(document.getElementsByClassName('im-user-current')[0], 'im-active', null, 2, message.toId, 2);
             } else if (message.fromId !== store.state.currentUser.id && (friendData.friends[message.fromId] !== null && friendData.friends[message.fromId] !== undefined)) {
-              if (data.imMessages[message.fromId] === null || data.imMessages[message.fromId] === undefined) {
-                for (let i = 0; i < data.imChats.length; i++) {
-                  if (data.imChats[i] === message.fromId) {
-                    data.imChats.splice(i, 1);
-                    break;
-                  }
-                }
-                data.imChats.splice(0, 0, message.fromId);
-
-                data.imMessages[message.fromId] = [];
+              // 更新聊天列表顺序
+              const currentChats = [...imChats.value];
+              const existingIndex = currentChats.indexOf(message.fromId);
+              if (existingIndex > -1) {
+                currentChats.splice(existingIndex, 1);
               }
-              data.imMessages[message.fromId].push(message);
+              currentChats.unshift(message.fromId);
+              store.commit('updateImChats', currentChats);
+              
+              // 添加消息到store
+              store.commit('addImMessage', {friendId: message.fromId, message});
 
               if (data.subType !== 2 || data.currentChatFriendId !== message.fromId) {
-                if (data.imMessageBadge[message.fromId] === null || data.imMessageBadge[message.fromId] === undefined) {
-                  data.imMessageBadge[message.fromId] = 1;
-                } else {
-                  data.imMessageBadge[message.fromId] = data.imMessageBadge[message.fromId] + 1;
-                }
+                // 更新未读消息数
+                const currentBadge = imMessageBadge.value[message.fromId] || 0;
+                store.commit('updateImMessageBadge', {friendId: message.fromId, count: currentBadge + 1});
                 
                 // 移动端收到新消息时，如果当前不在聊天界面，显示左侧面板
                 if ($common.mobile() && data.subType !== 2) {
@@ -765,28 +758,26 @@
               imgShow();
             });
           } else if (message.messageType === 2 && (groupData.groups[message.groupId] !== null && groupData.groups[message.groupId] !== undefined)) {
-            if (data.groupMessages[message.groupId] === null || data.groupMessages[message.groupId] === undefined) {
-              data.groupMessages[message.groupId] = [];
-            }
-            data.groupMessages[message.groupId].push(message);
+            // 添加群消息到store
+            store.commit('addGroupMessage', {groupId: message.groupId, message});
 
-            if(message.fromId === store.state.currentUser.id || data.groupMessages[message.groupId] === null || data.groupMessages[message.groupId] === undefined) {
-              for (let i = 0; i < data.groupChats.length; i++) {
-                if (data.groupChats[i] === message.groupId) {
-                  data.groupChats.splice(i, 1);
-                  break;
-                }
+            if(message.fromId === store.state.currentUser.id || !groupMessages.value[message.groupId]) {
+              // 更新群聊列表顺序
+              const currentChats = [...groupChats.value];
+              const existingIndex = currentChats.indexOf(message.groupId);
+              if (existingIndex > -1) {
+                currentChats.splice(existingIndex, 1);
               }
-              data.groupChats.splice(0, 0, message.groupId);
+              currentChats.unshift(message.groupId);
+              store.commit('updateGroupChats', currentChats);
+              
               isActive(document.getElementsByClassName('im-group-current')[0], 'im-active', null, 2, message.groupId, 1);
             }
 
             if ((data.subType !== 2 || data.currentChatGroupId !== message.groupId) && message.fromId !== store.state.currentUser.id) {
-              if (data.groupMessageBadge[message.groupId] === null || data.groupMessageBadge[message.groupId] === undefined) {
-                data.groupMessageBadge[message.groupId] = 1;
-              } else {
-                data.groupMessageBadge[message.groupId] = data.groupMessageBadge[message.groupId] + 1;
-              }
+              // 更新未读消息数
+              const currentBadge = groupMessageBadge.value[message.groupId] || 0;
+              store.commit('updateGroupMessageBadge', {groupId: message.groupId, count: currentBadge + 1});
               
               // 移动端收到新群消息时，如果当前不在聊天界面，显示左侧面板
               if ($common.mobile() && data.subType !== 2) {
@@ -855,12 +846,14 @@
             if (imType === 1) {
               data.currentChatFriendId = null;
               data.currentChatGroupId = current;
-              data.groupMessageBadge[current] = 0;
+              // 清零群聊未读消息数
+              store.commit('updateGroupMessageBadge', {groupId: current, count: 0});
               console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 设置当前群聊ID: ${current}`);
             } else if (imType === 2) {
               data.currentChatGroupId = null;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
               data.currentChatFriendId = current;
-              data.imMessageBadge[current] = 0;
+              // 清零私聊未读消息数
+              store.commit('updateImMessageBadge', {friendId: current, count: 0});
               console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 设置当前好友ID: ${current}`);
             }
           }
@@ -928,13 +921,14 @@
       }
 
       async function sendFriendMessage() {
-        for (let i = 0; i < data.imChats.length; i++) {
-          if (data.imChats[i] === friendData.currentFriendId) {
-            data.imChats.splice(i, 1);
-            break;
-          }
+        // 更新聊天列表顺序
+        const currentChats = [...imChats.value];
+        const existingIndex = currentChats.indexOf(friendData.currentFriendId);
+        if (existingIndex > -1) {
+          currentChats.splice(existingIndex, 1);
         }
-        data.imChats.splice(0, 0, friendData.currentFriendId);
+        currentChats.unshift(friendData.currentFriendId);
+        store.commit('updateImChats', currentChats);
         await nextTick();
         
         // 切换到聊天标签页
@@ -958,13 +952,14 @@
       }
 
       async function sendGroupMessage() {
-        for (let i = 0; i < data.groupChats.length; i++) {
-          if (data.groupChats[i] === groupData.currentGroupId) {
-            data.groupChats.splice(i, 1);
-            break;
-          }
+        // 更新群聊列表顺序
+        const currentChats = [...groupChats.value];
+        const existingIndex = currentChats.indexOf(groupData.currentGroupId);
+        if (existingIndex > -1) {
+          currentChats.splice(existingIndex, 1);
         }
-        data.groupChats.splice(0, 0, groupData.currentGroupId);
+        currentChats.unshift(groupData.currentGroupId);
+        store.commit('updateGroupChats', currentChats);
         await nextTick();
         
         // 切换到聊天标签页
@@ -992,7 +987,7 @@
       }
 
       function getMessages(friendId, current = 1, size = 100) {
-        if (!data.imMessages.hasOwnProperty(friendId)) {
+        if (!imMessages.value.hasOwnProperty(friendId)) {
           $http.get($constant.baseURL + "/imChatUserMessage/listFriendMessage", {
             friendId: friendId,
             current: current,
@@ -1003,9 +998,9 @@
                 res.data.records.forEach(message => {
                   message.content = parseMessage(message.content);
                 });
-                data.imMessages[friendId] = res.data.records;
+                store.commit('updateImMessages', {friendId, messages: res.data.records});
               } else {
-                data.imMessages[friendId] = [];
+                store.commit('updateImMessages', {friendId, messages: []});
               }
               nextTick(() => {
                 let msgContainer = document.getElementsByClassName('msg-container');
@@ -1014,9 +1009,6 @@
                 }
                 imgShow();
               });
-              
-              // 获取群组在线人数
-              getGroupOnlineCount(groupId);
             })
             .catch((error) => {
               ElMessage({
@@ -1028,7 +1020,7 @@
       }
 
       function getGroupMessages(groupId, current = 1, size = 100) {
-        if (!data.groupMessages.hasOwnProperty(groupId)) {
+        if (!groupMessages.value.hasOwnProperty(groupId)) {
           $http.get($constant.baseURL + "/imChatUserGroupMessage/listGroupMessage", {
             groupId: groupId,
             current: current,
@@ -1039,9 +1031,9 @@
                 res.data.records.forEach(message => {
                   message.content = parseMessage(message.content);
                 });
-                data.groupMessages[groupId] = res.data.records;
+                store.commit('updateGroupMessages', {groupId, messages: res.data.records});
               } else {
-                data.groupMessages[groupId] = [];
+                store.commit('updateGroupMessages', {groupId, messages: []});
               }
               nextTick(() => {
                 let msgContainer = document.getElementsByClassName('msg-container');
@@ -1124,39 +1116,7 @@
           });
       }
 
-      // 获取消息预览文本（去除HTML标签）
-      function getMessagePreview(content) {
-        if (!content) return '';
-        
-        // 创建临时DOM元素来解析HTML
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
-        
-        // 获取纯文本内容
-        let textContent = tempDiv.textContent || tempDiv.innerText || '';
-        
-        // 处理表情符号，将[表情名]保留
-        textContent = textContent.replace(/\s+/g, ' ').trim();
-        
-        // 如果是图片消息，显示[图片]
-        if (content.includes('<img') && content.includes('src=')) {
-          // 检查是否是表情图片
-          if (content.includes('emoji/q') || content.match(/\[.*\]/)) {
-            // 尝试从title属性中提取表情名称
-            const titleMatch = content.match(/title="(\[.*?\])"/);
-            if (titleMatch) {
-              textContent = titleMatch[1];
-            } else {
-              textContent = '[表情]';
-            }
-          } else {
-            textContent = '[图片]';
-          }
-        }
-        
-        // 截取前8个字符
-        return textContent.length > 8 ? textContent.substr(0, 8) + '...' : textContent;
-      }
+
 
       // 显示聊天列表（移动端返回功能）
       function showChatList() {
@@ -1200,6 +1160,14 @@
         ...toRefs(groupData),
         ...toRefs(imUtilData),
         ...toRefs(changeDataData),
+        // 聊天数据computed属性
+        imMessages,
+        imMessageBadge,
+        imChats,
+        groupMessages,
+        groupMessageBadge,
+        groupChats,
+        // 方法
         isActive,
         sendMsg,
         submitAvatar,
