@@ -214,7 +214,7 @@ export default function () {
       
       console.log('Token检查响应:', result);
       
-      if (result.flag && result.data !== null && result.data !== undefined) {
+      if (result.code === 200 && result.data !== null && result.data !== undefined) {
         const remainingMinutes = result.data;
         console.log(`Token剩余有效期: ${remainingMinutes}分钟`);
         
@@ -231,7 +231,7 @@ export default function () {
       } else {
         console.warn('检查token有效期失败:', result.message || '未知错误');
         // 只有在明确token无效时才尝试续签，避免误判
-        if (result.message && result.message.includes('无效') || result.message && result.message.includes('过期')) {
+        if (result.message && (result.message.includes('无效') || result.message.includes('过期') || result.message.includes('失效'))) {
           console.log('Token确实无效，尝试续签...');
           await this.renewToken();
         } else {
@@ -260,7 +260,7 @@ export default function () {
       
       console.log('Token续签响应:', result);
       
-      if (result.flag && result.data) {
+      if (result.code === 200 && result.data) {
         const newToken = result.data;
         console.log('Token续签成功，新token:', newToken.substring(0, 20) + '...');
         
@@ -288,7 +288,7 @@ export default function () {
         console.error('Token续签失败:', result.message || '未知错误');
         
         // 只有在确实需要用户重新登录时才显示警告
-        if (result.message && (result.message.includes('登录') || result.message.includes('认证'))) {
+        if (result.message && (result.message.includes('登录') || result.message.includes('认证') || result.message.includes('过期'))) {
           ElMessage({
             message: "会话已过期，请刷新页面重新登录",
             type: 'warning',
@@ -421,7 +421,7 @@ export default function () {
       const response = await fetch(`${constant.baseURL}/im/heartbeat?wsToken=${this.currentToken}`);
       const result = await response.json();
       
-      if (result.flag && result.data) {
+      if (result.code === 200 && result.data) {
         const returnedToken = result.data;
         
         // 如果返回的token与当前token不同，说明服务器进行了自动续签
@@ -431,9 +431,13 @@ export default function () {
           this.paramStr = 'token=' + returnedToken;
           
           // 更新URL参数
-          const url = new URL(window.location);
-          url.searchParams.set('token', returnedToken);
-          window.history.replaceState({}, '', url);
+          try {
+            const url = new URL(window.location);
+            url.searchParams.set('token', returnedToken);
+            window.history.replaceState({}, '', url);
+          } catch (urlError) {
+            console.warn('更新URL参数失败:', urlError);
+          }
         }
         
         console.log('HTTP心跳检测成功');

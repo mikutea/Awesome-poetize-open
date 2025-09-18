@@ -984,6 +984,9 @@
                 }
                 imgShow();
               });
+              
+              // 获取群组在线人数
+              getGroupOnlineCount(groupId);
             })
             .catch((error) => {
               ElMessage({
