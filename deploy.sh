@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-09-16
+## 修改时间: 2025-09-18
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.6.0
+## 版本: 1.6.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -6113,12 +6113,49 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
   fi
 }
 
+check_registry() {
+  local registry=$1
+  echo "检测 $registry..."
+  # 30 秒整体超时、5 秒连接超时
+  http_code=$(curl -sL --connect-timeout 5 --max-time 30 \
+    -o /dev/null -w "%{http_code}" \
+    "https://$registry/$IMAGE_URL" || echo "000")
+  echo "HTTP $http_code"
+
+  # 2xx、3xx、401 都认为是可用
+  if [[ "$http_code" =~ ^2 || "$http_code" =~ ^3 || "$http_code" == "401" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
 patch_dockerfile_mirror() {
   if [ -f "docker/python/Dockerfile" ]; then
-    # 替换 uv 镜像源为国内镜像
     info "为 Python Dockerfile 替换 uv 镜像源为国内镜像..."
-    sed_i 's|ghcr.io|ghcr.nju.edu.cn|g' "docker/python/Dockerfile"
-    success "已将 uv 镜像源替换为南京大学镜像站"
+    # 替换 uv 镜像源为国内镜像
+    IMAGE_PATH="astral-sh/uv:python3.12-bookworm-slim"
+    IMAGE_URL="v2/astral-sh/uv/manifests/python3.12-bookworm-slim"
+
+    # 镜像源顺序
+    GHCR_MIRRORS=(
+      "ghcr.nju.edu.cn"
+      "ghcr.m.daocloud.io"
+      "ghcr.io"
+    )
+
+    # 按顺序选择可用镜像
+    for reg in "${GHCR_MIRRORS[@]}"; do
+      if check_registry "$reg"; then
+        PULL_GHCR_MIRRORS="$reg"
+        break
+      fi
+      echo "$reg 不可用，尝试下一个..."
+    done
+
+    sed_i "s|ghcr.io|$PULL_GHCR_MIRRORS|g" "docker/python/Dockerfile"
+    success "已将 uv 镜像源替换国内镜像站"
     
     patch_dockerfile_slim_mirror "docker/python/Dockerfile" 3
     patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile" 4
