@@ -118,7 +118,7 @@
           <!-- 聊天 -->
           <div class="aside-list" v-show="type === 1">
             <!-- 系统消息 -->
-            <div class="im-user im-active" @click="isActive($event, 'im-active', null, 1)">
+            <div class="im-user im-active system-message" @click="isActive($event, 'im-active', null, 1)">
               <div>
                 <svg viewBox="0 0 1024 1024" width="40" height="40">
                   <path
@@ -479,7 +479,7 @@
         <n-modal v-model:show="showAvatarDialog">
           <div style="padding: 40px;background: var(--white);border-radius: 5px;width: 20%">
             <div style="margin: 0 0 25px;text-align: center;font-size: 18px">上传图片</div>
-            <uploadPicture :prefix="avatarPrefix" @addPicture="submitAvatar" :maxSize="1"
+            <uploadPicture :prefix="avatarPrefix" @addPicture="submitAvatar" :maxSize="3"
                            :maxNumber="1"></uploadPicture>
           </div>
         </n-modal>
@@ -845,7 +845,7 @@
         if (!$common.isEmpty(type)) {
           // 检查当前点击的按钮是否已经是激活状态
           let currentElement = e instanceof HTMLElement ? e : e.currentTarget;
-          if (currentElement.classList.contains('aside-active') && data.type === type) {
+          if (currentElement && currentElement.classList && currentElement.classList.contains('aside-active') && data.type === type) {
             isRepeatClick = true;
           }
           
@@ -1240,6 +1240,16 @@
       function handleTouchStart(event, groupId) {
         if (!$common.mobile()) return;
         
+        // 检查是否为系统消息，系统消息不支持删除
+        if (event && event.currentTarget && event.currentTarget.classList && event.currentTarget.classList.contains('system-message')) {
+          return;
+        }
+        
+        // 阻止移动端的右键菜单和文本选择
+        if (event && event.preventDefault) {
+          event.preventDefault();
+        }
+        
         touchStartTime = Date.now();
         touchTimer = setTimeout(() => {
           // 长按触发删除菜单
@@ -1275,9 +1285,25 @@
 
       // 处理右键菜单（PC端）
       function handleContextMenu(event, groupId) {
-        if ($common.mobile()) return;
+        // 移动端阻止右键菜单，避免与长按冲突
+        if ($common.mobile()) {
+          if (event && event.preventDefault) {
+            event.preventDefault();
+          }
+          return;
+        }
         
-        event.preventDefault(); // 阻止默认右键菜单
+        // 检查是否为系统消息，系统消息不支持删除
+        if (event && event.currentTarget && event.currentTarget.classList && event.currentTarget.classList.contains('system-message')) {
+          if (event.preventDefault) {
+            event.preventDefault();
+          }
+          return;
+        }
+        
+        if (event && event.preventDefault) {
+          event.preventDefault(); // 阻止默认右键菜单
+        }
         showGroupDeleteMenu(event, groupId);
       }
 
@@ -1877,6 +1903,62 @@
 
     .friend-model {
       width: 90% !important;
+    }
+  }
+  /* 系统消息特殊样式 - 禁用删除功能 */
+  .system-message::after {
+    display: none !important; /* 不显示"右键删除"提示 */
+  }
+
+  .system-message .chat-item-delete {
+    display: none !important; /* 不显示删除按钮 */
+  }
+
+  /* 系统消息禁用右键菜单和长按 */
+  .system-message {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  /* 系统消息特殊样式 - 禁用删除功能 */
+  .system-message::after {
+    display: none !important; /* 不显示"右键删除"提示 */
+  }
+
+  .system-message .chat-item-delete {
+    display: none !important; /* 不显示删除按钮 */
+  }
+
+  /* 系统消息禁用右键菜单和长按选择 */
+  .system-message {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* 移动端群聊项优化 - 防止右键菜单和文本选择 */
+  @media (max-width: 768px) {
+    .im-group-current {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none; /* 禁用iOS长按弹出菜单 */
+      -webkit-tap-highlight-color: transparent; /* 移除点击高亮 */
+    }
+    
+    /* 移动端禁用右键菜单 */
+    .im-group-current {
+      pointer-events: auto;
+    }
+    
+    .im-group-current * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
     }
   }
 </style>
