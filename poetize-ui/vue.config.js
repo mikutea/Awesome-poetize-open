@@ -6,7 +6,7 @@ const { WebpackBundleAnalyzer } = require('webpack-bundle-analyzer')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 // 设置网站默认标题（实际运行时会从数据库获取）
-const siteTitle = 'POETIZE'; 
+const siteTitle = ''; 
 
 module.exports = {
   devServer: {

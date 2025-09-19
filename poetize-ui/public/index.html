@@ -14,6 +14,24 @@
     <title></title>
     <!-- SEO相关元数据占位符 - 将由Nginx动态替换 -->
     <!-- SEO_META_PLACEHOLDER -->
+    
+    <!-- 快速设置标题，减少闪烁 -->
+    <script>
+    (function() {
+        try {
+            var cachedWebInfo = localStorage.getItem('webInfo');
+            if (cachedWebInfo) {
+                var webInfoData = JSON.parse(cachedWebInfo);
+                if (webInfoData && webInfoData.data && webInfoData.data.webTitle) {
+                    document.title = webInfoData.data.webTitle;
+                    window.OriginTitile = webInfoData.data.webTitle;
+                }
+            }
+        } catch (e) {
+            // 静默处理错误，不影响页面加载
+        }
+    })();
+    </script>
 </head>
 <body>
 <div id="app"></div>
