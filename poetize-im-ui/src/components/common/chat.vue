@@ -9,7 +9,7 @@
       </template>
       <template v-else-if="!$common.isEmpty(currentChatGroupId)">
         <span class="chat-title">
-          {{groups[currentChatGroupId].groupName}}
+          {{groups[currentChatGroupId] ? groups[currentChatGroupId].groupName : '未知群聊'}}
         </span>
         <span class="online-count">
           当前在线人数：{{ getOnlineUserCount() }}
@@ -590,6 +590,13 @@
           });
           if (success) {
             data.msg = '';
+          } else {
+            // 发送失败时的额外提示
+            ElMessage({
+              message: "私聊消息发送失败，请检查网络连接！",
+              type: 'warning',
+              duration: 3000
+            });
           }
         } else if (!$common.isEmpty(props.currentChatGroupId)) {
           let message = {
@@ -606,6 +613,13 @@
           });
           if (success) {
             data.msg = '';
+          } else {
+            // 发送失败时的额外提示
+            ElMessage({
+              message: "群聊消息发送失败，请检查网络连接！",
+              type: 'warning',
+              duration: 3000
+            });
           }
         }
       }

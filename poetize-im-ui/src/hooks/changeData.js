@@ -152,7 +152,9 @@ export default function (friendData, groupData) {
             message: "修改成功！",
             type: 'success'
           });
-          groupData.groups[groupData.currentGroupId].groupName = changeDataData.changeData;
+          if (groupData.groups[groupData.currentGroupId]) {
+            groupData.groups[groupData.currentGroupId].groupName = changeDataData.changeData;
+          }
           closeModal();
           changeDataData.changeModal = false;
         })

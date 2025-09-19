@@ -213,7 +213,8 @@ export default function () {
       console.error('WebSocket未初始化');
       ElMessage({
         message: "WebSocket未初始化，请刷新页面重试！",
-        type: 'error'
+        type: 'error',
+        duration: 4000
       });
       return false;
     }
@@ -223,7 +224,8 @@ export default function () {
     console.log('当前WebSocket状态:', readyState);
     
     if (!this.tio.isReady()) {
-      let message = "连接异常，请重试！";
+      let message = "连接异常，消息发送失败！";
+      let showReconnectHint = false;
       
       switch (readyState) {
         case WebSocket.CONNECTING:
@@ -235,18 +237,21 @@ export default function () {
           console.warn('WebSocket正在关闭');
           break;
         case WebSocket.CLOSED:
-          message = "连接已断开，正在重新连接...";
+          message = "连接已断开，消息发送失败！正在尝试重新连接...";
           console.warn('WebSocket连接已断开');
+          showReconnectHint = true;
           // 尝试重新连接
           this.reconnect();
           break;
         default:
           console.warn('WebSocket状态异常:', readyState);
+          message = "连接状态异常，消息发送失败！";
       }
       
       ElMessage({
         message: message,
-        type: 'warning'
+        type: 'error',
+        duration: showReconnectHint ? 5000 : 3000
       });
       return false;
     }
@@ -258,27 +263,31 @@ export default function () {
         const success = this.tio.send(value);
         if (success) {
           console.log('消息发送成功');
+          return true;
         } else {
           console.error('消息发送失败');
           ElMessage({
-            message: "发送失败，请重试！",
-            type: 'error'
+            message: "消息发送失败，请检查网络连接！",
+            type: 'error',
+            duration: 3000
           });
+          return false;
         }
-        return success;
       } catch (error) {
         console.error('发送消息时出现异常:', error);
         ElMessage({
-          message: "发送异常，请重试！",
-          type: 'error'
+          message: "发送消息时出现异常：" + (error.message || '未知错误'),
+          type: 'error',
+          duration: 4000
         });
         return false;
       }
     } else {
       console.error('WebSocket连接状态异常，实际状态:', this.tio.ws ? this.tio.ws.readyState : 'ws对象不存在');
       ElMessage({
-        message: "连接状态异常，请刷新页面重试！",
-        type: 'error'
+        message: "连接状态异常，消息发送失败！请刷新页面重试。",
+        type: 'error',
+        duration: 4000
       });
       return false;
     }

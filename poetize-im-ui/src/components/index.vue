@@ -143,7 +143,7 @@
               <div class="im-user im-group-current"
                    v-for="(item, index) in groupChats"
                    :key="index"
-                   v-show="groups[item].groupName.includes(showFriendValue) || $common.isEmpty(showFriendValue)"
+                   v-show="groups[item] && groups[item].groupName && (groups[item].groupName.includes(showFriendValue) || $common.isEmpty(showFriendValue))"
                    @click="handleGroupChatClick($event, item)"
                    @touchstart="handleTouchStart($event, item)"
                    @touchend="handleTouchEnd($event, item)"
@@ -153,11 +153,11 @@
                     <n-avatar object-fit="cover"
                               lazy
                               :size="40"
-                              :src="groups[item].avatar"/>
+                              :src="groups[item] ? groups[item].avatar : ''"/>
                   </n-badge>
                 </div>
                 <div class="im-user-right">
-                  <div>{{groups[item].groupName}}</div>
+                  <div>{{groups[item] ? groups[item].groupName : '未知群聊'}}</div>
                   <div class="im-down" v-if="!$common.isEmpty(groupMessages[item])">
                     {{getMessagePreview(groupMessages[item][groupMessages[item].length-1].content)}}
                   </div>
@@ -245,7 +245,7 @@
             <div class="im-user-group"
                  v-for="(item, index) in Object.values(groups).reverse()"
                  :key="index"
-                 v-show="item.groupName.includes(showFriendValue) || $common.isEmpty(showFriendValue)"
+                 v-show="item && item.groupName && (item.groupName.includes(showFriendValue) || $common.isEmpty(showFriendValue))"
                  @click="isActive($event, 'im-group', null, 5, item)">
               <div>
                 <n-avatar object-fit="cover"
@@ -842,7 +842,28 @@
       }
 
       function sendMsg(msg, callback) {
+        // 检查WebSocket连接状态
+        if (!im.tio || !im.tio.isReady()) {
+          ElMessage({
+            message: "连接已断开，消息发送失败！请检查网络连接。",
+            type: 'error',
+            duration: 4000
+          });
+          callback(false);
+          return;
+        }
+        
         let success = im.sendMsg(msg);
+        
+        // 如果发送失败，给用户明确提示
+        if (!success) {
+          ElMessage({
+            message: "消息发送失败！请检查网络连接或稍后重试。",
+            type: 'error',
+            duration: 3000
+          });
+        }
+        
         callback(success);
       }
 
@@ -1025,7 +1046,7 @@
           console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 准备获取群组消息，群组ID:`, groupData.currentGroupId);
           getGroupMessages(groupData.currentGroupId);
           getGroupOnlineCountWithDebounce(groupData.currentGroupId);
-          if (groupData.groups[groupData.currentGroupId].groupType === 2) {
+          if (groupData.groups[groupData.currentGroupId] && groupData.groups[groupData.currentGroupId].groupType === 2) {
             addGroupTopic();
           }
         }, 50);

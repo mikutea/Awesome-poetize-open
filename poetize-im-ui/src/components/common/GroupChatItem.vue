@@ -10,7 +10,7 @@
       </n-badge>
     </div>
     <div class="im-user-right">
-      <div>{{group.groupName}}</div>
+      <div>{{group ? group.groupName : '未知群聊'}}</div>
       <div class="im-down" v-if="lastMessage">
         {{lastMessage}}
       </div>

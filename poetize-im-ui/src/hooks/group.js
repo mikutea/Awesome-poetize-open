@@ -102,20 +102,40 @@ export default function () {
   }
 
   async function getImGroup() {
-    await $http.get($constant.baseURL + "/imChatGroup/listGroup")
-      .then((res) => {
-        if (!$common.isEmpty(res.data)) {
+    try {
+      const res = await $http.get($constant.baseURL + "/imChatGroup/listGroup");
+      if (res && res.code === 200 && res.data) {
+        groupData.groups = {};
+        if (Array.isArray(res.data)) {
           res.data.forEach(group => {
-            groupData.groups[group.id] = group;
+            if (group && group.id) {
+              // 确保每个群组都有必要的属性
+              groupData.groups[group.id] = {
+                id: group.id,
+                groupName: group.groupName || '未知群聊',
+                avatar: group.avatar || '',
+                groupType: group.groupType || 1,
+                masterFlag: group.masterFlag || false,
+                adminFlag: group.adminFlag || false,
+                ...group
+              };
+            }
           });
         }
-      })
-      .catch((error) => {
-        ElMessage({
-          message: error.message,
-          type: 'error'
-        });
+        console.log('群组数据加载成功:', Object.keys(groupData.groups).length, '个群组');
+        return true;
+      } else {
+        console.error('获取群组数据失败:', res);
+        return false;
+      }
+    } catch (error) {
+      console.error('获取群组数据时发生错误:', error);
+      ElMessage({
+        message: error.message || '获取群组数据失败',
+        type: 'error'
       });
+      return false;
+    }
   }
 
   function addGroupTopic() {

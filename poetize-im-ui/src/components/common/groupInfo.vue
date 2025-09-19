@@ -3,7 +3,7 @@
     <!-- 群名称 -->
     <div style="height: 60px;background-color: var(--maxWhite)">
       <span style="line-height: 60px;margin-left: 20px;font-size: 18px">
-        {{groups[currentGroupId].groupName}}
+        {{groups[currentGroupId] ? groups[currentGroupId].groupName : '未知群聊'}}
       </span>
     </div>
 
@@ -14,7 +14,7 @@
         <n-avatar object-fit="cover"
                   :size="60"
                   lazy
-                  :src="groups[currentGroupId].avatar"/>
+                  :src="groups[currentGroupId] ? groups[currentGroupId].avatar : ''"/>
       </div>
 
       <!-- 群信息 -->
@@ -26,10 +26,10 @@
               群名称
             </span>
             <span style="margin: 0 5px 0 0">
-              {{groups[currentGroupId].groupName}}
+              {{groups[currentGroupId] ? groups[currentGroupId].groupName : '未知群聊'}}
             </span>
             <span @click="changeDataType(2)"
-                  v-if="groups[currentGroupId].masterFlag"
+                  v-if="groups[currentGroupId] && groups[currentGroupId].masterFlag"
                   style="display: inline-block;vertical-align: sub;cursor: pointer">
               <svg viewBox="0 0 1024 1024" width="20" height="20">
                 <path
@@ -50,10 +50,10 @@
               群公告
             </span>
             <span style="margin: 0 5px 0 0">
-              {{groups[currentGroupId].notice}}
+              {{groups[currentGroupId] ? groups[currentGroupId].notice : ''}}
             </span>
             <span @click="changeDataType(3)"
-                  v-if="groups[currentGroupId].masterFlag"
+                  v-if="groups[currentGroupId] && groups[currentGroupId].masterFlag"
                   style="display: inline-block;vertical-align: sub;cursor: pointer">
               <svg viewBox="0 0 1024 1024" width="20" height="20">
                 <path
@@ -72,7 +72,7 @@
           <div style="margin-bottom: 40px">
             <span class="friend-label">群简介</span>
             <span style="margin: 0 5px 0 6px">
-              {{groups[currentGroupId].introduction}}
+              {{groups[currentGroupId] ? groups[currentGroupId].introduction : ''}}
             </span>
             <span @click="changeDataType(4)"
                   v-if="groups[currentGroupId].masterFlag"
