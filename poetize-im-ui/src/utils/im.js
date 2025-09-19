@@ -45,13 +45,6 @@ export default function () {
       this.startTokenRenewalCheck();
       this.startHeartbeat();
       this.setupPageVisibilityListener(); // 设置页面可见性监听
-      
-      // 显示连接成功提示
-      ElMessage({
-        message: "连接成功！",
-        type: 'success',
-        duration: 2000
-      });
     };
     
     // WebSocket连接关闭时清理定时器
@@ -323,11 +316,11 @@ export default function () {
           console.warn('更新URL参数失败:', urlError);
         }
         
-        ElMessage({
-          message: "会话已自动续期",
-          type: 'success',
-          duration: 2000
-        });
+        // ElMessage({
+        //   message: "会话已自动续期",
+        //   type: 'success',
+        //   duration: 2000
+        // });
         
         return true;
       } else {
