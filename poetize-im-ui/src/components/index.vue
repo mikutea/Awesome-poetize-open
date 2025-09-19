@@ -636,7 +636,11 @@
 
         type: 1,
         subType: 1,
-        showFriendValue: ''
+        showFriendValue: '',
+        
+        // 防止重复调用在线人数接口
+        lastOnlineCountGroupId: null,
+        onlineCountTimer: null
       })
 
       // 使用computed从store获取聊天数据，实现响应式
@@ -696,6 +700,18 @@
         im.initWs();
         im.tio.ws.onmessage = function (event) {
           let message = JSON.parse(event.data);
+          
+          // 更新心跳响应时间（重要：每次收到消息都要调用）
+          if (im.onMessageReceived) {
+            im.onMessageReceived();
+          }
+          
+          // 处理心跳响应消息
+          if (message.messageType === 0 && message.content === 'heartbeat') {
+            console.log('收到WebSocket心跳响应');
+            return;
+          }
+          
           message.content = parseMessage(message.content);
           
           // 处理UI状态同步消息
@@ -849,12 +865,21 @@
               // 清零群聊未读消息数
               store.commit('updateGroupMessageBadge', {groupId: current, count: 0});
               console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 设置当前群聊ID: ${current}`);
+              // 获取群组消息和在线人数
+              getGroupMessages(current);
+              // 直接调用在线人数统计，因为这是用户主动切换群聊
+              getGroupOnlineCountWithDebounce(current);
+              if (groupData.groups[current] && groupData.groups[current].groupType === 2) {
+                addGroupTopic();
+              }
             } else if (imType === 2) {
               data.currentChatGroupId = null;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
               data.currentChatFriendId = current;
               // 清零私聊未读消息数
               store.commit('updateImMessageBadge', {friendId: current, count: 0});
               console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 设置当前好友ID: ${current}`);
+              // 获取好友消息
+              getMessages(current);
             }
           }
           
@@ -980,6 +1005,7 @@
           }
           console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 准备获取群组消息，群组ID:`, groupData.currentGroupId);
           getGroupMessages(groupData.currentGroupId);
+          getGroupOnlineCountWithDebounce(groupData.currentGroupId);
           if (groupData.groups[groupData.currentGroupId].groupType === 2) {
             addGroupTopic();
           }
@@ -1050,8 +1076,37 @@
               });
             });
         }
-        // 获取群组在线用户数
-        getGroupOnlineCount(groupId);
+        // 获取群组在线用户数 - 只有当前群组ID与要获取的群组ID一致时才调用
+        if (data.currentChatGroupId === groupId) {
+          getGroupOnlineCountWithDebounce(groupId);
+        }
+      }
+
+      function getGroupOnlineCountWithDebounce(groupId) {
+        if (groupId === null || groupId === undefined || groupId === '') {
+          console.warn('无效的群组ID:', groupId);
+          return;
+        }
+        
+        // 如果是同一个群组且在短时间内重复调用，则跳过
+        if (data.lastOnlineCountGroupId === groupId && data.onlineCountTimer) {
+          console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 跳过重复的在线人数请求，群组ID: ${groupId}`);
+          return;
+        }
+        
+        // 清除之前的定时器
+        if (data.onlineCountTimer) {
+          clearTimeout(data.onlineCountTimer);
+        }
+        
+        // 记录当前群组ID
+        data.lastOnlineCountGroupId = groupId;
+        
+        // 设置防抖定时器
+        data.onlineCountTimer = setTimeout(() => {
+          getGroupOnlineCount(groupId);
+          data.onlineCountTimer = null;
+        }, 300); // 300ms 防抖
       }
 
       function getGroupOnlineCount(groupId) {
