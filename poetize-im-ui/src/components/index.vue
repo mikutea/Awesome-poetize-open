@@ -598,6 +598,7 @@
   import imUtil from "../hooks/imUtil";
   import changeData from "../hooks/changeData";
   import { getMessagePreview } from "../utils/messagePreview";
+  import { loadFonts } from "../utils/font-loader";
 
   import proButton from "./common/proButton";
   import treeHole from "./common/treeHole";
@@ -657,16 +658,27 @@
       let im;
 
       if (!$common.isEmpty(store.state.currentUser)) {
-        getImageList();
-        getSystemMessages();
-        getFriendRequests();
+        // 并行执行非关键初始化操作，提升页面加载速度
+        Promise.all([
+          getImageList(),
+          getSystemMessages(), 
+          getFriendRequests(),
+          getSysConfig()
+        ]).catch(error => {
+          console.warn('部分初始化操作失败，但不影响核心功能:', error);
+        });
+        
+        // 关键的好友和群组数据加载
         getFriendAndGroup();
-        getSysConfig();
       }
 
       async function getFriendAndGroup() {
-        await getImFriend();
-        await getImGroup();
+        // 并行加载好友和群组数据，提升加载速度
+        const [friendResult, groupResult] = await Promise.all([
+          getImFriend(),
+          getImGroup()
+        ]);
+        
         await nextTick();
         getIm();
       }
@@ -687,15 +699,19 @@
           });
       }
 
-      function buildCssPicture() {
+      async function buildCssPicture() {
         let root = document.querySelector(":root");
         let webStaticResourcePrefix = store.state.sysConfig['webStaticResourcePrefix'];
         root.style.setProperty("--commentURL", "url(" + webStaticResourcePrefix + "assets/commentURL.jpg)");
         root.style.setProperty("--imBackground", "url(" + webStaticResourcePrefix + "assets/backgroundPicture.jpg)");
-        // 移除单一字体的加载，改为使用CSS中声明的切割字体
-        // const font = new FontFace("poetize-font", "url(" + webStaticResourcePrefix + "assets/font.woff2)");
-        // font.load();
-        // document.fonts.add(font);
+        
+        // 使用新的字体加载器
+        try {
+          await loadFonts(store.state.sysConfig);
+          console.log('字体加载完成');
+        } catch (error) {
+          console.warn('字体加载失败，使用系统默认字体:', error);
+        }
       }
 
       function getIm() {

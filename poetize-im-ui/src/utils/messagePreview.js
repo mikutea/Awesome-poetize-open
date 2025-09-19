@@ -57,7 +57,7 @@ export function getMessagePreview(content) {
     previewText = '[图片]';
   }
   
-  // 截取前20个字符（增加显示长度以更好展示混合内容）
+  // 截取前10个字符（增加显示长度以更好展示混合内容）
   return previewText.length > 10 ? previewText.substr(0, 10) + '...' : previewText;
 }
 
