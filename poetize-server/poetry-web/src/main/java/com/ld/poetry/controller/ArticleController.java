@@ -306,6 +306,18 @@ public class ArticleController {
     @GetMapping("/deleteArticle")
     @LoginCheck(1)
     public PoetryResult deleteArticle(@RequestParam("id") Integer id) {
+        // 在删除前先获取文章信息，以便获取分类ID用于预渲染
+        Integer sortId = null;
+        try {
+            PoetryResult<ArticleVO> articleResult = articleService.getArticleById(id, null);
+            if (articleResult.getCode() == 200 && articleResult.getData() != null) {
+                sortId = articleResult.getData().getSortId();
+                log.info("删除文章前获取分类ID: 文章ID={}, 分类ID={}", id, sortId);
+            }
+        } catch (Exception e) {
+            log.warn("删除文章前获取分类ID失败，将影响分类页面预渲染: 文章ID={}, 错误={}", id, e.getMessage());
+        }
+        
         // 使用Redis缓存清理替换PoetryCache
         Integer userId = PoetryUtil.getUserId();
         if (userId != null) {
@@ -326,7 +338,8 @@ public class ArticleController {
 
         if (result.getCode() == 200) {
             // 发布文章删除事件，触发预渲染清理（在事务提交后执行）
-            eventPublisher.publishEvent(new ArticleSavedEvent(id, null, false, "DELETE"));
+            // 传递正确的分类ID，确保分类页面也会被重新渲染
+            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, false, "DELETE"));
             
             // 异步删除sitemap条目
             final Integer articleId = id;

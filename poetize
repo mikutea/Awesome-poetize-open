@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-09-16
+## 修改时间: 2025-09-19
 ## 描述: Poetize 博客系统全局管理命令
-## 版本: 1.4.0
+## 版本: 1.4.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -846,14 +846,324 @@ check_health() {
 
 # 创建完整数据备份
 create_full_backup() {
-    info "数据备份..."
+    info "开始创建完整数据备份..."
+    
+    # 创建备份目录（放在项目目录外的安全位置）
+    local backup_timestamp=$(date +%Y%m%d_%H%M%S)
+    local project_name=$(basename "$(pwd)")
+    BACKUP_PROJECT_NAME="$project_name"
+    BACKUP_DIR="/tmp/poetize_update_backup_${project_name}_${backup_timestamp}"
+    mkdir -p "$BACKUP_DIR"
+    
+    info "备份目录: $BACKUP_DIR"
+    info "备份位置: 系统临时目录（不会被卸载删除）"
+    
+    # 1. 备份数据库凭据
+    info "备份数据库凭据..."
+    if [ -f ".config/db_credentials.txt" ]; then
+        mkdir -p "$BACKUP_DIR/.config"
+        cp ".config/db_credentials.txt" "$BACKUP_DIR/.config/"
+        success "数据库凭据备份完成"
+    else
+        warning "数据库凭据文件不存在，跳过备份"
+    fi
+    
+    # 2. 读取数据库密码
+    local db_root_password=""
+    local db_user_password=""
+    if [ -f ".config/db_credentials.txt" ]; then
+        db_root_password=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+        db_user_password=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+    fi
+    
+    # 3. 备份数据库
+    info "备份数据库数据..."
+    local mariadb_container=$(sudo docker ps --format "{{.Names}}" | grep "mariadb" | head -1)
+    if [ -n "$mariadb_container" ] && [ -n "$db_root_password" ]; then
+        info "使用MariaDB容器: $mariadb_container"
+        if sudo docker exec "$mariadb_container" mariadb-dump -u root -p"$db_root_password" --single-transaction --routines --triggers --databases poetize > "$BACKUP_DIR/poetry.sql"; then
+            success "数据库备份完成"
+        else
+            error "数据库备份失败"
+            return 1
+        fi
+    else
+        warning "MariaDB容器未运行或数据库密码未找到，跳过数据库备份"
+    fi
+    
+    # 4. 备份Python配置文件
+    info "备份Python配置文件..."
+    if [ -d "py/data" ]; then
+        mkdir -p "$BACKUP_DIR/py"
+        cp -r "py/data" "$BACKUP_DIR/py/"
+        success "Python配置文件备份完成"
+    else
+        warning "Python配置目录不存在，跳过备份"
+    fi
+    
+    # 5. 备份用户上传文件
+    info "备份用户上传文件..."
+    local project_name=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')
+    local uploads_volume="${project_name}_poetize_uploads"
+    
+    # 检查uploads volume是否存在
+    local actual_uploads_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "$uploads_volume" | head -1)
+    if [ -n "$actual_uploads_volume" ]; then
+        info "找到用户上传文件volume: $actual_uploads_volume"
+        # 检查volume中是否有数据
+        if sudo docker run --rm -v "$actual_uploads_volume":/data alpine sh -c "[ -d /data/. ] && [ \"\$(ls -A /data/. 2>/dev/null)\" ]"; then
+            info "导出用户上传文件..."
+            if sudo docker run --rm -v "$actual_uploads_volume":/data -v "$(pwd)/$BACKUP_DIR":/backup alpine tar -czf "/backup/uploads_backup.tar.gz" -C /data .; then
+                success "用户上传文件备份完成"
+            else
+                warning "用户上传文件备份失败"
+            fi
+        else
+            info "用户上传文件volume为空，跳过备份"
+        fi
+    else
+        info "未找到用户上传文件volume，跳过备份"
+    fi
+    
+    # 6. 备份Redis数据
+    info "备份Redis数据..."
+    local redis_volume="${project_name}_redis_data"
+    local actual_redis_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "redis_data" | head -1)
+    if [ -n "$actual_redis_volume" ]; then
+        info "找到Redis数据volume: $actual_redis_volume"
+        # 检查volume中是否有数据
+        if sudo docker run --rm -v "$actual_redis_volume":/data alpine sh -c "[ -d /data/. ] && [ \"\$(ls -A /data/. 2>/dev/null)\" ]"; then
+            info "导出Redis数据..."
+            if sudo docker run --rm -v "$actual_redis_volume":/data -v "$(pwd)/$BACKUP_DIR":/backup alpine tar -czf "/backup/redis_backup.tar.gz" -C /data .; then
+                success "Redis数据备份完成"
+            else
+                warning "Redis数据备份失败"
+            fi
+        else
+            info "Redis数据volume为空，跳过备份"
+        fi
+    else
+        info "未找到Redis数据volume，跳过备份"
+    fi
+    
+    # 7. 备份Prerender预渲染文件（仅备份prerender目录，不备份前端构建文件）
+    info "备份Prerender预渲染文件..."
+    local ui_dist_volume="${project_name}_poetize_ui_dist"
+    local actual_ui_dist_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "poetize_ui_dist" | head -1)
+    if [ -n "$actual_ui_dist_volume" ]; then
+        info "找到UI构建文件volume: $actual_ui_dist_volume"
+        # 检查volume中是否有预渲染文件目录
+        if sudo docker run --rm -v "$actual_ui_dist_volume":/data alpine sh -c "[ -d /data/prerender ] && [ \"\$(ls -A /data/prerender 2>/dev/null)\" ]"; then
+            info "导出预渲染文件（仅prerender目录）..."
+            if sudo docker run --rm -v "$actual_ui_dist_volume":/data -v "$(pwd)/$BACKUP_DIR":/backup alpine tar -czf "/backup/prerender_backup.tar.gz" -C /data prerender; then
+                success "预渲染文件备份完成"
+            else
+                warning "预渲染文件备份失败"
+            fi
+        else
+            info "预渲染文件目录为空或不存在，跳过备份"
+        fi
+    else
+        info "未找到UI构建文件volume，跳过预渲染文件备份"
+    fi
+
+    # 8. 备份nginx配置中的域名信息
+    info "备份域名配置信息..."
+    local extracted_domains=$(extract_domains_from_nginx_config 2>/dev/null || echo "")
+    if [ -n "$extracted_domains" ]; then
+        echo "$extracted_domains" > "$BACKUP_DIR/domains.txt"
+        success "域名配置备份完成: $extracted_domains"
+    else
+        info "未找到域名配置，跳过域名备份"
+    fi
+    
+    # 8. 创建备份清单
+    info "创建备份清单..."
+    cat > "$BACKUP_DIR/backup_manifest.txt" << EOF
+POETIZE系统备份清单
+备份时间: $(date '+%Y-%m-%d %H:%M:%S')
+备份目录: $BACKUP_DIR
+项目目录: $(pwd)
+
+备份内容:
+- 数据库数据: poetry.sql
+- 数据库凭据: .config/db_credentials.txt
+- Python配置: py/data/
+- 用户上传文件: uploads_backup.tar.gz
+- Redis缓存数据: redis_backup.tar.gz
+- 域名配置: domains.txt
+
+注意: 此备份用于系统更新，包含恢复系统所需的所有关键数据
+EOF
+    
+    success "完整数据备份创建完成: $BACKUP_DIR"
     return 0
+}
+
+# 从nginx配置中提取域名
+extract_domains_from_nginx_config() {
+    local nginx_config_file="docker/nginx/default.https.conf"
+    local domains=""
+    
+    if [ -f "$nginx_config_file" ]; then
+        info "从nginx配置文件中提取域名..." >&2
+        # 提取server_name行中的域名，排除example.com
+        domains=$(grep "server_name" "$nginx_config_file" | sed 's/server_name \(.*\);/\1/' | tr -d ' ' | tr ';' '\n' | grep -v "example.com" | grep -v "^$" | sort -u)
+        
+        if [ -n "$domains" ]; then
+            info "提取到域名: $domains" >&2
+            echo "$domains"
+            return 0
+        else
+            warning "未找到有效域名或只有默认域名" >&2
+            return 1
+        fi
+    else
+        warning "nginx配置文件不存在: $nginx_config_file" >&2
+        return 1
+    fi
+}
+
+
+# 检测是否为国内环境
+is_china_environment() {
+    # 方法1: 检测网络连通性
+    if command -v curl &>/dev/null; then
+        # 检测是否能访问Google（国内通常被屏蔽）
+        if ! curl -s --connect-timeout 3 --max-time 5 "https://www.google.com" >/dev/null 2>&1; then
+            # 无法访问Google，再检测是否能访问国内镜像源
+            if curl -s --connect-timeout 3 --max-time 5 "http://mirrors.aliyun.com" >/dev/null 2>&1; then
+                return 0  # 无法访问Google但能访问阿里云镜像，判断为国内环境
+            fi
+        fi
+    elif command -v ping &>/dev/null; then
+        # 如果没有curl，使用ping检测
+        if ! ping -c 1 -W 3 www.google.com >/dev/null 2>&1; then
+            # 无法ping通Google，再检测国内镜像源
+            if ping -c 1 -W 3 mirrors.aliyun.com >/dev/null 2>&1; then
+                return 0  # 无法ping通Google但能ping通阿里云镜像，判断为国内环境
+        fi
+      fi
+    fi
+    
+    # 方法2: 检测IP地址归属
+    local ip_check_result=""
+    if command -v curl &>/dev/null; then
+        # 尝试获取公网IP并检测归属地
+        ip_check_result=$(curl -s --connect-timeout 5 --max-time 10 "http://ip-api.com/json" 2>/dev/null | grep -o '"country":"China"' || echo "")
+        if [[ -n "$ip_check_result" ]]; then
+            return 0  # 是国内环境
+        fi
+    fi
+    
+    # 方法3: 检测时区
+    if [[ -f /etc/timezone ]]; then
+        if grep -q "Asia/Shanghai\|Asia/Chongqing" /etc/timezone; then
+            return 0  # 是国内环境
+        fi
+    fi
+    
+    # 方法4: 检测locale
+    if [[ "$LANG" =~ zh_CN || "$LC_ALL" =~ zh_CN ]]; then
+        return 0  # 是国内环境
+    fi
+    
+    return 1  # 不是国内环境
+}
+
+# 拉取项目代码
+pull_code_on_target() {
+    info "拉取项目代码..."
+    
+    local IS_CHINA_ENV=false
+
+    if is_china_environment; then
+        IS_CHINA_ENV=true
+    fi
+
+    local git_url
+    if [ "$IS_CHINA_ENV" = true ]; then
+        git_url="https://gitee.com/leapya/poetize.git"
+    else
+        git_url="https://github.com/LeapYa/Awesome-poetize-open.git"
+    fi
+    
+    info "使用仓库地址: $git_url"
+
+    # 安装必要工具
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get update && sudo apt-get install -y git curl
+    elif command -v yum &>/dev/null; then
+        sudo yum install -y git curl
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y git curl
+    elif command -v zypper &>/dev/null; then
+        sudo zypper install -y git curl
+    elif command -v pacman &>/dev/null; then
+        sudo pacman -S --needed git curl
+    elif command -v apk &>/dev/null; then
+        sudo apk add --update-cache git curl
+    else
+        error '不支持的包管理器，请手动安装git和curl'
+        exit 1
+    fi
+    
+    # 克隆项目
+    git clone --depth 1 $git_url $BACKUP_PROJECT_NAME
+    
+    # 检查是否成功
+    if [ -d "$BACKUP_PROJECT_NAME" ] && [ -f "$BACKUP_PROJECT_NAME/deploy.sh" ]; then
+        success '项目代码拉取成功'
+        cd "$BACKUP_PROJECT_NAME"
+        return 0
+    else
+        error '项目代码拉取失败'
+        exit 1
+    fi
 }
 
 # 重新安装最新系统
 reinstall_latest_system() {
     info "开始重新安装最新版本的POETIZE系统..."
-    bash <(curl -sL deploy.leapya.com)
+
+    # 拉取项目
+    pull_code_on_target
+    # 恢复数据库
+    cp $BACKUP_DIR/poetry.sql poetize-server/sql/poetry.sql
+    # 恢复Python文件配置
+    cp -r $BACKUP_DIR/.config ./
+
+    # 构建poetize系统安装命令
+    local domains=""
+    local backup_domains_file="$BACKUP_DIR/domains.txt"
+    
+    # 从备份中读取域名，如果没有备份则从当前配置中提取
+    if [ -f "$backup_domains_file" ]; then
+        domains=$(cat "$backup_domains_file" 2>/dev/null)
+        info "从备份中读取到域名: $domains"
+    else
+        domains=$(extract_domains_from_nginx_config 2>/dev/null || echo "")
+        if [ -n "$domains" ]; then
+            info "从当前配置中提取到域名: $domains"
+        fi
+    fi
+    
+    # 构建安装命令
+    local deploy_cmd="bash <(curl -sL deploy.leapya.com)"
+    
+    if [ -n "$domains" ]; then
+        info "使用域名进行自动安装..."
+        # 为每个域名添加-d参数
+        for domain in $domains; do
+            deploy_cmd="$deploy_cmd -d $domain"
+        done
+        info "完整安装命令: $deploy_cmd"
+    else
+        info "未找到域名配置，将使用交互式域名输入"
+    fi
+    
+    # 执行安装命令
+    eval "$deploy_cmd"
     
     success "最新版本系统安装完成"
     return 0
@@ -862,6 +1172,125 @@ reinstall_latest_system() {
 # 恢复完整备份
 restore_full_backup() {
     info "开始恢复用户数据和配置..."
+    
+    # 检查全局变量BACKUP_DIR是否有效
+    if [ -z "$BACKUP_DIR" ] || [ ! -d "$BACKUP_DIR" ]; then
+        error "备份目录无效或不存在: $BACKUP_DIR"
+        return 1
+    fi
+    
+    local latest_backup="$BACKUP_DIR"
+    info "使用备份目录: $latest_backup"
+    
+    # 检查备份清单
+    if [ -f "$latest_backup/backup_manifest.txt" ]; then
+        info "备份清单:"
+        cat "$latest_backup/backup_manifest.txt"
+        printf "\n"
+    fi
+    
+    # 等待服务启动
+    info "等待服务启动..."
+    sleep 10
+    
+    # 1. 恢复Python配置文件
+    info "恢复Python配置文件..."
+    if [ -d "$latest_backup/py/data" ]; then
+        mkdir -p "py"
+        cp -r "$latest_backup/py/data" "py/"
+        success "Python配置文件恢复完成"
+    else
+        warning "备份中未找到Python配置文件"
+    fi
+    
+    # 2. 恢复用户上传文件
+    info "恢复用户上传文件..."
+    if [ -f "$latest_backup/uploads_backup.tar.gz" ]; then
+        local project_name=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')
+        local uploads_volume="${project_name}_poetize_uploads"
+        
+        # 等待并确保uploads volume存在
+        local actual_uploads_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "$uploads_volume" | head -1)
+        if [ -z "$actual_uploads_volume" ]; then
+            info "创建用户上传文件volume: $uploads_volume"
+            sudo docker volume create "$uploads_volume"
+            actual_uploads_volume="$uploads_volume"
+        fi
+        
+        info "恢复到volume: $actual_uploads_volume"
+        if sudo docker run --rm -v "$actual_uploads_volume":/data -v "$latest_backup":/backup alpine sh -c "cd /data && tar -xzf /backup/uploads_backup.tar.gz"; then
+            success "用户上传文件恢复完成"
+        else
+            warning "用户上传文件恢复失败"
+        fi
+    else
+        info "备份中未找到用户上传文件"
+    fi
+    
+    # 3. 恢复Redis数据
+    info "恢复Redis数据..."
+    if [ -f "$latest_backup/redis_backup.tar.gz" ]; then
+        local project_name=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')
+        local redis_volume="${project_name}_redis_data"
+        
+        # 等待并确保redis volume存在
+        local actual_redis_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "redis_data" | head -1)
+        if [ -z "$actual_redis_volume" ]; then
+            info "创建Redis数据volume: $redis_volume"
+            sudo docker volume create "$redis_volume"
+            actual_redis_volume="$redis_volume"
+        fi
+        
+        info "恢复到volume: $actual_redis_volume"
+        if sudo docker run --rm -v "$actual_redis_volume":/data -v "$latest_backup":/backup alpine sh -c "cd /data && tar -xzf /backup/redis_backup.tar.gz"; then
+            success "Redis数据恢复完成"
+        else
+            warning "Redis数据恢复失败"
+        fi
+    else
+        info "备份中未找到Redis数据"
+    fi
+    
+    # 4. 恢复预渲染文件
+    info "恢复预渲染文件..."
+    if [ -f "$latest_backup/prerender_backup.tar.gz" ]; then
+        local project_name=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]')
+        local ui_dist_volume="${project_name}_poetize_ui_dist"
+        
+        # 等待并确保ui_dist volume存在
+        local actual_ui_dist_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "poetize_ui_dist" | head -1)
+        if [ -z "$actual_ui_dist_volume" ]; then
+            info "创建UI构建文件volume: $ui_dist_volume"
+            sudo docker volume create "$ui_dist_volume"
+            actual_ui_dist_volume="$ui_dist_volume"
+        fi
+        
+        info "恢复预渲染文件到volume: $actual_ui_dist_volume"
+        if sudo docker run --rm -v "$actual_ui_dist_volume":/data -v "$latest_backup":/backup alpine sh -c "cd /data && tar -xzf /backup/prerender_backup.tar.gz"; then
+            success "预渲染文件恢复完成"
+        else
+            warning "预渲染文件恢复失败"
+        fi
+    else
+        info "备份中未找到预渲染文件"
+    fi
+    
+    # 5. 重启服务以应用恢复的配置
+    info "重启服务以应用恢复的配置..."
+    if $DOCKER_COMPOSE_CMD restart; then
+        success "服务重启完成"
+    else
+        warning "服务重启失败，可能需要手动重启"
+    fi
+    
+    # 6. 清理备份目录
+    info "清理临时备份目录..."
+    if [ -n "$latest_backup" ] && [ -d "$latest_backup" ]; then
+        rm -rf "$latest_backup"
+        success "临时备份目录已清理: $latest_backup"
+    else
+        info "备份目录已不存在或路径为空"
+    fi
     
     success "用户数据和配置恢复完成"
     return 0

@@ -380,4 +380,34 @@ public class PrerenderClient {
         deleteHomePage();
         deleteFavoritePage();
     }
+
+    /**
+     * 清理预渲染服务缓存
+     * 用于解决删除文章后新建文章无法访问的问题
+     */
+    public void clearPrerenderCache() {
+        try {
+            String clearCacheUrl = prerenderUrl.replace("/render", "/clear-cache");
+            HttpEntity<?> entity = new HttpEntity<>(createInternalServiceHeaders());
+            restTemplate.exchange(clearCacheUrl, org.springframework.http.HttpMethod.POST, entity, String.class);
+            log.info("已请求 prerender-worker 清理缓存");
+        } catch (Exception e) {
+            log.warn("清理预渲染缓存失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 重启预渲染服务路由
+     * 用于解决删除文章后路由冲突的问题
+     */
+    public void restartPrerenderRoutes() {
+        try {
+            String restartUrl = prerenderUrl.replace("/render", "/restart-routes");
+            HttpEntity<?> entity = new HttpEntity<>(createInternalServiceHeaders());
+            restTemplate.exchange(restartUrl, org.springframework.http.HttpMethod.POST, entity, String.class);
+            log.info("已请求 prerender-worker 重启路由");
+        } catch (Exception e) {
+            log.warn("重启预渲染路由失败: {}", e.getMessage());
+        }
+    }
 } 

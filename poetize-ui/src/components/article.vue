@@ -394,6 +394,9 @@
     },
 
     async created() {
+      // 重置组件状态，防止缓存问题
+      this.resetComponentState();
+      
       // 先初始化语言映射
       this.languageMap = {
         'zh': '中文',
@@ -559,15 +562,18 @@
       '$route.params.id': function(newId, oldId) {
         // 如果新的文章ID和当前组件的ID不同，说明需要更新
         if (newId && newId !== this.id) {
-          // 重置翻译内容
-          this.translatedTitle = '';
-          this.translatedContent = '';
-
+          console.log('路由参数变化，从文章', oldId, '切换到文章', newId);
+          
+          // 重置组件状态，防止显示旧数据
+          this.resetComponentState();
+          
           // 更新组件的id数据
           this.id = newId;
 
-          // 获取文章
-          this.getArticle();
+          // 获取文章，传递对应的密码参数
+          const password = localStorage.getItem("article_password_" + this.id);
+          console.log('获取文章密码:', password ? '有密码' : '无密码');
+          this.getArticle(password);
 
           // 检查是否有待执行的订阅操作
           this.$nextTick(() => {
@@ -612,7 +618,52 @@
       }
     },
 
+    beforeDestroy() {
+      // 组件销毁时清理状态，防止影响下一个文章组件
+      console.log('文章组件销毁，清理状态');
+      this.clearComponentState();
+    },
+
     methods: {
+      // 重置组件状态，防止缓存问题
+      resetComponentState() {
+        console.log('重置文章组件状态');
+        this.article = {};
+        this.translatedTitle = '';
+        this.translatedContent = '';
+        this.articleContentHtml = '';
+        this.articleContentKey = Date.now();
+        this.isLoading = false;  // 修正属性名
+        this.isTranslating = false;
+        this.currentLang = 'zh';
+        this.availableLanguages = [];
+        this.availableLanguageButtons = [];
+        
+        // 重置密码相关状态
+        this.showPasswordDialog = false;
+        this.password = '';
+        this.tips = '';
+        
+        // 重置订阅状态
+        this.subscribe = false;
+      },
+
+      // 清理组件状态
+      clearComponentState() {
+        // 清理定时器
+        if (this.translationTimer) {
+          clearTimeout(this.translationTimer);
+          this.translationTimer = null;
+        }
+        
+        // 清理其他可能的异步操作
+        this.isTranslating = false;
+        this.loading = false;
+        
+        // 清理翻译内容
+        this.translatedTitle = '';
+        this.translatedContent = '';
+      },
 
       subscribeLabel() {
         // 首先显示确认订阅对话框
@@ -964,7 +1015,15 @@
         addMetaTag('article:modified_time', this.metaTags['article:modified_time'], true);
       },
       getArticle(password) {
+        console.log('开始获取文章，ID:', this.id);
         this.isLoading = true;
+        
+        // 重置状态，防止显示旧数据
+        this.article = {};
+        this.articleContentHtml = '';
+        this.translatedTitle = '';
+        this.translatedContent = '';
+        
         // 使用Promise.all并行处理所有请求
         Promise.all([
           this.$http.get(this.$constant.baseURL + "/article/getArticleById", {id: this.id, password: password}),
@@ -1049,8 +1108,11 @@
           }
         })
         .catch(error => {
+          console.error('获取文章失败:', error);
+          
           // 统一错误处理
           if (error && error.message && "密码错误" === error.message.substr(0, 4)) {
+            // 密码错误，显示密码输入框
             if (!this.$common.isEmpty(password)) {
               localStorage.removeItem("article_password_" + this.id);
               this.$message({
@@ -1062,15 +1124,16 @@
             this.tips = error.message.substr(4);
             this.showPasswordDialog = true;
           } else {
+            // 其他错误（网络错误、文章不存在等），不显示密码框
             this.$message({
               message: error ? error.message : '加载失败，请重试',
               type: "error",
               customClass: "message-index"
             });
-            if (error && error.message) {
-                this.tips = error.message;
-            }
-            this.showPasswordDialog = true;
+            
+            // 只有密码错误才显示密码对话框
+            // 其他错误不应该显示密码对话框
+            console.log('非密码错误，不显示密码对话框');
           }
         })
         .finally(() => {

@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-09-16
+## 修改时间: 2025-09-20
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 1.0.0
+## 版本: 1.1.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -1082,6 +1082,93 @@ migrate_uploads() {
     return 0
 }
 
+# Prerender预渲染文件迁移函数
+migrate_prerender() {
+    info "开始迁移Prerender预渲染文件..."
+    
+    # 动态获取UI构建文件volume名称
+    local dir_name=$(echo "$extract_dir" | tr '[:upper:]' '[:lower:]')
+    local ui_dist_volume="${dir_name}_poetize_ui_dist"
+    local volume_description="Prerender预渲染文件"
+    local backup_prefix="prerender"
+    local data_path="prerender"  # 只备份prerender目录
+    
+    info "使用UI构建文件volume名称: $ui_dist_volume"
+    
+    local backup_file="${backup_prefix}_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    local has_data=false
+    
+    # 检查Docker volume中的预渲染文件
+    local actual_volume=$(sudo docker volume ls --format "{{.Name}}" | grep "poetize_ui_dist" | head -1)
+    if [ -n "$actual_volume" ]; then
+        info "检查Docker volume中的${volume_description}..."
+        info "找到UI构建文件volume: $actual_volume"
+        
+        # 检查volume中是否有预渲染文件目录
+        if sudo docker run --rm -v "$actual_volume":/data alpine sh -c "[ -d /data/$data_path ] && [ \"\$(ls -A /data/$data_path 2>/dev/null)\" ]"; then
+            success "发现${volume_description}"
+            has_data=true
+            
+            # 导出预渲染文件（仅prerender目录）
+            info "导出${volume_description}到 $backup_file..."
+            if sudo docker run --rm -v "$actual_volume":/data -v "$(pwd):/backup" alpine tar -czf "/backup/$backup_file" -C /data $data_path; then
+                success "${volume_description}导出成功"
+            else
+                error "${volume_description}导出失败"
+                return 1
+            fi
+        else
+            warning "未发现${volume_description}或数据为空"
+        fi
+    else
+        warning "未发现poetize_ui_dist volume，跳过预渲染文件迁移"
+    fi
+    
+    if [ "$has_data" = true ]; then
+        # 传输预渲染文件到目标服务器
+        info "传输${volume_description}到目标服务器..."
+        if scp_retry "${volume_description}" "$backup_file" "/tmp/"; then
+            success "${volume_description}传输成功"
+            
+            # 在目标服务器上导入预渲染文件
+            info "在目标服务器上导入${volume_description}..."
+            if ssh_retry "导入${volume_description}" "
+                cd /tmp && 
+                # 确保UI构建文件volume存在
+                local target_volume=\$(sudo docker volume ls --format \"{{.Name}}\" | grep \"poetize_ui_dist\" | head -1)
+                if [ -z \"\$target_volume\" ]; then
+                    # 如果没有找到，创建对应的volume
+                    target_volume=\"$ui_dist_volume\"
+                    sudo docker volume create \$target_volume 2>/dev/null || true
+                fi && 
+                echo \"使用UI构建文件volume: \$target_volume\" && 
+                # 导入预渲染文件
+                sudo docker run --rm -v \"\$target_volume\":/data -v /tmp:/backup alpine sh -c '
+                    cd /data && 
+                    tar -xzf /backup/$backup_file && 
+                    echo \"${volume_description}导入完成\"' && 
+                # 清理临时文件
+                rm -f /tmp/$backup_file
+            " "true"; then
+                success "${volume_description}导入成功"
+            else
+                error "${volume_description}导入失败"
+                return 1
+            fi
+        else
+            error "${volume_description}传输失败"
+            return 1
+        fi
+        
+        # 清理本地备份文件
+        rm -f "$backup_file"
+        success "已清理本地${volume_description}备份文件"
+    fi
+    
+    success "${volume_description}迁移完成"
+    return 0
+}
+
 # 清理临时文件
 cleanup() {
     info "清理临时文件..."
@@ -1093,7 +1180,7 @@ cleanup() {
     fi
     
     # 清理所有volume备份文件
-    for pattern in "uploads_backup_*.tar.gz"; do
+    for pattern in "uploads_backup_*.tar.gz" "prerender_backup_*.tar.gz"; do
         for file in $pattern; do
             if [ -f "$file" ]; then
                 rm -f "$file"
@@ -1214,6 +1301,12 @@ main() {
         exit 1
     fi
     
+    # 执行预渲染文件迁移
+    if ! migrate_prerender; then
+        error "预渲染文件迁移失败"
+        exit 1
+    fi
+    
     # 显示总结
     show_migration_summary
     
@@ -1266,6 +1359,8 @@ show_migration_summary() {
     else
         echo -e "  ⏭ 用户上传文件迁移: ${YELLOW}skipped${NC}"
     fi
+    
+    echo -e "  ✓ 预渲染文件迁移: ${GREEN}completed${NC}"
     
     step_status=$(get_step_status "$STEP_DEPLOY")
     echo -e "  ✓ 项目部署: ${GREEN}$step_status${NC}"
