@@ -1272,11 +1272,7 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   // 添加资源预加载优化 - 在viewport meta标签之后插入
   const viewportMeta = document.querySelector('meta[name="viewport"]');
   if (viewportMeta) {
-    viewportMeta.insertAdjacentHTML('afterend', `
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
-  `);
+    viewportMeta.insertAdjacentHTML('afterend', `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="dns-prefetch" href="//cdn.jsdelivr.net">`);
   }
 
   // 注入渲染好的内容

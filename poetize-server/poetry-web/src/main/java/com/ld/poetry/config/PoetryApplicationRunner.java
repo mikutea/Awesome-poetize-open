@@ -11,6 +11,7 @@ import com.ld.poetry.im.websocket.TioWebsocketStarter;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.FamilyService;
 import com.ld.poetry.service.UserService;
+import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.enums.PoetryEnum;
@@ -21,12 +22,11 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 
@@ -60,6 +60,12 @@ public class PoetryApplicationRunner implements ApplicationRunner {
 
     @Autowired
     private SortMapper sortMapper;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Autowired
+    private TranslationService translationService;
 
     @Value("${prerender.startup.enabled:true}")
     private boolean prerenderStartupEnabled;
@@ -285,8 +291,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
      */
     private void renderAllPublishedArticles() {
         try {
-            log.info("开始预渲染所有已发布的文章...");
-            
+            log.info("开始预渲染所有已发布的文章...");     
             // 获取所有已发布的文章ID
             List<Article> articles = new LambdaQueryChainWrapper<>(articleMapper)
                 .select(Article::getId)
@@ -302,7 +307,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
                 log.info("找到{}篇已发布文章，开始分批预渲染", articleIds.size());
                 
                 // 分批处理，避免一次性提交过多文章导致超时
-                int batchSize = 20; // 每批处理20篇文章
+                int batchSize = 10; // 减少批次大小，因为需要查询每篇文章的可用语言
                 int totalBatches = (articleIds.size() + batchSize - 1) / batchSize;
                 
                 for (int i = 0; i < totalBatches; i++) {
@@ -313,12 +318,12 @@ public class PoetryApplicationRunner implements ApplicationRunner {
                     log.info("预渲染第{}/{}批文章，包含{}篇文章", i + 1, totalBatches, batchIds.size());
                     
                     try {
-                        // 渲染当前批次的文章（默认渲染中文版本）
-                        prerenderClient.renderArticles(batchIds);
+                        // 为每篇文章获取可用翻译语言并渲染
+                        renderArticlesWithAvailableLanguages(batchIds);
                         
                         // 批次间延迟，避免对预渲染服务造成过大压力
                         if (i < totalBatches - 1) {
-                            Thread.sleep(2000); // 批次间延迟2秒
+                            Thread.sleep(3000); // 增加批次间延迟到3秒
                         }
                     } catch (Exception e) {
                         log.warn("第{}/{}批文章预渲染失败: {}", i + 1, totalBatches, e.getMessage());
@@ -332,6 +337,36 @@ public class PoetryApplicationRunner implements ApplicationRunner {
             }
         } catch (Exception e) {
             log.error("文章预渲染失败: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 为文章列表渲染所有可用语言版本
+     * @param articleIds 文章ID列表
+     */
+    private void renderArticlesWithAvailableLanguages(List<Integer> articleIds) {
+        for (Integer articleId : articleIds) {
+            try {
+                // 获取该文章的可用翻译语言
+                List<String> translationLanguages = translationService.getAvailableLanguages(articleId);
+                
+                if (!translationLanguages.isEmpty()) {
+                    // 如果有翻译语言，渲染源语言 + 翻译语言版本
+                    log.info("文章{}将渲染多语言版本，翻译语言: {}", articleId, translationLanguages);
+                    prerenderClient.renderArticleWithLanguages(articleId, translationLanguages);
+                } else {
+                    // 如果没有翻译语言，只渲染源语言版本
+                    log.info("文章{}只渲染源语言版本", articleId);
+                    prerenderClient.renderArticle(articleId);
+                }
+                
+                // 文章间延迟，避免过于频繁的API调用
+                Thread.sleep(500);
+                
+            } catch (Exception e) {
+                log.warn("文章{}预渲染失败: {}", articleId, e.getMessage());
+                // 继续处理下一篇文章
+            }
         }
     }
 }

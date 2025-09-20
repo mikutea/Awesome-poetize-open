@@ -559,6 +559,8 @@
             this.stopLoading();
             if (!this.$common.isEmpty(res.data)) {
               this.article = res.data;
+              // 检查文章是否有手动编辑的翻译，如果有则自动进入编辑翻译模式
+              this.checkAndSetTranslationMode();
             } else {
               this.showError("获取文章信息失败", "服务器返回数据为空");
             }
@@ -566,6 +568,31 @@
           .catch((error) => {
             this.stopLoading();
             this.showError("获取文章信息失败", error);
+          });
+      },
+      
+      // 检查并设置翻译模式
+      checkAndSetTranslationMode() {
+        // 检查文章是否有可用的翻译语言
+        this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {id: this.id})
+          .then((res) => {
+            if (res.code === 200 && res.data && res.data.length > 0) {
+              // 如果文章有翻译，自动进入编辑翻译模式
+              console.log("检测到文章已有翻译，自动进入编辑翻译模式，可用语言:", res.data);
+              this.isTranslationMode = true;
+              this.skipAiTranslation = true;
+              
+              // 显示提示信息
+              this.$message({
+                message: `检测到文章已有翻译版本（${res.data.join(', ')}），已自动进入编辑翻译模式`,
+                type: 'info',
+                duration: 3000
+              });
+            }
+          })
+          .catch((error) => {
+            console.warn("检查文章翻译状态失败:", error);
+            // 检查失败不影响正常编辑，只是不自动进入翻译模式
           });
       },
       
