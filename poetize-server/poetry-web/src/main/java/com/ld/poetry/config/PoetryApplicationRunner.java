@@ -348,7 +348,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
         for (Integer articleId : articleIds) {
             try {
                 // 获取该文章的可用翻译语言
-                List<String> translationLanguages = translationService.getAvailableLanguages(articleId);
+                List<String> translationLanguages = translationService.getArticleAvailableLanguages(articleId);
                 
                 if (!translationLanguages.isEmpty()) {
                     // 如果有翻译语言，渲染源语言 + 翻译语言版本
