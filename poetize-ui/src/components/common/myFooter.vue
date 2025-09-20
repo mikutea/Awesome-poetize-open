@@ -287,7 +287,6 @@
   /* 隐私政策默认白色，悬停/激活时才变金色 */
   .myFooter[style*="--footer-bg-image"] .policy-link {
     color: var(--white);
-    text-decoration: underline;
     font-weight: 500;
     padding: 0 2px;
     transition: color 0.3s;
@@ -313,7 +312,6 @@
 
   .policy-link {
     color: var(--white);
-    text-decoration: underline;
     font-weight: 500;
     padding: 0 2px;
     transition: color 0.3s;
