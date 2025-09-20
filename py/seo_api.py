@@ -794,6 +794,9 @@ async def generate_article_meta_tags(article_id, lang=None):
         # 添加x-default hreflang（指向源语言版本）
         meta_tags["hreflang_x_default"] = f'<link rel="alternate" hreflang="x-default" href="{article_url}" />'
 
+        # 支持的语言列表
+        supported_languages = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
+
         # 根据语言参数设置canonical标签
         if lang and lang in supported_languages:
             if lang == default_source_lang:
@@ -2402,7 +2405,7 @@ def register_seo_api(app: FastAPI):
             lang = request.query_params.get('lang')
 
             # 支持的语言列表
-            supported_languages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
+            supported_languages = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
 
             # 语言参数验证和处理
             if lang:
@@ -2416,7 +2419,9 @@ def register_seo_api(app: FastAPI):
                 if accept_language:
                     # 解析Accept-Language头，支持更多语言检测
                     accept_lang_lower = accept_language.lower()
-                    if 'en' in accept_lang_lower:
+                    if 'zh-tw' in accept_lang_lower or 'zh-hant' in accept_lang_lower or 'zh_tw' in accept_lang_lower:
+                        lang = 'zh-TW'
+                    elif 'en' in accept_lang_lower:
                         lang = 'en'
                     elif 'ja' in accept_lang_lower:
                         lang = 'ja'
@@ -2431,7 +2436,7 @@ def register_seo_api(app: FastAPI):
                     elif 'ru' in accept_lang_lower:
                         lang = 'ru'
                     else:
-                        lang = 'zh'  # 默认中文
+                        lang = 'zh'  # 默认简体中文
                 else:
                     lang = 'zh'  # 默认中文
 

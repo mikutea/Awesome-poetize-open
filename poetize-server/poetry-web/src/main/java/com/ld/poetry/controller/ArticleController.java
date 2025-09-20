@@ -515,7 +515,75 @@ public class ArticleController {
     }
 
     /**
-     * 查询文章
+     * 获取文章所有可用的翻译语言
+     */
+    @GetMapping("/getAvailableLanguages")
+    public PoetryResult<List<String>> getAvailableLanguages(@RequestParam("id") Integer id) {
+        // 检查参数
+        if (id == null) {
+            return PoetryResult.fail("文章ID不能为空");
+        }
+
+        try {
+            // 获取文章所有可用的翻译语言
+            List<String> availableLanguages = translationService.getArticleAvailableLanguages(id);
+            return PoetryResult.success(availableLanguages);
+        } catch (Exception e) {
+            log.error("获取文章可用翻译语言失败", e);
+            return PoetryResult.fail("获取可用翻译语言失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取翻译语言配置
+     */
+    @GetMapping("/getTranslationConfig")
+    public PoetryResult<Map<String, String>> getTranslationConfig() {
+        try {
+            // 获取翻译语言配置
+            Map<String, String> config = translationService.getTranslationLanguageConfig();
+            return PoetryResult.success(config);
+        } catch (Exception e) {
+            log.error("获取翻译语言配置失败", e);
+            return PoetryResult.fail("获取翻译语言配置失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取文章翻译
+     */
+    @GetMapping("/getTranslation")
+    public PoetryResult<Map<String, String>> getTranslation(@RequestParam("id") Integer id,
+                                     @RequestParam(value = "language", defaultValue = "en") String language) {
+        // 检查参数
+        if (id == null) {
+            return PoetryResult.fail("文章ID不能为空");
+        }
+
+        if (!StringUtils.hasText(language)) {
+            return PoetryResult.fail("翻译语言不能为空");
+        }
+
+        try {
+            // 获取文章翻译
+            Map<String, String> translationResult = translationService.getArticleTranslation(id, language);
+            return PoetryResult.success(translationResult);
+        } catch (Exception e) {
+            log.error("获取文章翻译失败", e);
+            return PoetryResult.fail("获取翻译失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 查询文章 - 使用路径参数，仅匹配数字ID，避免与具体路径冲突
+     */
+    @GetMapping("/{id:\\d+}")
+    public PoetryResult<ArticleVO> getArticleByPathId(@PathVariable Integer id, @RequestParam(value = "password", required = false) String password) {
+        return articleService.getArticleById(id, password);
+    }
+
+    /**
+     * 查询文章 - 使用请求参数
      */
     @GetMapping("/getArticleById")
     public PoetryResult<ArticleVO> getArticleById(@RequestParam("id") Integer id, @RequestParam(value = "password", required = false) String password) {
@@ -727,66 +795,6 @@ public class ArticleController {
             return "雅虎搜索";
         } else {
             return engine;
-        }
-    }
-
-    /**
-     * 获取文章翻译
-     */
-    @GetMapping("/getTranslation")
-    public PoetryResult<Map<String, String>> getTranslation(@RequestParam("id") Integer id,
-                                     @RequestParam(value = "language", defaultValue = "en") String language) {
-        // 检查参数
-        if (id == null) {
-            return PoetryResult.fail("文章ID不能为空");
-        }
-
-        if (!StringUtils.hasText(language)) {
-            return PoetryResult.fail("翻译语言不能为空");
-        }
-
-        try {
-            // 获取文章翻译
-            Map<String, String> translationResult = translationService.getArticleTranslation(id, language);
-            return PoetryResult.success(translationResult);
-        } catch (Exception e) {
-            log.error("获取文章翻译失败", e);
-            return PoetryResult.fail("获取翻译失败：" + e.getMessage());
-        }
-    }
-
-    /**
-     * 获取文章所有可用的翻译语言
-     */
-    @GetMapping("/getAvailableLanguages")
-    public PoetryResult<List<String>> getAvailableLanguages(@RequestParam("id") Integer id) {
-        // 检查参数
-        if (id == null) {
-            return PoetryResult.fail("文章ID不能为空");
-        }
-
-        try {
-            // 获取文章所有可用的翻译语言
-            List<String> availableLanguages = translationService.getArticleAvailableLanguages(id);
-            return PoetryResult.success(availableLanguages);
-        } catch (Exception e) {
-            log.error("获取文章可用翻译语言失败", e);
-            return PoetryResult.fail("获取可用翻译语言失败：" + e.getMessage());
-        }
-    }
-
-    /**
-     * 获取翻译语言配置
-     */
-    @GetMapping("/getTranslationConfig")
-    public PoetryResult<Map<String, String>> getTranslationConfig() {
-        try {
-            // 获取翻译语言配置
-            Map<String, String> config = translationService.getTranslationLanguageConfig();
-            return PoetryResult.success(config);
-        } catch (Exception e) {
-            log.error("获取翻译语言配置失败", e);
-            return PoetryResult.fail("获取翻译语言配置失败：" + e.getMessage());
         }
     }
 

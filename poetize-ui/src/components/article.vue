@@ -28,11 +28,9 @@
                 @click.stop="handleLanguageSwitch(langButton.code)"
                 @mousedown.stop="handleMouseDown"
                 @touchstart.stop="handleTouchStart"
-                :disabled="isTranslating"
                 :title="`切换到${langButton.name}`"
                 :data-lang="langButton.code">
                 {{langButton.name}}
-                <i v-if="isTranslating && currentLang === langButton.code" class="el-icon-loading" style="margin-left: 5px;"></i>
               </el-button>
             </el-button-group>
           </div>
@@ -157,12 +155,8 @@
             <hr>
           </div>
 
-          <!-- 翻译占位：转圈圈动画 -->
-          <div v-if="isTranslating" class="entry-content loading-wrap">
-            <i class="el-icon-loading loading-icon"></i>
-          </div>
           <!-- 加载骨架 -->
-          <div v-else-if="isLoading" class="entry-content">
+          <div v-if="isLoading" class="entry-content">
             <el-skeleton :rows="10" animated />
           </div>
           <!-- 正文显示 -->
@@ -352,7 +346,6 @@
         translatedTitle: '',
         translatedContent: '',
         tempComment: null, // 存储临时评论内容
-        isTranslating: false, // 英文翻译进行中
         pollTimer: null, // 轮询翻译定时器
         targetLanguage: 'en', // 目标语言
         targetLanguageName: 'English', // 目标语言名称
@@ -634,7 +627,6 @@
         this.articleContentHtml = '';
         this.articleContentKey = Date.now();
         this.isLoading = false;  // 修正属性名
-        this.isTranslating = false;
         this.currentLang = 'zh';
         this.availableLanguages = [];
         this.availableLanguageButtons = [];
@@ -657,7 +649,6 @@
         }
         
         // 清理其他可能的异步操作
-        this.isTranslating = false;
         this.loading = false;
         
         // 清理翻译内容
@@ -1047,8 +1038,6 @@
             // 如果当前语言不是源语言，需要获取翻译
             if (this.currentLang !== this.sourceLanguage) {
               console.log('当前语言非源语言，准备获取翻译');
-              this.isTranslating = true;
-              this.articleContentHtml = ''; // 先清空内容，显示加载状态
 
               // 立即获取翻译，不等待nextTick
               this.fetchTranslation().then(() => {
@@ -1361,12 +1350,6 @@
           return;
         }
 
-        // 防止在翻译过程中点击
-        if (this.isTranslating) {
-          this.$message.warning('正在翻译中，请稍候...');
-          return;
-        }
-
         // 验证语言是否在可用列表中
         const isLanguageAvailable = this.availableLanguageButtons.some(btn => btn.code === lang);
         if (!isLanguageAvailable) {
@@ -1424,8 +1407,6 @@
             });
           } else {
             // 没有翻译内容，获取翻译
-            this.isTranslating = true;
-            this.articleContentHtml = '';
             this.fetchTranslation();
           }
         } else if (lang === this.sourceLanguage) {
@@ -1441,7 +1422,6 @@
             this.addId();
             this.getTocbot();
           });
-          this.isTranslating = false;
           this.clearPollTimer();
         }
       },
@@ -1479,26 +1459,40 @@
               this.addId();
               this.getTocbot();
             });
-            this.isTranslating = false;
           } else if (response.code === 200 && response.data && response.data.status === 'not_found') {
-            // 翻译未完成，10 秒后重试
-            console.log('请稍后重试');
-            if (!this.pollTimer) {
-              this.pollTimer = setTimeout(() => {
-                this.pollTimer = null;
-                this.fetchTranslation();
-              }, 10000);
-            }
+            // 翻译不存在，显示原文
+            console.log('翻译不存在，显示原文');
+            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            this.articleContentHtml = md.render(this.article.articleContent);
+            this.articleContentKey = Date.now();
+            
+            this.$nextTick(() => {
+              this.$common.imgShow(".entry-content img");
+              this.highlight();
+              this.addId();
+              this.getTocbot();
+            });
+            this.$message.info('该语言版本暂未提供，显示原文');
           } else {
             console.error('获取翻译失败，服务器返回:', response);
-            this.$message.error('获取翻译失败');
+            // 获取失败时显示原文
+            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            this.articleContentHtml = md.render(this.article.articleContent);
+            this.articleContentKey = Date.now();
+            
+            this.$nextTick(() => {
+              this.$common.imgShow(".entry-content img");
+              this.highlight();
+              this.addId();
+              this.getTocbot();
+            });
+            this.$message.error('获取翻译失败，显示原文');
           }
         } catch (error) {
           console.error('Translation error:', error);
         
         } finally {
           this.isLoading = false;
-          // 如果翻译成功则 isTranslating 已在成功分支关闭；失败则保持占位提示
         }
       },
       updateUrlWithLanguage(lang) {
@@ -2203,23 +2197,4 @@
     }
   }
 
-  /* 翻译加载动画 */
-  .loading-wrap {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 300px;
-  }
-
-  .loading-icon {
-    font-size: 50px;
-    color: var(--themeBackground);
-    animation: rotating 1s linear infinite;
-  }
-
-  @keyframes rotating {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
 </style>
