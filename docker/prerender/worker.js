@@ -1287,15 +1287,8 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     // 根据页面类型给#app添加相应的CSS类
     if (pageType === 'article') {
       appElement.classList.add('article-detail');
-    } else if (pageType === 'home') {
-      appElement.classList.add('home-prerender');
-    } else if (pageType === 'favorite') {
-      appElement.classList.add('favorite-prerender');
-    } else if (pageType === 'sort') {
-      appElement.classList.add('sort-prerender');
-    } else if (pageType === 'sort-list') {
-      appElement.classList.add('sort-list-prerender');
     }
+    // 其他页面类型(home, favorite, sort, sort-list)的包装div已经在HTML模板中处理
   }
 
   // 添加加载状态管理脚本
@@ -1469,46 +1462,48 @@ async function renderHomePage(lang = 'zh') {
 
     // 构建首页内容（只包含静态SEO内容，动态内容由客户端加载）
     const homeContent = `
-      <div class="home-hero">
-        <h1>${webInfo.webName || 'Poetize'}</h1>
-        <p>${description}</p>
-      </div>
-      <div class="home-categories">
-        <h2>文章分类</h2>
-        <ul>
-          ${sortInfo.map(sort => `
-            <li>
-              <a href="/sort?sortId=${sort.id}" title="${sort.sortDescription || sort.sortName}">
-                ${sort.sortName}
-              </a>
-            </li>
-          `).join('')}
-        </ul>
-      </div>
-      <div class="home-recent-articles">
-        <h2>最新文章</h2>
-        <ul>
-          ${recentArticles.map(article => `
-            <li>
-              <a href="/article/${article.id}" title="${article.articleTitle}">
-                <h3>${article.articleTitle}</h3>
-                ${article.summary ? `<p>${article.summary}</p>` : ''}
-                <time>${article.createTime}</time>
-              </a>
-            </li>
-          `).join('')}
-        </ul>
-      </div>
-      <!-- 动态内容占位符，由客户端JavaScript填充 -->
-      <div id="dynamic-content-placeholder" style="display:none;">
-        <script>
-          // 标记这是预渲染页面，客户端需要动态加载内容
-          window.PRERENDER_DATA = {
-            type: 'home',
-            lang: '${lang}',
-            timestamp: ${Date.now()}
-          };
-        </script>
+      <div class="home-prerender">
+        <div class="home-hero">
+          <h1>${webInfo.webName || 'Poetize'}</h1>
+          <p>${description}</p>
+        </div>
+        <div class="home-categories">
+          <h2>文章分类</h2>
+          <ul>
+            ${sortInfo.map(sort => `
+              <li>
+                <a href="/sort?sortId=${sort.id}" title="${sort.sortDescription || sort.sortName}">
+                  ${sort.sortName}
+                </a>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+        <div class="home-recent-articles">
+          <h2>最新文章</h2>
+          <ul>
+            ${recentArticles.map(article => `
+              <li>
+                <a href="/article/${article.id}" title="${article.articleTitle}">
+                  <h3>${article.articleTitle}</h3>
+                  ${article.summary ? `<p>${article.summary}</p>` : ''}
+                  <time>${article.createTime}</time>
+                </a>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+        <!-- 动态内容占位符，由客户端JavaScript填充 -->
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            // 标记这是预渲染页面，客户端需要动态加载内容
+            window.PRERENDER_DATA = {
+              type: 'home',
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
       </div>
     `;
 
@@ -1585,88 +1580,90 @@ async function renderFavoritePage(lang = 'zh') {
 
     // 构建百宝箱内容
     const favoriteContent = `
-      <div class="favorite-hero">
-        <h1>百宝箱</h1>
-        <p>收藏夹、友人帐、音乐欣赏</p>
-      </div>
-      
-      <div class="favorite-sections">
-        <section class="collect-section">
-          <h2>收藏夹</h2>
-          <p>精选网站收藏</p>
-          ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
-            <div class="collect-category">
-              <h3>${category}</h3>
-              <ul>
-                ${collects[category].map(item => `
-                  <li>
-                    <a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}">
-                      <img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy">
-                      <span>${item.title}</span>
-                      <small>${item.introduction}</small>
-                    </a>
-                  </li>
+      <div class="favorite-prerender">
+        <div class="favorite-hero">
+          <h1>百宝箱</h1>
+          <p>收藏夹、友人帐、音乐欣赏</p>
+        </div>
+        
+        <div class="favorite-sections">
+          <section class="collect-section">
+            <h2>收藏夹</h2>
+            <p>精选网站收藏</p>
+            ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
+              <div class="collect-category">
+                <h3>${category}</h3>
+                <ul>
+                  ${collects[category].map(item => `
+                    <li>
+                      <a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}">
+                        <img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy">
+                        <span>${item.title}</span>
+                        <small>${item.introduction}</small>
+                      </a>
+                    </li>
+                  `).join('')}
+                </ul>
+              </div>
+            `).join('') : '<p>暂无收藏夹</p>'}
+          </section>
+          
+          <section class="friend-section">
+            <h2>友人帐</h2>
+            <p>留下你的网站，与更多朋友交流</p>
+            
+            <!-- 本站信息 -->
+            <div class="site-info">
+              <h3>🌸本站信息</h3>
+              <blockquote>
+                <div>网站名称: ${siteInfo.title || webInfo.webName || 'POETIZE'}</div>
+                <div>网址: ${siteInfo.url || baseUrl}</div>
+                <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
+                <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
+                <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
+              </blockquote>
+            </div>
+            
+            <!-- 友链列表 -->
+            ${Object.keys(friends).length > 0 ? `
+              <div class="friends-list">
+                <h3>友情链接</h3>
+                ${Object.keys(friends).map(category => `
+                  <div class="friend-category">
+                    <h4>${category}</h4>
+                    <ul>
+                      ${friends[category].map(friend => `
+                        <li>
+                          <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
+                            <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
+                            <span>${friend.title}</span>
+                            <small>${friend.introduction}</small>
+                          </a>
+                        </li>
+                      `).join('')}
+                    </ul>
+                  </div>
                 `).join('')}
-              </ul>
-            </div>
-          `).join('') : '<p>暂无收藏夹</p>'}
-        </section>
-        
-        <section class="friend-section">
-          <h2>友人帐</h2>
-          <p>留下你的网站，与更多朋友交流</p>
+              </div>
+            ` : '<p>暂无友链，欢迎交换友链</p>'}
+          </section>
           
-          <!-- 本站信息 -->
-          <div class="site-info">
-            <h3>🌸本站信息</h3>
-            <blockquote>
-              <div>网站名称: ${siteInfo.title || webInfo.webName || 'POETIZE'}</div>
-              <div>网址: ${siteInfo.url || baseUrl}</div>
-              <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
-              <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
-              <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
-            </blockquote>
-          </div>
-          
-          <!-- 友链列表 -->
-          ${Object.keys(friends).length > 0 ? `
-            <div class="friends-list">
-              <h3>友情链接</h3>
-              ${Object.keys(friends).map(category => `
-                <div class="friend-category">
-                  <h4>${category}</h4>
-                  <ul>
-                    ${friends[category].map(friend => `
-                      <li>
-                        <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
-                          <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
-                          <span>${friend.title}</span>
-                          <small>${friend.introduction}</small>
-                        </a>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </div>
-              `).join('')}
-            </div>
-          ` : '<p>暂无友链，欢迎交换友链</p>'}
-        </section>
+          <section class="music-section">
+            <h2>曲乐</h2>
+            <p>一曲肝肠断，天涯何处觅知音</p>
+          </section>
+        </div>
         
-        <section class="music-section">
-          <h2>曲乐</h2>
-          <p>一曲肝肠断，天涯何处觅知音</p>
-        </section>
-      </div>
-      
-      <!-- 动态内容占位符 -->
-      <div id="dynamic-content-placeholder" style="display:none;">
-        <script>
-          window.PRERENDER_DATA = {
-            type: 'favorite',
-            lang: '${lang}',
-            timestamp: ${Date.now()}
-          };
-        </script>
+        <!-- 动态内容占位符 -->
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            window.PRERENDER_DATA = {
+              type: 'favorite',
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
       </div>
     `;
 
@@ -1723,47 +1720,49 @@ async function renderDefaultSortPage(lang = 'zh') {
 
     // 构建默认分类页面内容
     const defaultSortContent = `
-      <div class="sort-hero">
-        <h1>文章分类</h1>
-        <p>探索不同主题的文章内容</p>
-      </div>
-      
-      <div class="sort-categories">
-        ${Array.isArray(sortList) && sortList.length > 0 ? `
-          <div class="categories-grid">
-            ${sortList.map(sort => `
-              <div class="category-card">
-                <a href="/sort?sortId=${sort.id}" title="${sort.sortDescription || sort.sortName}">
-                  <h3>${sort.sortName}</h3>
-                  <p>${sort.sortDescription || '暂无描述'}</p>
-                  <div class="category-stats">
-                    <span class="article-count">${sort.countOfSort || 0} 篇文章</span>
-                    ${sort.labels && sort.labels.length > 0 ? `<span class="label-count">${sort.labels.length} 个标签</span>` : ''}
-                  </div>
-                  ${sort.labels && sort.labels.length > 0 ? `
-                    <div class="category-labels">
-                      ${sort.labels.slice(0, 3).map(label => `
-                        <span class="label-tag">${label.labelName}</span>
-                      `).join('')}
-                      ${sort.labels.length > 3 ? '<span class="label-more">...</span>' : ''}
+      <div class="sort-list-prerender">
+        <div class="sort-hero">
+          <h1>文章分类</h1>
+          <p>探索不同主题的文章内容</p>
+        </div>
+        
+        <div class="sort-categories">
+          ${Array.isArray(sortList) && sortList.length > 0 ? `
+            <div class="categories-grid">
+              ${sortList.map(sort => `
+                <div class="category-card">
+                  <a href="/sort?sortId=${sort.id}" title="${sort.sortDescription || sort.sortName}">
+                    <h3>${sort.sortName}</h3>
+                    <p>${sort.sortDescription || '暂无描述'}</p>
+                    <div class="category-stats">
+                      <span class="article-count">${sort.countOfSort || 0} 篇文章</span>
+                      ${sort.labels && sort.labels.length > 0 ? `<span class="label-count">${sort.labels.length} 个标签</span>` : ''}
                     </div>
-                  ` : ''}
-                </a>
-              </div>
-            `).join('')}
-          </div>
-        ` : '<p class="no-categories">暂无分类</p>'}
-      </div>
-      
-      <!-- 动态内容占位符 -->
-      <div id="dynamic-content-placeholder" style="display:none;">
-        <script>
-          window.PRERENDER_DATA = {
-            type: 'sort-list',
-            lang: '${lang}',
-            timestamp: ${Date.now()}
-          };
-        </script>
+                    ${sort.labels && sort.labels.length > 0 ? `
+                      <div class="category-labels">
+                        ${sort.labels.slice(0, 3).map(label => `
+                          <span class="label-tag">${label.labelName}</span>
+                        `).join('')}
+                        ${sort.labels.length > 3 ? '<span class="label-more">...</span>' : ''}
+                      </div>
+                    ` : ''}
+                  </a>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<p class="no-categories">暂无分类</p>'}
+        </div>
+        
+        <!-- 动态内容占位符 -->
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            window.PRERENDER_DATA = {
+              type: 'sort-list',
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
       </div>
     `;
 
@@ -1826,62 +1825,64 @@ async function renderSortPage(sortId, labelId = null, lang = 'zh') {
 
     // 构建分类页面内容
     const sortContent = `
-      <div class="sort-hero">
-        <h1>${sortData.sortName}</h1>
-        <p>${sortData.sortDescription || ''}</p>
-      </div>
-      
-      <div class="sort-articles">
-        <h2>文章列表</h2>
-        ${articles.length > 0 ? `
-          <ul class="article-list">
-            ${articles.map(article => `
-              <li class="article-item">
-                <a href="/article/${article.id}" title="${article.articleTitle}">
-                  ${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" loading="lazy">` : ''}
-                  <div class="article-info">
-                    <h3>${article.articleTitle}</h3>
-                    ${article.summary ? `<p>${article.summary}</p>` : ''}
-                    <div class="article-meta">
-                      <time>${article.createTime}</time>
-                      <span class="view-count">阅读 ${article.viewCount || 0}</span>
-                      ${article.label ? `<span class="label">${article.label.labelName}</span>` : ''}
-                    </div>
-                  </div>
-                </a>
-              </li>
-            `).join('')}
-          </ul>
-        ` : '<p>暂无文章</p>'}
-      </div>
-      
-      <!-- 标签筛选 -->
-      ${sortData.labels && sortData.labels.length > 0 ? `
-        <div class="sort-labels">
-          <h3>标签筛选</h3>
-          <ul>
-            ${sortData.labels.map(label => `
-              <li>
-                <a href="/sort?sortId=${sortId}&labelId=${label.id}" title="${label.labelDescription || label.labelName}">
-                  ${label.labelName} (${label.countOfLabel || 0})
-                </a>
-              </li>
-            `).join('')}
-          </ul>
+      <div class="sort-prerender">
+        <div class="sort-hero">
+          <h1>${sortData.sortName}</h1>
+          <p>${sortData.sortDescription || ''}</p>
         </div>
-      ` : ''}
-      
-      <!-- 动态内容占位符 -->
-      <div id="dynamic-content-placeholder" style="display:none;">
-        <script>
-          window.PRERENDER_DATA = {
-            type: 'sort',
-            sortId: ${sortId},
-            labelId: ${labelId || 'null'},
-            lang: '${lang}',
-            timestamp: ${Date.now()}
-          };
-        </script>
+        
+        <div class="sort-articles">
+          <h2>文章列表</h2>
+          ${articles.length > 0 ? `
+            <ul class="article-list">
+              ${articles.map(article => `
+                <li class="article-item">
+                  <a href="/article/${article.id}" title="${article.articleTitle}">
+                    ${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" loading="lazy">` : ''}
+                    <div class="article-info">
+                      <h3>${article.articleTitle}</h3>
+                      ${article.summary ? `<p>${article.summary}</p>` : ''}
+                      <div class="article-meta">
+                        <time>${article.createTime}</time>
+                        <span class="view-count">阅读 ${article.viewCount || 0}</span>
+                        ${article.label ? `<span class="label">${article.label.labelName}</span>` : ''}
+                      </div>
+                    </div>
+                  </a>
+                </li>
+              `).join('')}
+            </ul>
+          ` : '<p>暂无文章</p>'}
+        </div>
+        
+        <!-- 标签筛选 -->
+        ${sortData.labels && sortData.labels.length > 0 ? `
+          <div class="sort-labels">
+            <h3>标签筛选</h3>
+            <ul>
+              ${sortData.labels.map(label => `
+                <li>
+                  <a href="/sort?sortId=${sortId}&labelId=${label.id}" title="${label.labelDescription || label.labelName}">
+                    ${label.labelName} (${label.countOfLabel || 0})
+                  </a>
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        
+        <!-- 动态内容占位符 -->
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            window.PRERENDER_DATA = {
+              type: 'sort',
+              sortId: ${sortId},
+              labelId: ${labelId || 'null'},
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
       </div>
     `;
 
