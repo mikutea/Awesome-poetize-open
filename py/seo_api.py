@@ -755,7 +755,7 @@ async def generate_article_meta_tags(article_id, lang=None):
             
             # 调用获取可用语言的接口
             available_lang_response = await client.get(
-                f"{JAVA_BACKEND_URL}/api/article/getAvailableLanguages?id={article_id}",
+                f"{JAVA_BACKEND_URL}/article/getAvailableLanguages?id={article_id}",
                 headers=headers,
                 timeout=10
             )
