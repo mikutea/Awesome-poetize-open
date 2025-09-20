@@ -353,8 +353,10 @@
         v-model="inputNoticeValue"
         ref="saveNoticeInput"
         size="small"
+        placeholder="请输入公告内容"
         @keyup.enter.native="handleInputNoticeConfirm"
-        @blur="handleInputNoticeConfirm">
+        @blur="handleInputNoticeConfirm"
+        @keydown.enter.native="handleInputNoticeConfirm">
       </el-input>
       <el-button v-else class="button-new-tag" size="small" @click="showNoticeInput()">+ 公告</el-button>
       <div class="myCenter" style="margin-bottom: 22px">
@@ -390,8 +392,10 @@
         v-model="inputRandomNameValue"
         ref="saveRandomNameInput"
         size="small"
+        placeholder="请输入随机名称"
         @keyup.enter.native="handleInputRandomNameConfirm"
-        @blur="handleInputRandomNameConfirm">
+        @blur="handleInputRandomNameConfirm"
+        @keydown.enter.native="handleInputRandomNameConfirm">
       </el-input>
       <el-button v-else class="button-new-tag" size="small" @click="showRandomNameInput">+ 随机名称</el-button>
       <div class="myCenter" style="margin-bottom: 22px">
@@ -1912,8 +1916,8 @@ X-API-KEY: {{apiConfig.apiKey}}
         array.splice(array.indexOf(item), 1);
       },
       handleInputNoticeConfirm() {
-        if (this.inputNoticeValue) {
-          this.notices.push(this.inputNoticeValue);
+        if (this.inputNoticeValue && this.inputNoticeValue.trim()) {
+          this.notices.push(this.inputNoticeValue.trim());
         }
         this.inputNoticeVisible = false;
         this.inputNoticeValue = '';
@@ -1925,18 +1929,33 @@ X-API-KEY: {{apiConfig.apiKey}}
         });
       },
       saveNotice() {
+        // 验证数据
+        if (!this.webInfo.id) {
+          this.$message.error('网站信息ID不存在，请刷新页面重试');
+          return;
+        }
+        
+        if (!Array.isArray(this.notices)) {
+          this.notices = [];
+        }
+        
+        // 过滤空值
+        this.notices = this.notices.filter(notice => notice && notice.trim());
+        
         let param = {
           id: this.webInfo.id,
           notices: JSON.stringify(this.notices)
         }
+        
+        console.log('保存公告参数:', param);
         this.updateWebInfo(param);
       },
       handleInputRandomNameConfirm() {
         if (!Array.isArray(this.randomName)) {
           this.randomName = [];
         }
-        if (this.inputRandomNameValue) {
-          this.randomName.push(this.inputRandomNameValue);
+        if (this.inputRandomNameValue && this.inputRandomNameValue.trim()) {
+          this.randomName.push(this.inputRandomNameValue.trim());
         }
         this.inputRandomNameVisible = false;
         this.inputRandomNameValue = '';
@@ -1948,10 +1967,25 @@ X-API-KEY: {{apiConfig.apiKey}}
         });
       },
       saveRandomName() {
+        // 验证数据
+        if (!this.webInfo.id) {
+          this.$message.error('网站信息ID不存在，请刷新页面重试');
+          return;
+        }
+        
+        if (!Array.isArray(this.randomName)) {
+          this.randomName = [];
+        }
+        
+        // 过滤空值
+        this.randomName = this.randomName.filter(name => name && name.trim());
+        
         let param = {
           id: this.webInfo.id,
           randomName: JSON.stringify(this.randomName)
         }
+        
+        console.log('保存随机名称参数:', param);
         this.updateWebInfo(param);
       },
       handleInputRandomAvatarConfirm() {
