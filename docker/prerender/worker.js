@@ -1392,6 +1392,27 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
   
+  
+  // 重排序CSS链接到title标签之前（符合HTML规范）
+  const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
+  const cssLinkMatches = html.match(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi) || [];
+  
+  if (titleMatch && cssLinkMatches.length > 0) {
+    const titleTag = titleMatch[0];
+    
+    // 移除原有的CSS链接
+    cssLinkMatches.forEach(link => {
+      html = html.replace(link, '');
+    });
+    
+    // 在title标签前插入CSS链接
+    const cssLinks = cssLinkMatches.join('\n  ');
+    html = html.replace(titleTag, `${cssLinks}\n  ${titleTag}`);
+    
+    logger.debug('已重排序CSS链接到title标签之前', { 
+      cssLinksCount: cssLinkMatches.length 
+    });
+  }
   // 优化HTML输出格式，确保meta标签等有换行
   html = html.replace(/<meta/g, '\n  <meta');
   html = html.replace(/<link/g, '\n  <link');
