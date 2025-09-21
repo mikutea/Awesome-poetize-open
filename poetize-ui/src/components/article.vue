@@ -1388,14 +1388,17 @@
 
         this.currentLang = lang;
 
-        // 只有在选择非源语言时才保存用户偏好
-        // 这样可以避免在首次访问时自动添加语言参数
+        // 将语言偏好与文章ID绑定，避免跨文章的语言记忆问题
+        const articleLangKey = `article_${this.id}_preferredLanguage`;
         if (lang !== this.sourceLanguage) {
-          localStorage.setItem('preferredLanguage', lang);
+          localStorage.setItem(articleLangKey, lang);
         } else {
-          // 如果切换回源语言，清除保存的偏好
-          localStorage.removeItem('preferredLanguage');
+          // 如果切换回源语言，清除该文章的语言偏好
+          localStorage.removeItem(articleLangKey);
         }
+        
+        // 同时清除全局语言偏好，确保不影响其他文章
+        localStorage.removeItem('preferredLanguage');
 
         // 更新URL参数，不刷新页面
         this.updateUrlWithLanguage(lang);
@@ -1473,8 +1476,18 @@
               this.getTocbot();
             });
           } else if (response.code === 200 && response.data && response.data.status === 'not_found') {
-            // 翻译不存在，显示原文
-            console.log('翻译不存在，显示原文');
+            // 翻译不存在，自动降级到源语言
+            console.log('翻译不存在，自动切换到源语言');
+            this.currentLang = this.sourceLanguage;
+            
+            // 清除该文章的语言偏好，避免下次还是尝试加载不存在的翻译
+            const articleLangKey = `article_${this.id}_preferredLanguage`;
+            localStorage.removeItem(articleLangKey);
+            
+            // 更新URL为源语言
+            this.updateUrlWithLanguage(this.sourceLanguage);
+            
+            // 显示原文
             const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
             this.articleContentHtml = md.render(this.article.articleContent);
             this.articleContentKey = Date.now();
@@ -1485,10 +1498,20 @@
               this.addId();
               this.getTocbot();
             });
-            this.$message.info('该语言版本暂未提供，显示原文');
+            this.$message.info('该语言版本不存在，已切换到原文显示');
           } else {
             console.error('获取翻译失败，服务器返回:', response);
-            // 获取失败时显示原文
+            // 获取失败时自动降级到源语言
+            this.currentLang = this.sourceLanguage;
+            
+            // 清除该文章的语言偏好
+            const articleLangKey = `article_${this.id}_preferredLanguage`;
+            localStorage.removeItem(articleLangKey);
+            
+            // 更新URL为源语言
+            this.updateUrlWithLanguage(this.sourceLanguage);
+            
+            // 显示原文
             const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
             this.articleContentHtml = md.render(this.article.articleContent);
             this.articleContentKey = Date.now();
@@ -1499,11 +1522,35 @@
               this.addId();
               this.getTocbot();
             });
-            this.$message.error('获取翻译失败，显示原文');
+            this.$message.error('翻译加载失败，已切换到原文显示');
           }
         } catch (error) {
           console.error('Translation error:', error);
-        
+          
+          // 翻译请求失败时，自动降级到源语言显示原文
+          console.log('翻译请求失败，自动切换到源语言显示原文');
+          this.currentLang = this.sourceLanguage;
+          
+          // 清除该文章的语言偏好，避免下次还是加载失败的翻译
+          const articleLangKey = `article_${this.id}_preferredLanguage`;
+          localStorage.removeItem(articleLangKey);
+          
+          // 更新URL为源语言
+          this.updateUrlWithLanguage(this.sourceLanguage);
+          
+          // 显示原文内容
+          const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+          this.articleContentHtml = md.render(this.article.articleContent);
+          this.articleContentKey = Date.now();
+          
+          this.$nextTick(() => {
+            this.$common.imgShow(".entry-content img");
+            this.highlight();
+            this.addId();
+            this.getTocbot();
+          });
+          
+          this.$message.error('翻译加载失败，已切换到原文显示');
         } finally {
           this.isLoading = false;
         }
@@ -1653,10 +1700,11 @@
           // 先获取默认语言配置（只调用一次API）
           await this.getDefaultTargetLanguage();
 
-          // 获取顺序：URL参数 > 用户保存的偏好 > 默认源语言
+          // 获取顺序：URL参数 > 当前文章的语言偏好 > 默认源语言
           const urlParams = new URLSearchParams(window.location.search);
           const langParam = urlParams.get('lang') || this.$route.query.lang; // 备用方案：从Vue路由获取
-          const savedLang = localStorage.getItem('preferredLanguage');
+          const articleLangKey = `article_${this.id}_preferredLanguage`;
+          const savedLang = localStorage.getItem(articleLangKey); // 只读取当前文章的语言偏好
 
           console.log('语言初始化调试信息:', {
             'articleId': this.id,
@@ -1687,15 +1735,22 @@
               });
             }
           } else if (savedLang && this.languageMap[savedLang] && savedLang !== this.sourceLanguage) {
-            // 只有当用户偏好不是源语言时才使用保存的偏好
-            console.log('使用保存的用户偏好语言:', savedLang);
-            this.currentLang = savedLang;
-            this.updateUrlWithLanguage(savedLang);
+            // 只有当前文章有保存的语言偏好时才使用（仅限URL中有lang参数的情况）
+            // 这样可以在用户刷新页面时保持语言选择，但从首页进入时始终使用源语言
+            if (this.$route.query.lang) {
+              console.log('页面刷新，使用当前文章保存的语言偏好:', savedLang);
+              this.currentLang = savedLang;
+              this.updateUrlWithLanguage(savedLang);
+            } else {
+              console.log('从首页进入，忽略保存的偏好，使用源语言:', this.sourceLanguage);
+              this.currentLang = this.sourceLanguage;
+            }
           } else {
             // 使用默认源语言
             console.log('使用默认源语言:', this.sourceLanguage);
             this.currentLang = this.sourceLanguage;
-            // 如果URL中有lang参数但不是有效语言，清除它
+            
+            // 清除URL中可能存在的无效lang参数
             if (langParam && !this.languageMap[langParam]) {
               this.updateUrlWithLanguage(this.sourceLanguage);
             }
@@ -1813,6 +1868,11 @@
         if (!currentLangAvailable) {
           console.log('当前语言不可用，切换到源语言:', this.sourceLanguage);
           this.currentLang = this.sourceLanguage;
+          
+          // 清除该文章的语言偏好，因为保存的语言已不可用
+          const articleLangKey = `article_${this.id}_preferredLanguage`;
+          localStorage.removeItem(articleLangKey);
+          
           this.updateUrlWithLanguage(this.sourceLanguage);
         }
       }
