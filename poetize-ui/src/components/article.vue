@@ -346,7 +346,6 @@
         translatedTitle: '',
         translatedContent: '',
         tempComment: null, // 存储临时评论内容
-        pollTimer: null, // 轮询翻译定时器
         targetLanguage: 'en', // 目标语言
         targetLanguageName: 'English', // 目标语言名称
         sourceLanguage: 'zh', // 源语言
@@ -386,61 +385,61 @@
       }
     },
 
-    async created() {
-      // 重置组件状态，防止缓存问题
-      this.resetComponentState();
-      
-      // 先初始化语言映射
-      this.languageMap = {
-        'zh': '中文',
-        'zh-TW': '繁體中文',
-        'en': 'English',
-        'ja': '日本語',
-        'ko': '한국어',
-        'fr': 'Français',
-        'de': 'Deutsch',
-        'es': 'Español',
-        'ru': 'Русский'
-      };
+      async created() {
+        // 重置组件状态，防止缓存问题
+        this.resetComponentState();
+        
+        // 先初始化语言映射
+        this.languageMap = {
+          'zh': '中文',
+          'zh-TW': '繁體中文',
+          'en': 'English',
+          'ja': '日本語',
+          'ko': '한국어',
+          'fr': 'Français',
+          'de': 'Deutsch',
+          'es': 'Español',
+          'ru': 'Русский'
+        };
 
-      // 然后初始化语言设置，确保语言状态正确
-      await this.initializeLanguageSettings();
+        // 然后初始化语言设置，确保语言状态正确
+        await this.initializeLanguageSettings();
 
-      if (!this.$common.isEmpty(this.id)) {
-        // 首次加载时强制清空预渲染内容，确保Vue重新渲染
-        this.articleContentHtml = "";
-        this.articleContentKey = Date.now();
+        if (!this.$common.isEmpty(this.id)) {
+          // 首次加载时强制清空预渲染内容，确保Vue重新渲染
+          this.articleContentHtml = "";
+          this.articleContentKey = Date.now();
 
-        console.log('Created钩子：语言初始化完成，开始加载文章，当前语言:', this.currentLang);
-        this.getArticle(localStorage.getItem("article_password_" + this.id));
+          console.log('Created钩子：语言初始化完成，开始加载文章，当前语言:', this.currentLang);
+          this.getArticle(localStorage.getItem("article_password_" + this.id));
 
-        if ("0" !== localStorage.getItem("showSubscribe")) {
-          this.$notify.success(
-            '文章订阅',
-            '点击文章下方订阅/取消订阅专栏（标签）',
-            3000
-          );
-          // 设置延时关闭提示
-          setTimeout(() => {
-            localStorage.setItem("showSubscribe", "0");
-          }, 3000);
-        }
-      }
-
-      // 检查是否有待执行的订阅操作
-      this.checkPendingSubscribe();
-
-      // 文章页面加载时触发看板娘检查
-      this.$nextTick(() => {
-        // 延迟触发事件，确保页面元素已加载
-        setTimeout(() => {
-          console.log('文章页面触发看板娘检查事件');
-          if (document && document.dispatchEvent) {
-            document.dispatchEvent(new Event('checkWaifu'));
+          if ("0" !== localStorage.getItem("showSubscribe")) {
+            this.$notify.success(
+              '文章订阅',
+              '点击文章下方订阅/取消订阅专栏（标签）',
+              3000
+            );
+            // 设置延时关闭提示
+            setTimeout(() => {
+              localStorage.setItem("showSubscribe", "0");
+            }, 3000);
           }
-        }, 1000);
-      });
-    },
+        }
+
+        // 检查是否有待执行的订阅操作
+        this.checkPendingSubscribe();
+
+        // 文章页面加载时触发看板娘检查
+        this.$nextTick(() => {
+          // 延迟触发事件，确保页面元素已加载
+          setTimeout(() => {
+            console.log('文章页面触发看板娘检查事件');
+            if (document && document.dispatchEvent) {
+              document.dispatchEvent(new Event('checkWaifu'));
+            }
+          }, 1000);
+        });
+      },
 
     mounted() {
       window.addEventListener("scroll", this.onScrollPage);
@@ -530,7 +529,6 @@
 
     destroyed() {
       window.removeEventListener("scroll", this.onScrollPage);
-      this.clearPollTimer();
 
       // 清理语言切换事件监听器
       if (this.languageSwitchHandler) {
@@ -563,10 +561,18 @@
           // 更新组件的id数据
           this.id = newId;
 
-          // 获取文章，传递对应的密码参数
-          const password = localStorage.getItem("article_password_" + this.id);
-          console.log('获取文章密码:', password ? '有密码' : '无密码');
-          this.getArticle(password);
+          // 重新初始化语言设置 - 关键修复：确保每次切换文章都重新初始化语言
+          this.initializeLanguageSettings().then(() => {
+            // 语言初始化完成后再获取文章
+            const password = localStorage.getItem("article_password_" + this.id);
+            console.log('获取文章密码:', password ? '有密码' : '无密码');
+            this.getArticle(password);
+          }).catch(error => {
+            console.error('语言初始化失败，使用默认设置:', error);
+            // 即使语言初始化失败，也要获取文章
+            const password = localStorage.getItem("article_password_" + this.id);
+            this.getArticle(password);
+          });
 
           // 检查是否有待执行的订阅操作
           this.$nextTick(() => {
@@ -617,7 +623,6 @@
       this.clearComponentState();
     },
 
-    methods: {
       // 重置组件状态，防止缓存问题
       resetComponentState() {
         console.log('重置文章组件状态');
@@ -626,8 +631,10 @@
         this.translatedContent = '';
         this.articleContentHtml = '';
         this.articleContentKey = Date.now();
-        this.isLoading = false;  // 修正属性名
-        this.currentLang = 'zh';
+        this.isLoading = false;
+        
+        // 重置语言相关状态 - 这是关键修复
+        this.currentLang = this.sourceLanguage || 'zh';
         this.availableLanguages = [];
         this.availableLanguageButtons = [];
         
@@ -638,6 +645,11 @@
         
         // 重置订阅状态
         this.subscribe = false;
+        
+        // 重置元标签相关状态
+        this.metaTags = null;
+        this.metaTagRetryCount = 0;
+        this.isLoadingMeta = false;
       },
 
       // 清理组件状态
@@ -1629,12 +1641,6 @@
           localStorage.removeItem(pageStateKey);
         }
       },
-      clearPollTimer() {
-        if (this.pollTimer) {
-          clearTimeout(this.pollTimer);
-          this.pollTimer = null;
-        }
-      },
 
       /**
        * 初始化语言设置
@@ -1646,22 +1652,22 @@
           // 先获取默认语言配置（只调用一次API）
           await this.getDefaultTargetLanguage();
 
-          // 获取顺序：URL参数 > 用户保存的偏好 > 浏览器语言 > 默认源语言
+          // 获取顺序：URL参数 > 用户保存的偏好 > 默认源语言
           const urlParams = new URLSearchParams(window.location.search);
           const langParam = urlParams.get('lang') || this.$route.query.lang; // 备用方案：从Vue路由获取
           const savedLang = localStorage.getItem('preferredLanguage');
 
           console.log('语言初始化调试信息:', {
+            'articleId': this.id,
             'window.location.search': window.location.search,
-            'window.location.href': window.location.href,
-            'urlParams': urlParams.toString(),
             'langParam': langParam,
             'savedLang': savedLang,
-            'languageMap': this.languageMap,
-            'route.query': this.$route.query,
-            'route.query.lang': this.$route.query.lang,
-            'route.fullPath': this.$route.fullPath
+            'sourceLanguage': this.sourceLanguage,
+            'route.query': this.$route.query
           });
+
+          // 重置当前语言为源语言，避免使用上一篇文章的语言设置
+          this.currentLang = this.sourceLanguage;
 
           if (langParam && this.languageMap[langParam]) {
             // URL参数优先，但必须是支持的语言
@@ -1680,23 +1686,18 @@
               });
             }
           } else if (savedLang && this.languageMap[savedLang] && savedLang !== this.sourceLanguage) {
-            // 只有当用户偏好不是源语言时才添加到URL
-            // 这样可以避免在首次访问时自动添加语言参数
+            // 只有当用户偏好不是源语言时才使用保存的偏好
             console.log('使用保存的用户偏好语言:', savedLang);
             this.currentLang = savedLang;
             this.updateUrlWithLanguage(savedLang);
           } else {
-            // 使用默认源语言，但不添加到URL中
-            // 这样保持URL的干净，只有在用户明确选择其他语言时才添加参数
-            console.log('URL参数无效或不存在，使用默认源语言:', this.sourceLanguage);
-            const browserLang = navigator.language || navigator.userLanguage;
-            if (browserLang && browserLang.toLowerCase().startsWith('en') && this.sourceLanguage !== 'en') {
-              // 即使浏览器是英文，也不自动添加到URL，让用户主动选择
-              this.currentLang = this.sourceLanguage;
-            } else {
-              this.currentLang = this.sourceLanguage; // 默认使用源语言
+            // 使用默认源语言
+            console.log('使用默认源语言:', this.sourceLanguage);
+            this.currentLang = this.sourceLanguage;
+            // 如果URL中有lang参数但不是有效语言，清除它
+            if (langParam && !this.languageMap[langParam]) {
+              this.updateUrlWithLanguage(this.sourceLanguage);
             }
-            // 不调用updateUrlWithLanguage，保持URL干净
           }
 
           // 设置HTML元素的lang属性
