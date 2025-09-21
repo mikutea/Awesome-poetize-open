@@ -1546,6 +1546,9 @@ X-API-KEY: {{apiConfig.apiKey}}
           backgroundImage: [
             {required: true, message: '请输入背景', trigger: 'change'}
           ],
+          email: [
+            {required: true, message: '请输入联系邮箱', trigger: 'blur'}
+          ],
           status: [
             {required: true, message: '请设置网站状态', trigger: 'change'}
           ],
