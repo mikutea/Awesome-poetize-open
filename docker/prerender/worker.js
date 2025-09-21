@@ -1166,16 +1166,21 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
           document.head.appendChild(canonicalLink);
         }
       } else if (['description', 'keywords', 'author'].includes(key)) {
-        const metaElement = document.createElement('meta');
-        metaElement.name = key;
-        metaElement.content = value;
-        document.head.appendChild(metaElement);
+        // 跳过空值的 meta 标签
+        if (value && value.trim() !== '') {
+          const metaElement = document.createElement('meta');
+          metaElement.name = key;
+          metaElement.content = value;
+          document.head.appendChild(metaElement);
+        }
       } else {
-        // 处理 og:, twitter:, article: 等属性
-        const metaElement = document.createElement('meta');
-        metaElement.setAttribute('property', key);
-        metaElement.content = value;
-        document.head.appendChild(metaElement);
+        // 处理 og:, twitter:, article: 等属性，但跳过空值
+        if (value && value.trim() !== '') {
+          const metaElement = document.createElement('meta');
+          metaElement.setAttribute('property', key);
+          metaElement.content = value;
+          document.head.appendChild(metaElement);
+        }
       }
     }
   } else {
@@ -2050,7 +2055,7 @@ async function renderIds(ids = [], options = {}) {
             ...articleMeta,
             // 确保基础字段存在
             author: articleMeta.author || author,
-            keywords: articleMeta.keywords ? `${baseKeywords},${articleMeta.keywords}` : baseKeywords,
+            keywords: articleMeta.keywords || baseKeywords,
             'og:site_name': siteName,
             'og:url': articleMeta['og:url'] || `${baseUrl}/article/${id}`,
             'og:image': articleMeta['og:image'] || seoConfig.og_image || webInfo.avatar || '',
