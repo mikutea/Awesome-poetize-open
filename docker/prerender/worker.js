@@ -1156,16 +1156,14 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         const parts = key.split('_');
         if (parts.length >= 2) {
           const lang = parts[1];
-          const linkElement = document.createElement('link');
-          linkElement.setAttribute('rel', 'alternate');
-          linkElement.setAttribute('hreflang', lang);
-          linkElement.setAttribute('href', value);
+          // 使用更直接的方式创建链接，避免序列化问题
+          const linkHTML = `<link rel="alternate" hreflang="${lang}" href="${value}" />`;
           
           // 插入到title之前
           if (titleElement) {
-            titleElement.parentNode.insertBefore(linkElement, titleElement);
+            titleElement.insertAdjacentHTML('beforebegin', linkHTML);
           } else {
-            document.head.appendChild(linkElement);
+            document.head.insertAdjacentHTML('beforeend', linkHTML);
           }
         }
       } else if (key === 'canonical') {
@@ -1427,8 +1425,8 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   html = html.replace(/<\/body>/g, '\n</body>');
   
   // 清理多余的连续空行
-  // 先将包含空格的空行统一为真正的空行
-  html = html.replace(/\n\s*\n/g, '\n\n');
+  // 先清理包含空格的空行，直接移除它们
+  html = html.replace(/\n\s*\n/g, '\n');
   // 然后清理多余的连续空行
   html = html.replace(/\n{3,}/g, '\n\n');
   
