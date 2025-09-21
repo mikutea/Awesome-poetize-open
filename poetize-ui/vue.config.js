@@ -6,7 +6,45 @@ const { WebpackBundleAnalyzer } = require('webpack-bundle-analyzer')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 // 设置网站默认标题（实际运行时会从数据库获取）
-const siteTitle = ''; 
+const siteTitle = '';
+
+// 自定义HTML插件，用于控制资源插入位置
+class HtmlResourceOrderPlugin {
+  apply(compiler) {
+    compiler.hooks.compilation.tap('HtmlResourceOrderPlugin', (compilation) => {
+      HtmlWebpackPlugin.getHooks(compilation).beforeEmit.tapAsync(
+        'HtmlResourceOrderPlugin',
+        (data, cb) => {
+          let html = data.html;
+          
+          // 将webpack生成的link标签移动到正确位置（title之前）
+          const linkRegex = /<link[^>]*(?:rel="(?:preload|prefetch|stylesheet)"[^>]*|href="[^"]*\.css"[^>]*)>/g;
+          const titleRegex = /(<title>.*?<\/title>)/;
+          
+          // 提取所有webpack生成的link标签
+          const links = [];
+          html = html.replace(linkRegex, (match) => {
+            // 只处理webpack生成的资源，不处理手动添加的
+            if (match.includes('/static/') || match.includes('chunk-')) {
+              links.push(match);
+              return ''; // 移除原位置
+            }
+            return match; // 保留手动添加的链接
+          });
+          
+          // 将link标签插入到title之前
+          if (links.length > 0 && titleRegex.test(html)) {
+            const linksHtml = '\n    ' + links.join('\n    ') + '\n    ';
+            html = html.replace(titleRegex, linksHtml + '$1');
+          }
+          
+          data.html = html;
+          cb(null, data);
+        }
+      );
+    });
+  }
+} 
 
 module.exports = {
   devServer: {
@@ -21,6 +59,9 @@ module.exports = {
       .plugin('html')
       .tap(args => {
         args[0].title = siteTitle
+        // 控制资源注入位置 - 确保在title之前
+        args[0].inject = 'head'
+        args[0].scriptLoading = 'defer'
         // 启用 HTML 压缩
         if (process.env.NODE_ENV === 'production') {
           args[0].minify = {
@@ -89,7 +130,8 @@ module.exports = {
         fileName: 'manifest.json',
         publicPath: '/',
         filter: (file) => !file.path.endsWith('.gz') // 不包含压缩文件
-      })
+      }),
+      new HtmlResourceOrderPlugin() // 添加自定义HTML资源顺序插件
     ],
     resolve: {
       alias: {

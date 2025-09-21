@@ -1093,6 +1093,7 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   removeElements('head meta[property^="twitter:"]');
   removeElements('head meta[property^="article:"]');
   removeElements('head link[rel="canonical"]');
+  removeElements('head link[rel="alternate"]');
 
   // 调试：检查meta对象
   console.log('buildHtmlTemplate 元数据调试:', {
@@ -1150,14 +1151,34 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       } else if (Object.keys(iconMapping).includes(key)) {
         // 图标已在上面处理
         continue;
-      } else if (key.startsWith('hreflang')) {
-        // hreflang 已经是完整的 <link> 标签，直接插入HTML
-        document.head.insertAdjacentHTML('beforeend', meta[key]);
+      } else if (key.startsWith('hreflang_')) {
+        // hreflang 链接需要正确解析和创建，插入到title之前
+        const parts = key.split('_');
+        if (parts.length >= 2) {
+          const lang = parts[1];
+          const linkElement = document.createElement('link');
+          linkElement.rel = 'alternate';
+          linkElement.hreflang = lang;
+          linkElement.href = value;
+          
+          // 插入到title之前
+          if (titleElement) {
+            titleElement.parentNode.insertBefore(linkElement, titleElement);
+          } else {
+            document.head.appendChild(linkElement);
+          }
+        }
       } else if (key === 'canonical') {
         const canonicalLink = document.createElement('link');
         canonicalLink.rel = 'canonical';
         canonicalLink.href = value;
-        document.head.appendChild(canonicalLink);
+        
+        // 插入到title之前
+        if (titleElement) {
+          titleElement.parentNode.insertBefore(canonicalLink, titleElement);
+        } else {
+          document.head.appendChild(canonicalLink);
+        }
       } else if (['description', 'keywords', 'author'].includes(key)) {
         const metaElement = document.createElement('meta');
         metaElement.name = key;
