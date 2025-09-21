@@ -154,7 +154,27 @@ export async function loadFonts(sysConfig) {
   
   // 设置样式内容并添加到文档
   style.textContent = css;
-  document.head.appendChild(style);
+  
+  // 安全地添加样式到head，避免appendChild在文本节点上的错误
+  try {
+    if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+      document.head.appendChild(style);
+    } else {
+      console.warn('无法添加字体样式 - document.head不是元素节点');
+    }
+  } catch (error) {
+    console.error('添加字体样式失败:', error);
+    // 尝试备用方法
+    try {
+      const head = document.querySelector('head');
+      if (head && head.nodeType === Node.ELEMENT_NODE) {
+        head.appendChild(style);
+        console.log('使用备用方法成功添加字体样式');
+      }
+    } catch (fallbackError) {
+      console.error('备用方法也失败了:', fallbackError);
+    }
+  }
 }
 
 // 导出默认方法

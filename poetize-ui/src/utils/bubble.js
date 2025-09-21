@@ -1,13 +1,36 @@
-if (document.querySelector(".author-content.author-content-item.single")) {
-  const canvas = document.createElement("canvas");
-  canvas.id = "header_canvas";
-  canvas.style.position = "absolute";
-  canvas.style.bottom = "0";
-  canvas.width = 844;
-  canvas.height = 346;
-  document.querySelector(".author-content.author-content-item.single").appendChild(canvas);
-  const parent = document.querySelector(".author-content.author-content-item.single").parentNode;
-  parent.className = "thumbnail_canvas";
+const targetElement = document.querySelector(".author-content.author-content-item.single");
+if (targetElement && targetElement.nodeType === Node.ELEMENT_NODE) {
+  try {
+    const canvas = document.createElement("canvas");
+    
+    // 确保canvas元素创建成功
+    if (!canvas || canvas.nodeType !== Node.ELEMENT_NODE) {
+      console.warn('创建canvas元素失败，跳过气泡动画');
+      return;
+    }
+    
+    canvas.id = "header_canvas";
+    canvas.style.position = "absolute";
+    canvas.style.bottom = "0";
+    canvas.width = 844;
+    canvas.height = 346;
+    
+    // 安全地添加canvas到DOM
+    if (typeof targetElement.appendChild === 'function') {
+      targetElement.appendChild(canvas);
+    } else {
+      console.warn('目标元素不支持appendChild，跳过气泡动画');
+      return;
+    }
+    
+    const parent = targetElement.parentNode;
+    if (parent && parent.nodeType === Node.ELEMENT_NODE) {
+      parent.className = "thumbnail_canvas";
+    }
+  } catch (error) {
+    console.warn('气泡动画初始化失败:', error);
+    return;
+  }
   (function () {
     var canvas,
       ctx,

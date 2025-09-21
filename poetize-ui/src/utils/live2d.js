@@ -1009,7 +1009,13 @@ async function loadWidget(config) {
       "transition": "all 1.5s ease-out"
     });
     
-    document.body.appendChild(span);
+    // 安全地添加到DOM，防止appendChild错误
+    if (document.body && typeof document.body.appendChild === 'function' && span && span.nodeType === Node.ELEMENT_NODE) {
+      document.body.appendChild(span);
+    } else {
+      console.warn('无法添加鼠标动画元素到DOM，跳过此次动画');
+      return;
+    }
     
     // 使用原生 JavaScript 动画替代 jQuery animate
     setTimeout(() => {

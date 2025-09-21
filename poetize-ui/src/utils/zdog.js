@@ -221,7 +221,12 @@
   };
 
   SvgRenderer.end = function (svg, elem) {
-    svg.appendChild(elem);
+    // 安全地添加元素到SVG
+    if (svg && typeof svg.appendChild === 'function' && elem && elem.nodeType === Node.ELEMENT_NODE) {
+      svg.appendChild(elem);
+    } else {
+      console.warn('无法添加元素到SVG，跳过此操作');
+    }
   };
 
   return SvgRenderer;

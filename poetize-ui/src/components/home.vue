@@ -1009,7 +1009,14 @@
         mask.style.background = '#000';
         mask.style.mixBlendMode = 'saturation';
         mask.style.zIndex = '2147483647';
-        document.body.appendChild(mask);
+        // 安全地添加mask元素到body
+        if (mask && mask.nodeType === Node.ELEMENT_NODE && document.body && typeof document.body.appendChild === 'function') {
+          try {
+            document.body.appendChild(mask);
+          } catch (e) {
+            console.warn('添加mask元素失败:', e);
+          }
+        }
       },
       getWebsitConfig() {
         this.$store.dispatch("getWebsitConfig");

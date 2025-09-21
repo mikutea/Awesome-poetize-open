@@ -87,7 +87,35 @@
 
         let htmlStr = `<div class="say-right my-animation-slide-bottom"><span class="say-item-right">${value}</span></div>`;
         let frag = document.createRange().createContextualFragment(htmlStr);
-        container.appendChild(frag);
+        // 安全地添加fragment到container
+        if (container && frag && typeof container.appendChild === 'function') {
+          try {
+            // 安全地添加fragment到container
+            if (container && frag && typeof container.appendChild === 'function') {
+              try {
+                // 安全地添加fragment到container
+              if (container && frag && typeof container.appendChild === 'function') {
+                try {
+                  // 安全地添加fragment到container
+            if (container && frag && typeof container.appendChild === 'function') {
+              try {
+                container.appendChild(frag);
+              } catch (e) {
+                console.warn('添加fragment到container失败:', e);
+              }
+            }
+                } catch (e) {
+                  console.warn('添加fragment到container失败:', e);
+                }
+              }
+              } catch (e) {
+                console.warn('添加fragment到container失败:', e);
+              }
+            }
+          } catch (e) {
+            console.warn('添加fragment到container失败:', e);
+          }
+        }
         if (index === 0) {
           setTimeout(() => {
             this.say();
@@ -123,7 +151,21 @@
                       let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-select">${reply0}</span><span class="say-select">${reply1}</span></div>`;
                       let frag = document.createRange().createContextualFragment(htmlStr);
                       if (container) {
-                        container.appendChild(frag);
+                        // 安全地添加fragment到container
+                        if (container && frag && typeof container.appendChild === 'function') {
+                          try {
+                            // 安全地添加fragment到container
+                        if (container && frag && typeof container.appendChild === 'function') {
+                          try {
+                            container.appendChild(frag);
+                          } catch (e) {
+                            console.warn('添加fragment到container失败:', e);
+                          }
+                        }
+                          } catch (e) {
+                            console.warn('添加fragment到container失败:', e);
+                          }
+                        }
                       }
                       document.getElementsByClassName("say-select")[0].onclick = () => {
                         this.answer(0, reply0);

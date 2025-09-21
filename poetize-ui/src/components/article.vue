@@ -880,7 +880,15 @@
         let script = document.createElement('script');
         script.type = 'text/javascript';
         script.src = this.$constant.tocbot;
-        document.getElementsByTagName('head')[0].appendChild(script);
+        // 安全地添加script元素到head
+        const head = document.getElementsByTagName('head')[0];
+        if (script && script.nodeType === Node.ELEMENT_NODE && head && typeof head.appendChild === 'function') {
+          try {
+            head.appendChild(script);
+          } catch (e) {
+            console.warn('添加script元素失败:', e);
+          }
+        }
 
         script.onload = function () {
           tocbot.init({
@@ -1006,7 +1014,14 @@
           }
           meta.setAttribute('content', content);
           meta.setAttribute('data-vue-meta', 'true');
-          document.head.appendChild(meta);
+          // 安全地添加meta元素到head
+          if (meta && meta.nodeType === Node.ELEMENT_NODE && document.head && typeof document.head.appendChild === 'function') {
+            try {
+              document.head.appendChild(meta);
+            } catch (e) {
+              console.warn('添加meta元素失败:', e);
+            }
+          }
         };
         
         addMetaTag('description', this.metaTags.description);
@@ -1296,7 +1311,14 @@
           copyButton.innerHTML = '<i class="fa fa-clipboard" aria-hidden="true"></i>';
           
           // 插入复制按钮
-          block.parentNode.insertBefore(copyButton, block.nextSibling);
+          // 安全地插入复制按钮
+          if (block.parentNode && copyButton && copyButton.nodeType === Node.ELEMENT_NODE) {
+            try {
+              block.parentNode.insertBefore(copyButton, block.nextSibling);
+            } catch (e) {
+              console.warn('插入复制按钮失败:', e);
+            }
+          }
         });
         
         // 初始化剪贴板功能
@@ -1311,8 +1333,17 @@
           if (!table.parentElement.classList.contains('table-wrapper')) {
             const wrapper = document.createElement('div');
             wrapper.className = 'table-wrapper';
-            table.parentNode.insertBefore(wrapper, table);
-            wrapper.appendChild(table);
+            // 安全地插入wrapper和移动table
+            if (table.parentNode && wrapper && wrapper.nodeType === Node.ELEMENT_NODE) {
+              try {
+                table.parentNode.insertBefore(wrapper, table);
+                if (typeof wrapper.appendChild === 'function') {
+                  wrapper.appendChild(table);
+                }
+              } catch (e) {
+                console.warn('处理表格包装失败:', e);
+              }
+            }
           }
         });
       },

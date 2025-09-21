@@ -103,7 +103,14 @@ function startSakura() {
   canvas.width = window.innerWidth;
   canvas.setAttribute('style', 'position: fixed;left: 0;top: 0;pointer-events: none;');
   canvas.setAttribute('id', 'canvas_sakura');
-  document.getElementsByTagName('body')[0].appendChild(canvas);
+  // 安全地添加canvas到body
+  const body = document.getElementsByTagName('body')[0];
+  if (body && typeof body.appendChild === 'function' && canvas && canvas.nodeType === Node.ELEMENT_NODE) {
+    body.appendChild(canvas);
+  } else {
+    console.warn('无法添加樱花动画canvas到DOM，跳过樱花动画');
+    return;
+  }
   cxt = canvas.getContext("2d", {willReadFrequently: true});
   var sakuraList = new SakuraList();
   for (var i = 0; i < 50; i++) {

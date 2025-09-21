@@ -42,7 +42,14 @@ import { loadFonts } from './utils/font-loader'
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = url;
-        document.head.appendChild(link);
+        // 安全地添加link元素到head
+        if (link && link.nodeType === Node.ELEMENT_NODE && document.head && typeof document.head.appendChild === 'function') {
+          try {
+            document.head.appendChild(link);
+          } catch (e) {
+            console.warn('添加link元素失败:', e);
+          }
+        }
       };
       
       loadCss(constant.live2d_path + 'waifu.css');

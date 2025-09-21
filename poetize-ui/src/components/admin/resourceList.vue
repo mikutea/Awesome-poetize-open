@@ -375,7 +375,14 @@
           }
         `;
         
-        document.head.appendChild(style);
+        // 安全地添加style元素到head
+        if (style && style.nodeType === Node.ELEMENT_NODE && document.head && typeof document.head.appendChild === 'function') {
+          try {
+            document.head.appendChild(style);
+          } catch (e) {
+            console.warn('添加style元素失败:', e);
+          }
+        }
         
         // 预加载字体
         const testDiv = document.createElement('div');
@@ -383,7 +390,14 @@
         testDiv.style.position = 'absolute';
         testDiv.style.left = '-9999px';
         testDiv.innerHTML = 'Test';
-        document.body.appendChild(testDiv);
+        // 安全地添加testDiv元素到body
+        if (testDiv && testDiv.nodeType === Node.ELEMENT_NODE && document.body && typeof document.body.appendChild === 'function') {
+          try {
+            document.body.appendChild(testDiv);
+          } catch (e) {
+            console.warn('添加testDiv元素失败:', e);
+          }
+        }
         
         // 延迟显示，确保字体加载完成
         setTimeout(() => {

@@ -1132,8 +1132,17 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
           linkElement.setAttribute(attr, attrs[attr]);
         });
         
-        document.head.appendChild(linkElement);
-        logger.debug(`已添加${field}图标到HTML`, { url: meta[field] });
+        // 安全地添加到head，避免appendChild在文本节点上的错误
+        try {
+          if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+            document.head.appendChild(linkElement);
+            logger.debug(`已添加${field}图标到HTML`, { url: meta[field] });
+          } else {
+            logger.warn(`无法添加${field}图标 - document.head不是元素节点`);
+          }
+        } catch (error) {
+          logger.warn(`添加${field}图标失败`, { error: error.message, url: meta[field] });
+        }
       }
     });
   }
@@ -1159,11 +1168,17 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         canonicalLink.rel = 'canonical';
         canonicalLink.href = value;
         
-        // 插入到title之前
-        if (titleElement) {
-          titleElement.parentNode.insertBefore(canonicalLink, titleElement);
-        } else {
-          document.head.appendChild(canonicalLink);
+        // 安全地插入到title之前
+        try {
+          if (titleElement && titleElement.parentNode && titleElement.parentNode.nodeType === Node.ELEMENT_NODE) {
+            titleElement.parentNode.insertBefore(canonicalLink, titleElement);
+          } else if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+            document.head.appendChild(canonicalLink);
+          } else {
+            logger.warn('无法添加canonical链接 - 找不到合适的父元素节点');
+          }
+        } catch (error) {
+          logger.warn('添加canonical链接失败', { error: error.message, href: value });
         }
       } else if (['description', 'keywords', 'author'].includes(key)) {
         // 跳过空值的 meta 标签
@@ -1171,7 +1186,17 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
           const metaElement = document.createElement('meta');
           metaElement.name = key;
           metaElement.content = value;
-          document.head.appendChild(metaElement);
+          
+          // 安全地添加到head
+          try {
+            if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+              document.head.appendChild(metaElement);
+            } else {
+              logger.warn(`无法添加meta标签${key} - document.head不是元素节点`);
+            }
+          } catch (error) {
+            logger.warn(`添加meta标签${key}失败`, { error: error.message, value });
+          }
         }
       } else {
         // 处理 og:, twitter:, article: 等属性，但跳过空值
@@ -1179,7 +1204,17 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
           const metaElement = document.createElement('meta');
           metaElement.setAttribute('property', key);
           metaElement.content = value;
-          document.head.appendChild(metaElement);
+          
+          // 安全地添加到head
+          try {
+            if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+              document.head.appendChild(metaElement);
+            } else {
+              logger.warn(`无法添加property meta标签${key} - document.head不是元素节点`);
+            }
+          } catch (error) {
+            logger.warn(`添加property meta标签${key}失败`, { error: error.message, value });
+          }
         }
       }
     }
@@ -1279,12 +1314,29 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     </style>
   `;
   
-  document.head.insertAdjacentHTML('beforeend', criticalCSS);
+  // 安全地添加关键CSS
+  try {
+    if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
+      document.head.insertAdjacentHTML('beforeend', criticalCSS);
+    } else {
+      logger.warn('无法添加关键CSS - document.head不是元素节点');
+    }
+  } catch (error) {
+    logger.warn('添加关键CSS失败', { error: error.message });
+  }
 
   // 添加资源预加载优化 - 在viewport meta标签之后插入
   const viewportMeta = document.querySelector('meta[name="viewport"]');
   if (viewportMeta) {
-    viewportMeta.insertAdjacentHTML('afterend', `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="dns-prefetch" href="//cdn.jsdelivr.net">`);
+    try {
+      if (viewportMeta.nodeType === Node.ELEMENT_NODE) {
+        viewportMeta.insertAdjacentHTML('afterend', `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="dns-prefetch" href="//cdn.jsdelivr.net">`);
+      } else {
+        logger.warn('无法添加预加载链接 - viewport meta不是元素节点');
+      }
+    } catch (error) {
+      logger.warn('添加预加载链接失败', { error: error.message });
+    }
   }
 
   // 注入渲染好的内容
@@ -1378,7 +1430,16 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     </script>
   `;
   
-  document.body.insertAdjacentHTML('beforeend', loadingScript);
+  // 安全地添加加载脚本
+  try {
+    if (document.body && document.body.nodeType === Node.ELEMENT_NODE) {
+      document.body.insertAdjacentHTML('beforeend', loadingScript);
+    } else {
+      logger.warn('无法添加加载脚本 - document.body不是元素节点');
+    }
+  } catch (error) {
+    logger.warn('添加加载脚本失败', { error: error.message });
+  }
   
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
