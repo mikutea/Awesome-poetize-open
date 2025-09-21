@@ -797,17 +797,9 @@ async def generate_article_meta_tags(article_id, lang=None):
         # 支持的语言列表
         supported_languages = ['zh', 'zh-TW', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru']
 
-        # 根据语言参数设置canonical标签
-        if lang and lang in supported_languages:
-            if lang == default_source_lang:
-                # 源语言版本的canonical不包含lang参数
-                meta_tags["canonical"] = article_url
-            else:
-                # 其他语言版本的canonical包含lang参数
-                meta_tags["canonical"] = f"{article_url}?lang={lang}"
-        else:
-            # 默认情况下指向源语言版本
-            meta_tags["canonical"] = article_url
+        # 根据SEO最佳实践，canonical标签应该始终指向源语言版本
+        # 这样可以避免重复内容问题，并告诉搜索引擎哪个是主要版本
+        meta_tags["canonical"] = article_url
 
         # 添加Pinterest标签
         if seo_config.get('pinterest_description'):
@@ -2450,7 +2442,7 @@ def register_seo_api(app: FastAPI):
 
     # SEO缓存清理API（仅供手动调用或调试使用）
     @app.post('/seo/clearCache')
-    async def clear_seo_cache():
+    async def clear_seo_cache(_: bool = Depends(admin_required)):
         """手动清空所有SEO缓存"""
         try:
             cleared_count = seo_cache_manager.clear_all_cache()
@@ -2611,7 +2603,7 @@ def register_seo_api(app: FastAPI):
     
     # 手动更新SEO数据
     @app.post('/seo/updateSeoData')
-    async def update_seo_data_api(request: Request):
+    async def update_seo_data_api(request: Request, _: bool = Depends(admin_required)):
         # 检查SEO是否启用
         config = await get_seo_config()
         if not config.get('enable', False):
@@ -2821,7 +2813,7 @@ def register_seo_api(app: FastAPI):
     
     # 专门的sitemap更新API（用于文章保存/更新后自动更新sitemap）
     @app.post('/seo/updateArticleSitemap')
-    async def update_article_sitemap_api(request: Request):
+    async def update_article_sitemap_api(request: Request, _: bool = Depends(admin_required)):
         """更新文章sitemap条目"""
         # 检查SEO是否启用
         config = await get_seo_config()
@@ -2873,15 +2865,95 @@ def register_seo_api(app: FastAPI):
                 })
             elif action == 'remove':
                 # 删除sitemap条目
-                await remove_sitemap_url(article_url)
-                await remove_sitemap_url(f"{article_url}?lang=en")
+                language = data.get('language')  # 获取要删除的特定语言
                 
-                logger.info(f"成功删除文章sitemap条目: {article_url}")
-                return JSONResponse({
-                    "code": 200, 
-                    "message": "文章sitemap删除成功", 
-                    "data": {"url": article_url, "action": action}
-                })
+                if language:
+                    # 删除特定语言的sitemap条目
+                    # 获取默认源语言
+                    default_source_lang = 'zh'  # 默认值
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            default_lang_response = await client.get(f"{JAVA_BACKEND_URL}/api/translation/default-lang")
+                            default_lang_data = default_lang_response.json()
+                            if default_lang_data.get('success') and default_lang_data.get('data'):
+                                default_source_lang = default_lang_data['data'].get('source_lang', 'zh')
+                    except Exception as e:
+                        logger.warning(f"获取默认源语言失败: {str(e)}，使用默认值 zh")
+                    
+                    if language == default_source_lang:
+                        # 删除源语言（基础URL）
+                        await remove_sitemap_url(article_url)
+                        removed_url = article_url
+                    else:
+                        # 删除其他语言（带lang参数的URL）
+                        lang_url = f"{article_url}?lang={language}"
+                        await remove_sitemap_url(lang_url)
+                        removed_url = lang_url
+                    
+                    logger.info(f"成功删除文章 {article_id} 的 {language} 语言sitemap条目: {removed_url}")
+                    return JSONResponse({
+                        "code": 200, 
+                        "message": f"文章 {language} 语言sitemap删除成功", 
+                        "data": {"url": removed_url, "action": action, "language": language}
+                    })
+                else:
+                    # 删除所有sitemap条目（改进逻辑：获取文章的所有翻译语言）
+                    removed_urls = []
+                    
+                    # 获取默认源语言
+                    default_source_lang = 'zh'  # 默认值
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            default_lang_response = await client.get(f"{JAVA_BACKEND_URL}/api/translation/default-lang")
+                            default_lang_data = default_lang_response.json()
+                            if default_lang_data.get('success') and default_lang_data.get('data'):
+                                default_source_lang = default_lang_data['data'].get('source_lang', 'zh')
+                    except Exception as e:
+                        logger.warning(f"获取默认源语言失败: {str(e)}，使用默认值 zh")
+                    
+                    # 删除源语言的sitemap条目
+                    await remove_sitemap_url(article_url)
+                    removed_urls.append(article_url)
+                    
+                    # 获取文章的所有可用翻译语言
+                    available_languages = []
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            # 调用Java后端获取文章的可用翻译语言
+                            lang_response = await client.get(
+                                f"{JAVA_BACKEND_URL}/admin/article/getAvailableLanguages",
+                                params={"articleId": article_id},
+                                headers={
+                                    "X-Internal-Service": "poetize-python",
+                                    "X-Admin-Request": "true"
+                                }
+                            )
+                            if lang_response.status_code == 200:
+                                lang_data = lang_response.json()
+                                if lang_data.get('success') and lang_data.get('data'):
+                                    available_languages = lang_data['data']
+                                    logger.info(f"获取到文章 {article_id} 的可用翻译语言: {available_languages}")
+                    except Exception as e:
+                        logger.warning(f"获取文章 {article_id} 的翻译语言失败: {str(e)}")
+                    
+                    # 删除所有翻译语言的sitemap条目
+                    for lang in available_languages:
+                        if lang != default_source_lang:  # 源语言已经删除过了
+                            lang_url = f"{article_url}?lang={lang}"
+                            await remove_sitemap_url(lang_url)
+                            removed_urls.append(lang_url)
+                    
+                    logger.info(f"成功删除文章 {article_id} 的所有sitemap条目: {removed_urls}")
+                    return JSONResponse({
+                        "code": 200, 
+                        "message": "文章所有语言sitemap删除成功", 
+                        "data": {
+                            "urls": removed_urls, 
+                            "action": action,
+                            "sourceLanguage": default_source_lang,
+                            "availableLanguages": available_languages
+                        }
+                    })
             else:
                 return JSONResponse({"code": 400, "message": "不支持的操作类型", "data": None})
                 
@@ -2892,7 +2964,7 @@ def register_seo_api(app: FastAPI):
     
     # 文章发布后的SEO处理（自动提交给各搜索引擎）
     @app.post('/seo/submitArticle')
-    async def submit_article_api(request: Request):
+    async def submit_article_api(request: Request, _: bool = Depends(admin_required)):
         """提交文章到各搜索引擎"""
         # 检查SEO是否启用
         config = await get_seo_config()
@@ -3128,7 +3200,7 @@ def register_seo_api(app: FastAPI):
     
     # AI SEO分析API
     @app.get('/seo/aiAnalyzeSite')
-    async def ai_analyze_site_api(request: Request):
+    async def ai_analyze_site_api(request: Request, _: bool = Depends(admin_required)):
         """使用AI分析网站SEO情况"""
         # 检查SEO是否启用
         config = await get_seo_config()
@@ -3306,7 +3378,7 @@ def register_seo_api(app: FastAPI):
             
     # 站点优化建议API
     @app.get('/seo/analyzeSite')
-    async def analyze_site_api(request: Request):
+    async def analyze_site_api(request: Request, _: bool = Depends(admin_required)):
         """分析网站SEO配置并提供改进建议"""
         # 检查SEO是否启用
         config = await get_seo_config()

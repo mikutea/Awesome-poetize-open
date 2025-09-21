@@ -418,13 +418,19 @@
         let isShow = scrollTop - backgroundHeight > 30;
         this.toolButton = isShow;
         if (isShow && !this.$common.mobile()) {
-          if (window.innerHeight > 950) {
-            $(".cd-top").css("top", "0");
-          } else {
-            $(".cd-top").css("top", window.innerHeight - 950 + "px");
-          }
+          const cdTopElements = document.querySelectorAll('.cd-top');
+          cdTopElements.forEach(element => {
+            if (window.innerHeight > 950) {
+              element.style.top = '0';
+            } else {
+              element.style.top = (window.innerHeight - 950) + 'px';
+            }
+          });
         } else if (!isShow && !this.$common.mobile()) {
-          $(".cd-top").css("top", "-900px");
+          const cdTopElements = document.querySelectorAll('.cd-top');
+          cdTopElements.forEach(element => {
+            element.style.top = '-900px';
+          });
         }
 
         //导航栏显示与颜色
@@ -729,12 +735,15 @@
 
       // 目录按钮点击事件
       clickTocButton() {
-        let display = $(".toc");
-        if ("none" === display.css("display")) {
-          display.css("display", "unset");
-        } else {
-          display.css("display", "none");
-        }
+        const tocElements = document.querySelectorAll('.toc');
+        tocElements.forEach(element => {
+          const currentDisplay = window.getComputedStyle(element).display;
+          if (currentDisplay === 'none') {
+            element.style.display = 'unset';
+          } else {
+            element.style.display = 'none';
+          }
+        });
       },
 
       // 更新简化语言切换按钮显示状态

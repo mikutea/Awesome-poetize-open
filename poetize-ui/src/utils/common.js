@@ -162,42 +162,72 @@ export default {
   },
 
   imgShow(select) {
-    $(select).click(function () {
-      let src = $(this).attr("src");
-      $("#bigImg").attr("src", src);
-
-      /** 获取当前点击图片的真实大小，并显示弹出层及大图 */
-      $("<img/>").attr("src", src).load(function () {
-        let windowW = $(window).width();//获取当前窗口宽度
-        let windowH = $(window).height();//获取当前窗口高度
-        let realWidth = this.width;//获取图片真实宽度
-        let realHeight = this.height;//获取图片真实高度
-        let imgWidth, imgHeight;
-        let scale = 0.8;//缩放尺寸，当图片真实宽度和高度大于窗口宽度和高度时进行缩放
-
-        if (realHeight > windowH * scale) {//判断图片高度
-          imgHeight = windowH * scale;//如大于窗口高度，图片高度进行缩放
-          imgWidth = imgHeight / realHeight * realWidth;//等比例缩放宽度
-          if (imgWidth > windowW * scale) {//如宽度仍大于窗口宽度
-            imgWidth = windowW * scale;//再对宽度进行缩放
-          }
-        } else if (realWidth > windowW * scale) {//如图片高度合适，判断图片宽度
-          imgWidth = windowW * scale;//如大于窗口宽度，图片宽度进行缩放
-          imgHeight = imgWidth / realWidth * realHeight;//等比例缩放高度
-        } else {//如果图片真实高度和宽度都符合要求，高宽不变
-          imgWidth = realWidth;
-          imgHeight = realHeight;
+    // 使用原生 JavaScript 替代 jQuery
+    const elements = document.querySelectorAll(select);
+    
+    elements.forEach(element => {
+      element.addEventListener('click', function () {
+        const src = this.getAttribute('src');
+        const bigImg = document.getElementById('bigImg');
+        const outerImg = document.getElementById('outerImg');
+        const innerImg = document.getElementById('innerImg');
+        
+        if (!bigImg || !outerImg || !innerImg) {
+          console.warn('图片放大所需的DOM元素不存在');
+          return;
         }
-        $("#bigImg").css("width", imgWidth);//以最终的宽度对图片缩放
+        
+        bigImg.setAttribute('src', src);
 
-        let w = (windowW - imgWidth) / 2;//计算图片与窗口左边距
-        let h = (windowH - imgHeight) / 2;//计算图片与窗口上边距
-        $("#innerImg").css({"top": h, "left": w});//设置top和left属性
-        $("#outerImg").fadeIn("fast");//淡入显示
-      });
+        /** 获取当前点击图片的真实大小，并显示弹出层及大图 */
+        const tempImg = new Image();
+        tempImg.onload = function () {
+          const windowW = window.innerWidth; // 获取当前窗口宽度
+          const windowH = window.innerHeight; // 获取当前窗口高度
+          const realWidth = this.width; // 获取图片真实宽度
+          const realHeight = this.height; // 获取图片真实高度
+          let imgWidth, imgHeight;
+          const scale = 0.8; // 缩放尺寸，当图片真实宽度和高度大于窗口宽度和高度时进行缩放
 
-      $("#outerImg").click(function () {//再次点击淡出消失弹出层
-        $(this).fadeOut("fast");
+          if (realHeight > windowH * scale) { // 判断图片高度
+            imgHeight = windowH * scale; // 如大于窗口高度，图片高度进行缩放
+            imgWidth = imgHeight / realHeight * realWidth; // 等比例缩放宽度
+            if (imgWidth > windowW * scale) { // 如宽度仍大于窗口宽度
+              imgWidth = windowW * scale; // 再对宽度进行缩放
+            }
+          } else if (realWidth > windowW * scale) { // 如图片高度合适，判断图片宽度
+            imgWidth = windowW * scale; // 如大于窗口宽度，图片宽度进行缩放
+            imgHeight = imgWidth / realWidth * realHeight; // 等比例缩放高度
+          } else { // 如果图片真实高度和宽度都符合要求，高宽不变
+            imgWidth = realWidth;
+            imgHeight = realHeight;
+          }
+          
+          bigImg.style.width = imgWidth + 'px'; // 以最终的宽度对图片缩放
+
+          const w = (windowW - imgWidth) / 2; // 计算图片与窗口左边距
+          const h = (windowH - imgHeight) / 2; // 计算图片与窗口上边距
+          innerImg.style.top = h + 'px';
+          innerImg.style.left = w + 'px';
+          
+          // 淡入显示效果
+          outerImg.style.display = 'block';
+          outerImg.style.opacity = '0';
+          outerImg.style.transition = 'opacity 0.3s ease';
+          setTimeout(() => {
+            outerImg.style.opacity = '1';
+          }, 10);
+        };
+        tempImg.src = src;
+
+        // 点击外层容器关闭图片
+        outerImg.onclick = function () {
+          this.style.transition = 'opacity 0.3s ease';
+          this.style.opacity = '0';
+          setTimeout(() => {
+            this.style.display = 'none';
+          }, 300);
+        };
       });
     });
   },

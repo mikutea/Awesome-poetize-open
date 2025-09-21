@@ -77,6 +77,14 @@ public interface TranslationService {
     void deleteArticleTranslation(Integer articleId);
 
     /**
+     * 删除文章的特定语言翻译
+     * @param articleId 文章ID
+     * @param language 要删除的语言代码
+     * @return 是否删除成功
+     */
+    boolean deleteSpecificTranslation(Integer articleId, String language);
+
+    /**
      * 获取翻译语言配置
      * @return 包含源语言和目标语言的配置Map
      */

@@ -992,22 +992,37 @@ async function loadWidget(config) {
   // 鼠标动画
   function mouseAnimation(e) {
     let list = new Array("富强", "民主", "文明", "和谐", "自由", "平等", "公正", "法治", "爱国", "敬业", "诚信", "友善");
-    let span = $("<span>").text(list[idx]);
+    let span = document.createElement('span');
+    span.textContent = list[idx];
     idx = (idx + 1) % list.length;
     let x = e.pageX, y = e.pageY;
-    span.css({
-      "z-index": 1000,
-      "top": y - 20,
-      "left": x,
+    
+    // 设置样式
+    Object.assign(span.style, {
+      "z-index": "1000",
+      "top": (y - 20) + "px",
+      "left": x + "px",
       "position": "absolute",
       "pointer-events": "none",
       "font-weight": "bold",
-      "color": "#ff6651"
+      "color": "#ff6651",
+      "transition": "all 1.5s ease-out"
     });
-    $("body").append(span);
-    span.animate({"top": y - 180, "opacity": 0}, 1500, function () {
-      span.remove();
-    });
+    
+    document.body.appendChild(span);
+    
+    // 使用原生 JavaScript 动画替代 jQuery animate
+    setTimeout(() => {
+      span.style.top = (y - 180) + "px";
+      span.style.opacity = "0";
+    }, 10);
+    
+    // 1.5秒后移除元素
+    setTimeout(() => {
+      if (span.parentNode) {
+        span.parentNode.removeChild(span);
+      }
+    }, 1500);
   }
 
   // 随机选择

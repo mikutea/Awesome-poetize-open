@@ -69,9 +69,12 @@
       <el-table-column prop="commentCount" label="评论数" align="center"></el-table-column>
       <el-table-column prop="createTime" label="创建时间" align="center"></el-table-column>
       <el-table-column prop="updateTime" label="最终修改时间" align="center"></el-table-column>
-      <el-table-column label="操作" width="180" align="center">
+      <el-table-column label="操作" width="260" align="center">
         <template slot-scope="scope">
           <el-button type="text" icon="el-icon-edit" @click="handleEdit(scope.row)">编辑</el-button>
+          <el-button type="text" icon="el-icon-s-tools" style="color: var(--blue)" @click="handleDeleteTranslation(scope.row)">
+            删除翻译
+          </el-button>
           <el-button type="text" icon="el-icon-delete" style="color: var(--orangeRed)" @click="handleDelete(scope.row)">
             删除
           </el-button>
@@ -86,6 +89,54 @@
                      @current-change="handlePageChange">
       </el-pagination>
     </div>
+
+    <!-- 删除翻译对话框 -->
+    <el-dialog title="删除翻译" :visible.sync="deleteTranslationDialog" width="500px" center>
+      <div v-if="availableLanguages.length === 0" style="text-align: center; padding: 20px;">
+        <i class="el-icon-info" style="font-size: 48px; color: #909399;"></i>
+        <p style="margin-top: 15px; color: #606266;">该文章暂无翻译版本</p>
+      </div>
+      
+      <div v-else-if="availableLanguages.length === 1" style="text-align: center; padding: 20px;">
+        <i class="el-icon-warning" style="font-size: 48px; color: #E6A23C;"></i>
+        <p style="margin-top: 15px; color: #606266;">
+          确认删除该文章的 <strong>{{ getLanguageName(availableLanguages[0]) }}</strong> 翻译版本吗？
+        </p>
+        <p style="color: #909399; font-size: 12px;">删除后将无法恢复，用户访问时会自动显示原文</p>
+      </div>
+      
+      <div v-else>
+        <p style="margin-bottom: 15px; color: #606266;">该文章有以下翻译版本，请选择要删除的语言：</p>
+        <el-checkbox-group v-model="selectedLanguages">
+          <div v-for="lang in availableLanguages" :key="lang" style="margin-bottom: 10px;">
+            <el-checkbox :label="lang">{{ getLanguageName(lang) }}</el-checkbox>
+          </div>
+        </el-checkbox-group>
+        <div style="margin-top: 15px;">
+          <el-button type="text" @click="selectAllLanguages" style="color: #409EFF;">全选</el-button>
+          <el-button type="text" @click="clearSelectedLanguages" style="color: #909399;">清空</el-button>
+        </div>
+      </div>
+      
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="deleteTranslationDialog = false">取消</el-button>
+        <el-button 
+          v-if="availableLanguages.length === 1" 
+          type="danger" 
+          @click="confirmDeleteSingleTranslation"
+          :loading="deleteLoading">
+          确认删除
+        </el-button>
+        <el-button 
+          v-else-if="availableLanguages.length > 1" 
+          type="danger" 
+          @click="confirmDeleteMultipleTranslations"
+          :disabled="selectedLanguages.length === 0"
+          :loading="deleteLoading">
+          删除选中的翻译 ({{ selectedLanguages.length }})
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -106,7 +157,31 @@
         articles: [],
         sorts: [],
         labels: [],
-        labelsTemp: []
+        labelsTemp: [],
+        // 删除翻译相关数据
+        deleteTranslationDialog: false,
+        availableLanguages: [],
+        selectedLanguages: [],
+        currentArticle: null,
+        deleteLoading: false,
+        // 语言映射
+        languageMap: {
+          'zh': '中文',
+          'en': '英文',
+          'zh-TW': '繁体中文',
+          'ja': '日文',
+          'ko': '韩文',
+          'fr': '法文',
+          'de': '德文',
+          'es': '西班牙文',
+          'ru': '俄文',
+          'ar': '阿拉伯文',
+          'pt': '葡萄牙文',
+          'it': '意大利文',
+          'th': '泰文',
+          'vi': '越南文',
+          'hi': '印地文'
+        }
       }
     },
 
@@ -255,16 +330,8 @@
               // 刷新文章列表
               this.pagination.current = 1;
               this.getArticles();
-
-              // 调用 Python SEO API 增量移除 sitemap URL
-              const seoUrl = this.$constant.pythonBaseURL + '/seo/removeArticleFromSitemap';
-              this.$http.post(seoUrl, { id: item.id }, true)
-                .then(() => {
-                  this.$message({ message: "删除成功，sitemap 已更新！", type: "success" });
-                })
-                .catch(() => {
-                  this.$message({ message: "文章已删，但 sitemap 更新失败，请稍后重试", type: "warning" });
-                });
+              
+              this.$message({ message: "删除成功！", type: "success" });
             })
             .catch((error) => {
               this.$message({
@@ -279,6 +346,182 @@
           });
         });
       },
+      // 删除翻译相关方法
+      async handleDeleteTranslation(item) {
+        this.currentArticle = item;
+        this.selectedLanguages = [];
+        this.deleteTranslationDialog = true;
+        
+        // 获取可用翻译语言
+        try {
+          const response = await this.$http.get(this.$constant.baseURL + "/admin/article/getAvailableLanguages", {
+            articleId: item.id
+          }, true);
+          
+          if (response && response.data) {
+            this.availableLanguages = response.data;
+          } else {
+            this.availableLanguages = [];
+          }
+        } catch (error) {
+          this.$message({
+            message: "获取翻译语言失败: " + error.message,
+            type: "error"
+          });
+          this.availableLanguages = [];
+        }
+      },
+      
+      getLanguageName(langCode) {
+        return this.languageMap[langCode] || langCode;
+      },
+      
+      selectAllLanguages() {
+        this.selectedLanguages = [...this.availableLanguages];
+      },
+      
+      clearSelectedLanguages() {
+        this.selectedLanguages = [];
+      },
+      
+      async confirmDeleteSingleTranslation() {
+        if (this.availableLanguages.length !== 1) return;
+        
+        this.deleteLoading = true;
+        const deletedLanguage = this.availableLanguages[0];
+        
+        try {
+          await this.$http.post(this.$constant.baseURL + "/admin/article/deleteTranslation", {
+            articleId: this.currentArticle.id,
+            language: deletedLanguage
+          }, true);
+          
+          // 更新sitemap - 移除已删除翻译的URL
+          await this.updateSitemapAfterTranslationDelete(this.currentArticle.id, [deletedLanguage]);
+          
+          this.$message({
+            message: `成功删除 ${this.getLanguageName(deletedLanguage)} 翻译！`,
+            type: "success"
+          });
+          
+          this.deleteTranslationDialog = false;
+        } catch (error) {
+          this.$message({
+            message: "删除翻译失败: " + error.message,
+            type: "error"
+          });
+        } finally {
+          this.deleteLoading = false;
+        }
+      },
+      
+      async confirmDeleteMultipleTranslations() {
+        if (this.selectedLanguages.length === 0) return;
+        
+        this.deleteLoading = true;
+        let successCount = 0;
+        let failCount = 0;
+        const deletedLanguages = [];
+        
+        // 如果选择了所有语言，使用删除所有翻译的接口
+        if (this.selectedLanguages.length === this.availableLanguages.length) {
+          try {
+            await this.$http.post(this.$constant.baseURL + "/admin/article/deleteAllTranslations", {
+              articleId: this.currentArticle.id
+            }, true);
+            
+            // 更新sitemap - 移除所有翻译的URL
+            await this.updateSitemapAfterTranslationDelete(this.currentArticle.id, this.availableLanguages);
+            
+            this.$message({
+              message: "成功删除所有翻译！",
+              type: "success"
+            });
+            
+            this.deleteTranslationDialog = false;
+            this.deleteLoading = false;
+            return;
+          } catch (error) {
+            this.$message({
+              message: "删除所有翻译失败: " + error.message,
+              type: "error"
+            });
+            this.deleteLoading = false;
+            return;
+          }
+        }
+        
+        // 逐个删除选中的翻译
+        for (const language of this.selectedLanguages) {
+          try {
+            await this.$http.post(this.$constant.baseURL + "/admin/article/deleteTranslation", {
+              articleId: this.currentArticle.id,
+              language: language
+            }, true);
+            successCount++;
+            deletedLanguages.push(language);
+          } catch (error) {
+            console.error(`删除 ${language} 翻译失败:`, error);
+            failCount++;
+          }
+        }
+        
+        // 更新sitemap - 移除成功删除的翻译URL
+        if (deletedLanguages.length > 0) {
+          await this.updateSitemapAfterTranslationDelete(this.currentArticle.id, deletedLanguages);
+        }
+        
+        // 显示结果消息
+        if (failCount === 0) {
+          this.$message({
+            message: `成功删除 ${successCount} 个翻译！`,
+            type: "success"
+          });
+        } else if (successCount === 0) {
+          this.$message({
+            message: `删除失败，共 ${failCount} 个翻译删除失败`,
+            type: "error"
+          });
+        } else {
+          this.$message({
+            message: `部分成功：${successCount} 个删除成功，${failCount} 个删除失败`,
+            type: "warning"
+          });
+        }
+        
+        this.deleteTranslationDialog = false;
+        this.deleteLoading = false;
+      },
+      
+
+      // 删除翻译后更新sitemap
+      async updateSitemapAfterTranslationDelete(articleId, deletedLanguages) {
+        try {
+          // 调用Java后端的sitemap代理接口，Java会转发给Python服务
+          const sitemapUrl = this.$constant.baseURL + '/admin/article/updateSitemap';
+          
+          // 为每个删除的语言发送移除请求
+          for (const language of deletedLanguages) {
+            try {
+              await this.$http.post(sitemapUrl, {
+                articleId: articleId,
+                action: 'remove',
+                language: language  // 传递语言参数，让Python服务知道要移除哪个语言版本
+              }, true);
+              
+              console.log(`成功移除文章 ${articleId} 的 ${language} 语言sitemap条目`);
+            } catch (error) {
+              console.error(`移除语言 ${language} 的sitemap条目失败:`, error);
+            }
+          }
+          
+          console.log(`Sitemap已更新，移除文章 ${articleId} 的翻译语言:`, deletedLanguages);
+        } catch (error) {
+          console.error('更新sitemap失败:', error);
+          // 不阻塞主流程，只记录错误
+        }
+      },
+      
       handleEdit(item) {
         this.$router.push({path: '/postEdit', query: {id: item.id}});
       }

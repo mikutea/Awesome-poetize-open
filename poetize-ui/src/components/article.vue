@@ -309,7 +309,6 @@
   const proButton = () => import( "./common/proButton");
   const videoPlayer = () => import( "./common/videoPlayer");
   import MarkdownIt from 'markdown-it';
-  import $ from 'jquery';
   import axios from 'axios';
 
   export default {
@@ -655,12 +654,6 @@
 
       // 清理组件状态
       clearComponentState() {
-        // 清理定时器
-        if (this.translationTimer) {
-          clearTimeout(this.translationTimer);
-          this.translationTimer = null;
-        }
-        
         // 清理其他可能的异步操作
         this.loading = false;
         
@@ -874,11 +867,14 @@
       },
       onScrollPage() {
         this.scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-        if (this.scrollTop < (window.innerHeight / 4)) {
-          $(".toc").css("top", window.innerHeight / 4);
-        } else {
-          $(".toc").css("top", "90px");
-        }
+        const tocElements = document.querySelectorAll('.toc');
+        tocElements.forEach(element => {
+          if (this.scrollTop < (window.innerHeight / 4)) {
+            element.style.top = (window.innerHeight / 4) + 'px';
+          } else {
+            element.style.top = '90px';
+          }
+        });
       },
       getTocbot() {
         let script = document.createElement('script');
@@ -898,12 +894,22 @@
           });
         }
         if (this.$common.mobile()) {
-          $(".toc").css("display", "none");
+          const tocElements = document.querySelectorAll('.toc');
+          tocElements.forEach(element => {
+            element.style.display = 'none';
+          });
         }
       },
       addId() {
-        let headings = $(".entry-content").find("h1, h2, h3, h4, h5, h6");
-        headings.attr('id', (i, id) => id || 'toc-' + i);
+        const entryContent = document.querySelector('.entry-content');
+        if (entryContent) {
+          const headings = entryContent.querySelectorAll('h1, h2, h3, h4, h5, h6');
+          headings.forEach((heading, index) => {
+            if (!heading.id) {
+              heading.id = 'toc-' + index;
+            }
+          });
+        }
       },
       getArticleMeta() {
         this.isLoadingMeta = true;
@@ -1079,10 +1085,13 @@
             // 确保样式正确应用的保险措施
             setTimeout(() => {
               // 检查是否有代码块没有正确处理
-              const unprocessedBlocks = $(".entry-content pre:not(.highlight-wrap)");
-              if (unprocessedBlocks.length > 0) {
-                console.log('Found unprocessed code blocks, retrying highlight...');
-                this.highlight();
+              const entryContent = document.querySelector('.entry-content');
+              if (entryContent) {
+                const unprocessedBlocks = entryContent.querySelectorAll('pre:not(.highlight-wrap)');
+                if (unprocessedBlocks.length > 0) {
+                  console.log('Found unprocessed code blocks, retrying highlight...');
+                  this.highlight();
+                }
               }
             }, 1000);
 
@@ -1196,18 +1205,22 @@
           contenteditable: "false"
         };
 
-        $(".entry-content pre").each(function (i, item) {
+        const entryContent = document.querySelector('.entry-content');
+        if (!entryContent) return;
+        
+        const preElements = entryContent.querySelectorAll('pre');
+        preElements.forEach((item, i) => {
           // 避免重复处理已经处理过的代码块
-          if ($(item).hasClass("highlight-wrap")) {
+          if (item.classList.contains('highlight-wrap')) {
             return;
           }
 
-          let preCode = $(item).children("code");
-          if (preCode.length === 0) {
+          const preCode = item.querySelector('code');
+          if (!preCode) {
             return; // 没有code子元素，跳过
           }
 
-          let classNameStr = preCode[0].className || "";
+          let classNameStr = preCode.className || "";
           let classNameArr = classNameStr.split(" ");
 
           let lang = "";
@@ -1221,58 +1234,69 @@
           try {
             let language = hljs.getLanguage(lang.toLowerCase());
             if (language === undefined) {
-              let autoLanguage = hljs.highlightAuto(preCode.text());
-              preCode.removeClass("language-" + lang);
+              let autoLanguage = hljs.highlightAuto(preCode.textContent);
+              preCode.classList.remove("language-" + lang);
               lang = autoLanguage.language;
               if (lang === undefined) {
                 lang = "java";
               }
-              preCode.addClass("language-" + lang);
+              preCode.classList.add("language-" + lang);
             } else {
               lang = language.name;
             }
 
-            $(item).addClass("highlight-wrap");
-            $(item).attr(attributes);
-            preCode.attr("data-rel", lang.toUpperCase()).addClass(lang.toLowerCase());
+            item.classList.add("highlight-wrap");
+            // 设置属性
+            Object.keys(attributes).forEach(key => {
+              item.setAttribute(key, attributes[key]);
+            });
+            preCode.setAttribute("data-rel", lang.toUpperCase());
+            preCode.classList.add(lang.toLowerCase());
             
             // 使用推荐的highlightElement方法替代废弃的highlightBlock
             if (typeof hljs.highlightElement === 'function') {
-              hljs.highlightElement(preCode[0]);
+              hljs.highlightElement(preCode);
             } else if (typeof hljs.highlightBlock === 'function') {
-              hljs.highlightBlock(preCode[0]);
+              hljs.highlightBlock(preCode);
             }
             
             // 添加行号，检查方法是否存在
             if (typeof hljs.lineNumbersBlock === 'function') {
-              hljs.lineNumbersBlock(preCode[0]);
+              hljs.lineNumbersBlock(preCode);
             } else {
               console.warn('hljs.lineNumbersBlock not available');
             }
           } catch (error) {
             console.error('Error highlighting code block:', error);
             // 即使高亮失败，也要保证基本样式
-            $(item).addClass("highlight-wrap");
-            $(item).attr(attributes);
-            preCode.attr("data-rel", lang.toUpperCase()).addClass(lang.toLowerCase());
+            item.classList.add("highlight-wrap");
+            Object.keys(attributes).forEach(key => {
+              item.setAttribute(key, attributes[key]);
+            });
+            preCode.setAttribute("data-rel", lang.toUpperCase());
+            preCode.classList.add(lang.toLowerCase());
           }
         });
 
         // 处理复制按钮，避免重复添加
-        $(".entry-content pre code").each(function (i, block) {
-          if ($(block).next('.copy-code').length > 0) {
+        const codeBlocks = entryContent.querySelectorAll('pre code');
+        codeBlocks.forEach((block, i) => {
+          // 检查是否已经有复制按钮
+          if (block.nextElementSibling && block.nextElementSibling.classList.contains('copy-code')) {
             return; // 已经有复制按钮了
           }
 
-          $(block).attr({
-            id: "hljs-" + i,
-          });
+          block.id = "hljs-" + i;
 
-          $(block).after(
-            '<a class="copy-code" href="javascript:" data-clipboard-target="#hljs-' +
-            i +
-            '"><i class="fa fa-clipboard" aria-hidden="true"></i></a>'
-          );
+          // 创建复制按钮
+          const copyButton = document.createElement('a');
+          copyButton.className = 'copy-code';
+          copyButton.href = 'javascript:';
+          copyButton.setAttribute('data-clipboard-target', '#hljs-' + i);
+          copyButton.innerHTML = '<i class="fa fa-clipboard" aria-hidden="true"></i>';
+          
+          // 插入复制按钮
+          block.parentNode.insertBefore(copyButton, block.nextSibling);
         });
         
         // 初始化剪贴板功能
@@ -1281,12 +1305,16 @@
         }
 
         // 处理表格样式
-        if ($(".entry-content").children("table").length > 0) {
-          $(".entry-content")
-            .children("table")
-            .not(".table-wrapper > table") // 避免重复包装
-            .wrap("<div class='table-wrapper'></div>");
-        }
+        const tables = entryContent.querySelectorAll('table');
+        tables.forEach(table => {
+          // 避免重复包装
+          if (!table.parentElement.classList.contains('table-wrapper')) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'table-wrapper';
+            table.parentNode.insertBefore(wrapper, table);
+            wrapper.appendChild(table);
+          }
+        });
       },
 
       // 设置语言切换按钮的事件委托
@@ -1357,7 +1385,7 @@
         }
       },
 
-      handleLanguageSwitch(lang) {
+      async handleLanguageSwitch(lang) {
         // 防止重复点击
         if (lang === this.currentLang) {
           return;
@@ -1369,14 +1397,13 @@
           this.$message.warning('该语言版本暂不可用');
           return;
         }
-        try {
-          this.switchLanguage(lang);
-        } catch (error) {
-          this.$message.error('语言切换失败，请重试');
-        }
+        
+        // 直接调用switchLanguage，不需要try-catch
+        // 因为switchLanguage内部和fetchTranslation都有完善的错误处理
+        await this.switchLanguage(lang);
       },
 
-      switchLanguage(lang) {
+      async switchLanguage(lang) {
         if (lang === this.currentLang) return;
 
         // 验证语言是否可用
@@ -1423,7 +1450,7 @@
             });
           } else {
             // 没有翻译内容，获取翻译
-            this.fetchTranslation();
+            await this.fetchTranslation();
           }
         } else if (lang === this.sourceLanguage) {
           // 切换到源语言，确保显示原始内容
@@ -1438,7 +1465,6 @@
             this.addId();
             this.getTocbot();
           });
-          this.clearPollTimer();
         }
       },
       async fetchTranslation() {

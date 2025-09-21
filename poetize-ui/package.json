@@ -21,7 +21,6 @@
     "element-ui": "^2.15.14",
     "highlight.js": "^11.11.1",
     "highlightjs-line-numbers.js": "^2.9.0",
-    "jquery": "^3.7.1",
     "markdown-it": "^14.0.0",
     "markdown-it-multimd-table": "^4.2.3",
     "mavon-editor": "^2.10.4",

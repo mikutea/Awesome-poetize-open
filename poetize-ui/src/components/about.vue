@@ -60,7 +60,10 @@
     created() {
       setTimeout(() => {
         this.sayShow = true;
-        this.say();
+        // 使用 $nextTick 确保 DOM 更新完成后再调用 say()
+        this.$nextTick(() => {
+          this.say();
+        });
       }, 2000);
     },
 
@@ -70,28 +73,47 @@
 
     methods: {
       answer(index, value) {
-        $(".say-select").remove();
+        // 移除所有 say-select 元素
+        const saySelectElements = document.querySelectorAll('.say-select');
+        saySelectElements.forEach(element => {
+          element.remove();
+        });
+
+        const container = document.getElementById("say-container");
+        if (!container) {
+          console.warn('say-container element not found');
+          return;
+        }
 
         let htmlStr = `<div class="say-right my-animation-slide-bottom"><span class="say-item-right">${value}</span></div>`;
         let frag = document.createRange().createContextualFragment(htmlStr);
-        document.getElementById("say-container").appendChild(frag);
+        container.appendChild(frag);
         if (index === 0) {
           setTimeout(() => {
             this.say();
           }, 500);
         } else {
-          let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-item-left">👋 👋 👋</span></div>`;
-          let frag = document.createRange().createContextualFragment(htmlStr);
-          document.getElementById("say-container").appendChild(frag);
+          const container = document.getElementById("say-container");
+          if (container) {
+            let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-item-left">👋 👋 👋</span></div>`;
+            let frag = document.createRange().createContextualFragment(htmlStr);
+            container.appendChild(frag);
+          }
         }
       },
       say() {
+        const container = document.getElementById("say-container");
+        if (!container) {
+          console.warn('say-container element not found in say() method');
+          return;
+        }
+
         if (!this.$common.isEmpty(this.sayContent[this.sayIndex]) && !this.$common.isEmpty(this.sayContent[this.sayIndex].talk)) {
           this.sayContent[this.sayIndex].talk.forEach((value, index, talk) => {
             setTimeout(() => {
               let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-item-left">${value}</span></div>`;
               let frag = document.createRange().createContextualFragment(htmlStr);
-              document.getElementById("say-container").appendChild(frag);
+              container.appendChild(frag);
               if (talk.length === index + 1) {
                 if (!this.$common.isEmpty(this.sayContent[this.sayIndex].reply)) {
                   setTimeout(() => {
@@ -100,7 +122,9 @@
                       let reply1 = this.sayContent[this.sayIndex].reply[1];
                       let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-select">${reply0}</span><span class="say-select">${reply1}</span></div>`;
                       let frag = document.createRange().createContextualFragment(htmlStr);
-                      document.getElementById("say-container").appendChild(frag);
+                      if (container) {
+                        container.appendChild(frag);
+                      }
                       document.getElementsByClassName("say-select")[0].onclick = () => {
                         this.answer(0, reply0);
                       }
@@ -111,7 +135,9 @@
                       let reply0 = this.sayContent[this.sayIndex].reply[0];
                       let htmlStr = `<div class="say-left my-animation-slide-bottom"><span class="say-select">${reply0}</span></div>`;
                       let frag = document.createRange().createContextualFragment(htmlStr);
-                      document.getElementById("say-container").appendChild(frag);
+                      if (container) {
+                        container.appendChild(frag);
+                      }
                       document.getElementsByClassName("say-select")[0].onclick = () => {
                         this.answer(0, reply0);
                       }

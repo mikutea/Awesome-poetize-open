@@ -1605,7 +1605,7 @@ export default {
     getSeoConfig() {
       console.log('开始获取SEO配置...');
       try {
-        this.$http.get(this.$constant.pythonBaseURL + '/seo/getSeoConfig', {}, true)
+        this.$http.get(this.$constant.baseURL + '/admin/seo/getConfig', {}, true)
           .then((res) => {
             console.log('获取SEO配置响应数据:', res);
             
@@ -1689,7 +1689,7 @@ export default {
     updateSeoData() {
       this.updateLoading = true;
       console.log('正在更新SEO数据...');
-      this.$http.post(this.$constant.pythonBaseURL + '/seo/updateSeoData', {}, true)
+      this.$http.post(this.$constant.baseURL + '/admin/seo/updateSeoData', {}, true)
         .then((res) => {
           this.updateLoading = false;
           console.log('更新SEO数据响应:', res);
@@ -1710,7 +1710,7 @@ export default {
     analyzeSite() {
       this.analyzeLoading = true;
       console.log('正在进行SEO分析...');
-      this.$http.get(this.$constant.pythonBaseURL + '/seo/analyzeSite', {}, true)
+      this.$http.get(this.$constant.baseURL + '/admin/seo/analyzeSite', {}, true)
         .then((res) => {
           this.analyzeLoading = false;
           console.log('SEO分析响应:', res);
@@ -1734,7 +1734,7 @@ export default {
       console.log('准备进行AI SEO分析...');
       
       // 先检查AI API是否已配置
-      this.$http.get(this.$constant.pythonBaseURL + '/seo/checkAiApiConfig', {}, true)
+      this.$http.get(this.$constant.baseURL + '/admin/seo/checkAiApiConfig', {}, true)
         .then((res) => {
           if (res && res.code === 200 && res.data && res.data.configured) {
             // API已配置，询问用户是否使用上次的配置
@@ -1768,7 +1768,7 @@ export default {
     
     executeAiAnalysis() {
       console.log('正在进行AI SEO分析...');
-      this.$http.get(this.$constant.pythonBaseURL + '/seo/aiAnalyzeSite', {}, true)
+      this.$http.get(this.$constant.baseURL + '/admin/seo/aiAnalyzeSite', {}, true)
         .then((res) => {
           this.aiAnalyzeLoading = false;
           console.log('AI SEO分析响应:', res);
@@ -1875,7 +1875,7 @@ export default {
         this.updateCustomHeaders();
       }
       
-      this.$http.post(this.$constant.pythonBaseURL + '/seo/saveAiApiConfig', configToSave, true)
+      this.$http.post(this.$constant.baseURL + '/admin/seo/saveAiApiConfig', configToSave, true)
         .then((res) => {
           this.apiConfigLoading = false;
           console.log('保存AI API配置响应:', res);
@@ -2042,7 +2042,7 @@ export default {
 
         // 发送请求 - 使用专门的文件上传方法
         const response = await this.$http.upload(
-          this.$constant.pythonBaseURL + '/seo/batchProcessIcons', 
+          this.$constant.baseURL + '/admin/seo/batchProcessIcons', 
           formData, 
           true  // isAdmin = true
         );

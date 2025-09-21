@@ -177,12 +177,23 @@
       },
 
       collapse() {
+        const sidebarElements = document.querySelectorAll('.sidebar');
+        const contentBoxElements = document.querySelectorAll('.content-box');
+        
         if (this.isCollapse) {
-          $(".sidebar").css("width", "45px");
-          $(".content-box").css("left", "45px");
+          sidebarElements.forEach(element => {
+            element.style.width = '45px';
+          });
+          contentBoxElements.forEach(element => {
+            element.style.left = '45px';
+          });
         } else {
-          $(".sidebar").css("width", "130px");
-          $(".content-box").css("left", "130px");
+          sidebarElements.forEach(element => {
+            element.style.width = '130px';
+          });
+          contentBoxElements.forEach(element => {
+            element.style.left = '130px';
+          });
         }
         this.isCollapse = !this.isCollapse;
       },

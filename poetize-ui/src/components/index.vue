@@ -333,12 +333,30 @@
         await this.getArticles();
         this.$nextTick(() => {
           this.indexType = 2;
-          $(".announcement").css("max-width", "780px");
-          document.querySelector('.recent-posts').scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-            inline: "nearest"
-          });
+          
+          // 安全地设置公告栏样式
+          try {
+            const announcementEl = document.querySelector('.announcement');
+            if (announcementEl) {
+              announcementEl.style.maxWidth = '780px';
+            }
+          } catch (error) {
+            console.warn('设置公告栏样式失败:', error);
+          }
+          
+          // 安全地滚动到内容区域
+          try {
+            const recentPostsEl = document.querySelector('.recent-posts');
+            if (recentPostsEl) {
+              recentPostsEl.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+                inline: "nearest"
+              });
+            }
+          } catch (error) {
+            console.warn('滚动到内容区域失败:', error);
+          }
         });
       },
       async selectArticle(articleSearch) {
@@ -354,12 +372,30 @@
         await this.getArticles();
         this.$nextTick(() => {
           this.indexType = 2;
-          $(".announcement").css("max-width", "780px");
-          document.querySelector('.recent-posts').scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-            inline: "nearest"
-          });
+          
+          // 安全地设置公告栏样式
+          try {
+            const announcementEl = document.querySelector('.announcement');
+            if (announcementEl) {
+              announcementEl.style.maxWidth = '780px';
+            }
+          } catch (error) {
+            console.warn('设置公告栏样式失败:', error);
+          }
+          
+          // 安全地滚动到内容区域
+          try {
+            const recentPostsEl = document.querySelector('.recent-posts');
+            if (recentPostsEl) {
+              recentPostsEl.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+                inline: "nearest"
+              });
+            }
+          } catch (error) {
+            console.warn('滚动到内容区域失败:', error);
+          }
         });
       },
       pageArticles() {

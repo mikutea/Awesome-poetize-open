@@ -575,6 +575,23 @@ public class TranslationServiceImpl implements TranslationService {
         }
     }
 
+    @Override
+    public boolean deleteSpecificTranslation(Integer articleId, String language) {
+        try {
+            LambdaQueryWrapper<ArticleTranslation> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.eq(ArticleTranslation::getArticleId, articleId)
+                       .eq(ArticleTranslation::getLanguage, language);
+            
+            int rows = articleTranslationMapper.delete(queryWrapper);
+            log.info("删除文章特定语言翻译，文章ID: {}, 语言: {}, 删除行数: {}", articleId, language, rows);
+            
+            return rows > 0;
+        } catch (Exception e) {
+            log.error("删除文章特定语言翻译失败，文章ID: {}, 语言: {}", articleId, language, e);
+            return false;
+        }
+    }
+
     /**
      * 获取翻译语言配置
      * @return Map包含source和target语言配置

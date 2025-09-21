@@ -124,11 +124,16 @@
 
     methods: {
       clickLetter() {
-        if (document.body.clientWidth < 700) {
-          $(".form-wrap").css({"height": "1000px", "top": "-200px"});
-        } else {
-          $(".form-wrap").css({"height": "1150px", "top": "-200px"});
-        }
+        const formWrapElements = document.querySelectorAll('.form-wrap');
+        formWrapElements.forEach(element => {
+          if (document.body.clientWidth < 700) {
+            element.style.height = '1000px';
+            element.style.top = '-200px';
+          } else {
+            element.style.height = '1150px';
+            element.style.top = '-200px';
+          }
+        });
       },
       submitFriend() {
         if (this.$common.isEmpty(this.$store.state.currentUser)) {
@@ -173,7 +178,11 @@
 
         this.$http.post(this.$constant.baseURL + "/webInfo/saveFriend", this.friend)
           .then((res) => {
-            $(".form-wrap").css({"height": "447px", "top": "0"});
+            const formWrapElements = document.querySelectorAll('.form-wrap');
+            formWrapElements.forEach(element => {
+              element.style.height = '447px';
+              element.style.top = '0';
+            });
             this.$message({
               type: 'success',
               message: '提交成功，待管理员审核！'
