@@ -1152,20 +1152,8 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         // 图标已在上面处理
         continue;
       } else if (key.startsWith('hreflang_')) {
-        // hreflang 链接需要正确解析和创建，插入到title之前
-        const parts = key.split('_');
-        if (parts.length >= 2) {
-          const lang = parts[1];
-          // 使用更直接的方式创建链接，避免序列化问题
-          const linkHTML = `<link rel="alternate" hreflang="${lang}" href="${value}" />`;
-          
-          // 插入到title之前
-          if (titleElement) {
-            titleElement.insertAdjacentHTML('beforebegin', linkHTML);
-          } else {
-            document.head.insertAdjacentHTML('beforeend', linkHTML);
-          }
-        }
+        // hreflang 链接跳过DOM处理，稍后在序列化后直接插入HTML字符串
+        continue;
       } else if (key === 'canonical') {
         const canonicalLink = document.createElement('link');
         canonicalLink.rel = 'canonical';
@@ -1389,7 +1377,24 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
-
+  
+  // 处理 hreflang 链接（在序列化后直接操作字符串，避免转义问题）
+  if (meta && typeof meta === 'object') {
+    Object.keys(meta).forEach(key => {
+      if (key.startsWith('hreflang_')) {
+        const parts = key.split('_');
+        if (parts.length >= 2) {
+          const lang = parts[1];
+          const href = meta[key];
+          const linkHTML = `<link rel="alternate" hreflang="${lang}" href="${href}" />`;
+          const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
+          if (titleMatch) {
+            html = html.replace(titleMatch[0], `${linkHTML}\n  ${titleMatch[0]}`);
+          }
+        }
+      }
+    });
+  }
   
   // 重排序webpack生成的CSS链接到title标签之前（符合HTML规范）
   const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
