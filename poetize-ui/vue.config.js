@@ -24,8 +24,8 @@ module.exports = {
       .plugin('html')
       .tap(args => {
         args[0].title = siteTitle
-        // 使用自动注入到head
-        args[0].inject = 'head'
+        // 使用默认的自动注入
+        args[0].inject = true
         // 启用 HTML 压缩
         if (process.env.NODE_ENV === 'production') {
           args[0].minify = {
