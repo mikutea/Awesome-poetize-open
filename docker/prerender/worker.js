@@ -1407,11 +1407,11 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
     });
     
     // 在title标签前插入webpack CSS链接
-    const cssLinks = webpackCssMatches.join('');
+    const cssLinks = webpackCssMatches.join('\n  ');
     html = html.replace(titleTag, `${cssLinks}\n  ${titleTag}`);
     
     logger.debug('已重排序CSS链接到title标签之前', { 
-      cssLinksCount: cssLinkMatches.length 
+      cssLinksCount: webpackCssMatches.length 
     });
   }
   // 优化HTML输出格式，确保meta标签等有换行
