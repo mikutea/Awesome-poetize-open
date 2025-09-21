@@ -1391,29 +1391,6 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
-
-  
-  // 重排序webpack生成的CSS链接到title标签之前（符合HTML规范）
-  const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
-  // 只匹配webpack生成的CSS文件（通常包含hash或chunk名称，且在/static/目录下）
-  const webpackCssMatches = html.match(/<link[^>]*href=["'][^"']*\/static\/[^"']*\.css[^"']*["'][^>]*rel=["']stylesheet["'][^>]*>/gi) || [];
-  
-  if (titleMatch && webpackCssMatches.length > 0) {
-    const titleTag = titleMatch[0];
-    
-    // 移除webpack生成的CSS链接
-    webpackCssMatches.forEach(link => {
-      html = html.replace(link, '');
-    });
-    
-    // 在title标签前插入webpack CSS链接
-    const cssLinks = webpackCssMatches.join('\n  ');
-    html = html.replace(titleTag, `${cssLinks}\n  ${titleTag}`);
-    
-    logger.debug('已重排序CSS链接到title标签之前', { 
-      cssLinksCount: webpackCssMatches.length 
-    });
-  }
   // 优化HTML输出格式，确保meta标签等有换行
   html = html.replace(/<meta/g, '\n  <meta');
   html = html.replace(/<link/g, '\n  <link');
