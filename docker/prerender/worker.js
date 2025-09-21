@@ -1152,11 +1152,8 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         // 图标已在上面处理
         continue;
       } else if (key.startsWith('hreflang_')) {
-        // 直接插入 hreflang 链接（接口返回的已经是完整HTML）
-        const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
-        if (titleMatch) {
-          html = html.replace(titleMatch[0], `${value}\n  ${titleMatch[0]}`);
-        }
+        // hreflang 链接跳过DOM处理，稍后在序列化后直接插入HTML字符串
+        continue;
       } else if (key === 'canonical') {
         const canonicalLink = document.createElement('link');
         canonicalLink.rel = 'canonical';
@@ -1380,6 +1377,24 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
+  
+  // 处理 hreflang 链接（在序列化后直接操作字符串，避免转义问题）
+  if (meta && typeof meta === 'object') {
+    const hreflangLinks = [];
+    Object.keys(meta).forEach(key => {
+      if (key.startsWith('hreflang_')) {
+        hreflangLinks.push(meta[key]); // 直接使用接口返回的完整HTML标签
+      }
+    });
+    
+    if (hreflangLinks.length > 0) {
+      const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
+      if (titleMatch) {
+        const allHreflangHTML = hreflangLinks.join('\n  ');
+        html = html.replace(titleMatch[0], `${allHreflangHTML}\n  ${titleMatch[0]}`);
+       }
+    }
+  }
   
   // 重排序webpack生成的CSS链接到title标签之前（符合HTML规范）
   const titleMatch = html.match(/<title[^>]*>.*?<\/title>/i);
