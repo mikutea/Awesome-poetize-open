@@ -79,20 +79,45 @@ public class WebInfoController {
     private RedisTemplate<String, Object> redisTemplate;
 
     /**
-     * 更新网站信息
+     * 更新完整网站信息（用于基本信息保存）
      */
     @LoginCheck(0)
     @PostMapping("/updateWebInfo")
-    public PoetryResult<WebInfo> updateWebInfo(@RequestBody WebInfo webInfo) {
+    public PoetryResult<WebInfo> updateWebInfo(@RequestBody Map<String, Object> params) {
         try {
-            // 记录更新前的详细信息
-            log.info("开始更新网站信息 - ID: {}, webName: {}, webTitle: {}",
-                    webInfo.getId(), webInfo.getWebName(), webInfo.getWebTitle());
-            log.debug("更新数据详情: {}", webInfo);
+            // 从Map中提取参数
+            Integer id = (Integer) params.get("id");
+            String webName = (String) params.get("webName");
+            String webTitle = (String) params.get("webTitle");
+            String footer = (String) params.get("footer");
+            String backgroundImage = (String) params.get("backgroundImage");
+            String avatar = (String) params.get("avatar");
+            String waifuJson = (String) params.get("waifuJson");
+            Boolean status = (Boolean) params.get("status");
+            Boolean enableWaifu = (Boolean) params.get("enableWaifu");
+            Integer homePagePullUpHeight = (Integer) params.get("homePagePullUpHeight");
+            Boolean apiEnabled = (Boolean) params.get("apiEnabled");
+            String apiKey = (String) params.get("apiKey");
+            String navConfig = (String) params.get("navConfig");
+            String footerBackgroundImage = (String) params.get("footerBackgroundImage");
+            String footerBackgroundConfig = (String) params.get("footerBackgroundConfig");
+            String email = (String) params.get("email");
+            Boolean minimalFooter = (Boolean) params.get("minimalFooter");
+            Boolean enableAutoNight = (Boolean) params.get("enableAutoNight");
+            String autoNightStart = (String) params.get("autoNightStart");
+            String autoNightEnd = (String) params.get("autoNightEnd");
+            Boolean enableGrayMode = (Boolean) params.get("enableGrayMode");
 
-            // 使用自定义更新方法确保所有字段都能正确更新
-            int updateResult = webInfoMapper.updateWebInfoById(webInfo);
-            log.info("网站信息数据库更新结果: {} 行受影响, ID: {}", updateResult, webInfo.getId());
+            // 记录更新前的详细信息
+            log.info("开始更新网站基本信息 - ID: {}, webName: {}, webTitle: {}", id, webName, webTitle);
+
+            // 调用专门的基本信息更新方法
+            int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, footer, backgroundImage,
+                    avatar, waifuJson, status, enableWaifu, homePagePullUpHeight, apiEnabled, apiKey,
+                    navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
+                    enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode);
+            
+            log.info("网站基本信息数据库更新结果: {} 行受影响, ID: {}", updateResult, id);
 
             if (updateResult == 0) {
                 log.error("数据库更新失败：没有行受影响，可能ID不存在或数据未变化");
@@ -111,21 +136,9 @@ public class WebInfoController {
                 log.info("数据库查询结果 - webName: {}, webTitle: {}",
                         latestWebInfo.getWebName(), latestWebInfo.getWebTitle());
 
-                // 检查关键字段是否更新成功
-                if (webInfo.getWebName() != null && !webInfo.getWebName().equals(latestWebInfo.getWebName())) {
-                    log.warn("webName更新失败 - 期望: {}, 实际: {}", webInfo.getWebName(), latestWebInfo.getWebName());
-                } else if (webInfo.getWebTitle() != null && !webInfo.getWebTitle().equals(latestWebInfo.getWebTitle())) {
-                    log.warn("webTitle更新失败 - 期望: {}, 实际: {}", webInfo.getWebTitle(), latestWebInfo.getWebTitle());
-                } else {
-                    log.info("数据库更新验证成功");
-                }
-
-                // 原子性缓存更新：先设置新缓存，再删除旧缓存
-                // 这样可以避免缓存空窗期
-                // cacheService.evictWebInfo(); // 不再需要删除缓存，直接覆盖即可
+                // 更新缓存
                 cacheService.cacheWebInfo(latestWebInfo);
-
-                log.info("网站信息缓存更新成功(永久缓存) - webName: {}, webTitle: {}",
+                log.info("网站信息缓存更新成功 - webName: {}, webTitle: {}",
                         latestWebInfo.getWebName(), latestWebInfo.getWebTitle());
 
                 // 网站信息更新时，重新渲染首页和百宝箱页面
@@ -147,6 +160,138 @@ public class WebInfoController {
         }
     }
 
+    /**
+     * 更新公告
+     */
+    @LoginCheck(0)
+    @PostMapping("/updateNotices")
+    public PoetryResult<String> updateNotices(@RequestBody Map<String, Object> request) {
+        try {
+            Integer id = (Integer) request.get("id");
+            String notices = (String) request.get("notices");
+            
+            if (id == null) {
+                return PoetryResult.fail("网站信息ID不能为空");
+            }
+            
+            int updateResult = webInfoMapper.updateNoticesOnly(id, notices);
+            if (updateResult > 0) {
+                // 更新缓存
+                refreshWebInfoCache();
+                log.info("公告更新成功，ID: {}", id);
+                return PoetryResult.success("公告更新成功");
+            } else {
+                return PoetryResult.fail("公告更新失败");
+            }
+        } catch (Exception e) {
+            log.error("更新公告失败", e);
+            return PoetryResult.fail("更新公告失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新随机名称
+     */
+    @LoginCheck(0)
+    @PostMapping("/updateRandomName")
+    public PoetryResult<String> updateRandomName(@RequestBody Map<String, Object> request) {
+        try {
+            Integer id = (Integer) request.get("id");
+            String randomName = (String) request.get("randomName");
+            
+            if (id == null) {
+                return PoetryResult.fail("网站信息ID不能为空");
+            }
+            
+            int updateResult = webInfoMapper.updateRandomNameOnly(id, randomName);
+            if (updateResult > 0) {
+                // 更新缓存
+                refreshWebInfoCache();
+                log.info("随机名称更新成功，ID: {}", id);
+                return PoetryResult.success("随机名称更新成功");
+            } else {
+                return PoetryResult.fail("随机名称更新失败");
+            }
+        } catch (Exception e) {
+            log.error("更新随机名称失败", e);
+            return PoetryResult.fail("更新随机名称失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新随机头像
+     */
+    @LoginCheck(0)
+    @PostMapping("/updateRandomAvatar")
+    public PoetryResult<String> updateRandomAvatar(@RequestBody Map<String, Object> request) {
+        try {
+            Integer id = (Integer) request.get("id");
+            String randomAvatar = (String) request.get("randomAvatar");
+            
+            if (id == null) {
+                return PoetryResult.fail("网站信息ID不能为空");
+            }
+            
+            int updateResult = webInfoMapper.updateRandomAvatarOnly(id, randomAvatar);
+            if (updateResult > 0) {
+                // 更新缓存
+                refreshWebInfoCache();
+                log.info("随机头像更新成功，ID: {}", id);
+                return PoetryResult.success("随机头像更新成功");
+            } else {
+                return PoetryResult.fail("随机头像更新失败");
+            }
+        } catch (Exception e) {
+            log.error("更新随机头像失败", e);
+            return PoetryResult.fail("更新随机头像失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 更新随机封面
+     */
+    @LoginCheck(0)
+    @PostMapping("/updateRandomCover")
+    public PoetryResult<String> updateRandomCover(@RequestBody Map<String, Object> request) {
+        try {
+            Integer id = (Integer) request.get("id");
+            String randomCover = (String) request.get("randomCover");
+            
+            if (id == null) {
+                return PoetryResult.fail("网站信息ID不能为空");
+            }
+            
+            int updateResult = webInfoMapper.updateRandomCoverOnly(id, randomCover);
+            if (updateResult > 0) {
+                // 更新缓存
+                refreshWebInfoCache();
+                log.info("随机封面更新成功，ID: {}", id);
+                return PoetryResult.success("随机封面更新成功");
+            } else {
+                return PoetryResult.fail("随机封面更新失败");
+            }
+        } catch (Exception e) {
+            log.error("更新随机封面失败", e);
+            return PoetryResult.fail("更新随机封面失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 刷新网站信息缓存的通用方法
+     */
+    private void refreshWebInfoCache() {
+        try {
+            LambdaQueryChainWrapper<WebInfo> wrapper = new LambdaQueryChainWrapper<>(webInfoService.getBaseMapper());
+            List<WebInfo> list = wrapper.list();
+            if (!CollectionUtils.isEmpty(list)) {
+                WebInfo latestWebInfo = list.get(0);
+                cacheService.cacheWebInfo(latestWebInfo);
+                log.debug("网站信息缓存刷新成功");
+            }
+        } catch (Exception e) {
+            log.error("刷新网站信息缓存失败", e);
+        }
+    }
 
     /**
      * 获取网站信息

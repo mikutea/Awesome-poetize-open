@@ -39,4 +39,95 @@
         auto_night_start, auto_night_end, enable_gray_mode
     </sql>
 
+    <!-- 更新基本网站信息（不包括公告、随机名称等专门管理的字段） -->
+    <update id="updateWebInfoById">
+        UPDATE web_info
+        <set>
+            <!-- 必填字段：只有非空时才更新 -->
+            <if test="webName != null and webName != ''">
+                web_name = #{webName},
+            </if>
+            <if test="webTitle != null and webTitle != ''">
+                web_title = #{webTitle},
+            </if>
+            
+            <!-- 基本信息字段：允许空值覆盖（只要不是null就更新） -->
+            <if test="footer != null">
+                footer = #{footer},
+            </if>
+            <if test="backgroundImage != null">
+                background_image = #{backgroundImage},
+            </if>
+            <if test="avatar != null">
+                avatar = #{avatar},
+            </if>
+            <if test="waifuJson != null">
+                waifu_json = #{waifuJson},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+            <if test="enableWaifu != null">
+                enable_waifu = #{enableWaifu},
+            </if>
+            <if test="homePagePullUpHeight != null">
+                home_page_pull_up_height = #{homePagePullUpHeight},
+            </if>
+            <if test="apiEnabled != null">
+                api_enabled = #{apiEnabled},
+            </if>
+            <if test="apiKey != null">
+                api_key = #{apiKey},
+            </if>
+            <if test="navConfig != null">
+                nav_config = #{navConfig},
+            </if>
+            <if test="footerBackgroundImage != null">
+                footer_background_image = #{footerBackgroundImage},
+            </if>
+            <if test="footerBackgroundConfig != null">
+                footer_background_config = #{footerBackgroundConfig},
+            </if>
+            <if test="email != null">
+                email = #{email},
+            </if>
+            <if test="minimalFooter != null">
+                minimal_footer = #{minimalFooter},
+            </if>
+            <if test="enableAutoNight != null">
+                enable_auto_night = #{enableAutoNight},
+            </if>
+            <if test="autoNightStart != null">
+                auto_night_start = #{autoNightStart},
+            </if>
+            <if test="autoNightEnd != null">
+                auto_night_end = #{autoNightEnd},
+            </if>
+            <if test="enableGrayMode != null">
+                enable_gray_mode = #{enableGrayMode},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 只更新公告 -->
+    <update id="updateNoticesOnly">
+        UPDATE web_info SET notices = #{notices} WHERE id = #{id}
+    </update>
+
+    <!-- 只更新随机名称 -->
+    <update id="updateRandomNameOnly">
+        UPDATE web_info SET random_name = #{randomName} WHERE id = #{id}
+    </update>
+
+    <!-- 只更新随机头像 -->
+    <update id="updateRandomAvatarOnly">
+        UPDATE web_info SET random_avatar = #{randomAvatar} WHERE id = #{id}
+    </update>
+
+    <!-- 只更新随机封面 -->
+    <update id="updateRandomCoverOnly">
+        UPDATE web_info SET random_cover = #{randomCover} WHERE id = #{id}
+    </update>
+
 </mapper>

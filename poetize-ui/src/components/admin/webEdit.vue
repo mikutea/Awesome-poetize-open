@@ -1891,14 +1891,32 @@ X-API-KEY: {{apiConfig.apiKey}}
               enabled: true
             }));
             
-            // 更新WebInfo对象中的navConfig
-            const webInfoToUpdate = {...this.webInfo};
-            webInfoToUpdate.navConfig = JSON.stringify(navItems);
+            // 只发送基本信息字段，不包括公告、随机名称等专门管理的字段
+            const basicInfoToUpdate = {
+              id: this.webInfo.id,
+              webName: this.webInfo.webName,
+              webTitle: this.webInfo.webTitle,
+              footer: this.webInfo.footer,
+              backgroundImage: this.webInfo.backgroundImage,
+              avatar: this.webInfo.avatar,
+              waifuJson: this.webInfo.waifuJson,
+              status: this.webInfo.status,
+              enableWaifu: this.webInfo.enableWaifu,
+              homePagePullUpHeight: this.webInfo.homePagePullUpHeight,
+              apiEnabled: this.webInfo.apiEnabled,
+              apiKey: this.webInfo.apiKey,
+              navConfig: JSON.stringify(navItems),
+              footerBackgroundImage: this.webInfo.footerBackgroundImage,
+              footerBackgroundConfig: JSON.stringify(this.footerBgConfig),
+              email: this.webInfo.email,
+              minimalFooter: this.webInfo.minimalFooter,
+              enableAutoNight: this.webInfo.enableAutoNight,
+              autoNightStart: this.webInfo.autoNightStart,
+              autoNightEnd: this.webInfo.autoNightEnd,
+              enableGrayMode: this.webInfo.enableGrayMode
+            };
             
-            // 更新页脚背景配置
-            webInfoToUpdate.footerBackgroundConfig = JSON.stringify(this.footerBgConfig);
-            
-            this.updateWebInfo(webInfoToUpdate);
+            this.updateWebInfo(basicInfoToUpdate);
           } else {
             this.$message({
               message: "请完善必填项！",
@@ -1942,13 +1960,36 @@ X-API-KEY: {{apiConfig.apiKey}}
         // 过滤空值
         this.notices = this.notices.filter(notice => notice && notice.trim());
         
+        // 使用专门的公告更新接口
         let param = {
           id: this.webInfo.id,
           notices: JSON.stringify(this.notices)
         }
         
         console.log('保存公告参数:', param);
-        this.updateWebInfo(param);
+        
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateNotices", param, true)
+          .then((res) => {
+            if (res.code === 200) {
+              this.getWebInfo();
+              this.$message({
+                message: "公告保存成功！",
+                type: "success"
+              });
+            } else {
+              this.$message({
+                message: "保存失败: " + res.message,
+                type: "error"
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('保存公告失败:', error);
+            this.$message({
+              message: "保存失败: " + (error.response?.data?.message || error.message),
+              type: "error"
+            });
+          });
       },
       handleInputRandomNameConfirm() {
         if (!Array.isArray(this.randomName)) {
@@ -1980,13 +2021,36 @@ X-API-KEY: {{apiConfig.apiKey}}
         // 过滤空值
         this.randomName = this.randomName.filter(name => name && name.trim());
         
+        // 使用专门的随机名称更新接口
         let param = {
           id: this.webInfo.id,
           randomName: JSON.stringify(this.randomName)
         }
         
         console.log('保存随机名称参数:', param);
-        this.updateWebInfo(param);
+        
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateRandomName", param, true)
+          .then((res) => {
+            if (res.code === 200) {
+              this.getWebInfo();
+              this.$message({
+                message: "随机名称保存成功！",
+                type: "success"
+              });
+            } else {
+              this.$message({
+                message: "保存失败: " + res.message,
+                type: "error"
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('保存随机名称失败:', error);
+            this.$message({
+              message: "保存失败: " + (error.response?.data?.message || error.message),
+              type: "error"
+            });
+          });
       },
       handleInputRandomAvatarConfirm() {
         if (!Array.isArray(this.randomAvatar)) {
@@ -2009,7 +2073,29 @@ X-API-KEY: {{apiConfig.apiKey}}
           id: this.webInfo.id,
           randomAvatar: JSON.stringify(this.randomAvatar)
         }
-        this.updateWebInfo(param);
+        
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateRandomAvatar", param, true)
+          .then((res) => {
+            if (res.code === 200) {
+              this.getWebInfo();
+              this.$message({
+                message: "随机头像保存成功！",
+                type: "success"
+              });
+            } else {
+              this.$message({
+                message: "保存失败: " + res.message,
+                type: "error"
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('保存随机头像失败:', error);
+            this.$message({
+              message: "保存失败: " + (error.response?.data?.message || error.message),
+              type: "error"
+            });
+          });
       },
       handleInputRandomCoverConfirm() {
         if (this.inputRandomCoverValue) {
@@ -2029,7 +2115,29 @@ X-API-KEY: {{apiConfig.apiKey}}
           id: this.webInfo.id,
           randomCover: JSON.stringify(this.randomCover)
         }
-        this.updateWebInfo(param);
+        
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateRandomCover", param, true)
+          .then((res) => {
+            if (res.code === 200) {
+              this.getWebInfo();
+              this.$message({
+                message: "随机封面保存成功！",
+                type: "success"
+              });
+            } else {
+              this.$message({
+                message: "保存失败: " + res.message,
+                type: "error"
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('保存随机封面失败:', error);
+            this.$message({
+              message: "保存失败: " + (error.response?.data?.message || error.message),
+              type: "error"
+            });
+          });
       },
       updateWebInfo(value) {
         this.$confirm('确认保存？', '提示', {

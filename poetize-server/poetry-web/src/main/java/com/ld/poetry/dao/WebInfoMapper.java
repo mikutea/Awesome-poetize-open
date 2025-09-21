@@ -18,34 +18,48 @@ import org.apache.ibatis.annotations.Update;
 public interface WebInfoMapper extends BaseMapper<WebInfo> {
 
     /**
-     * 自定义更新网站信息方法，确保所有字段都能正确更新
+     * 更新完整网站信息（基本信息保存）
      */
-    @Update("UPDATE web_info SET " +
-            "web_name = #{webInfo.webName}, " +
-            "web_title = #{webInfo.webTitle}, " +
-            "notices = #{webInfo.notices}, " +
-            "footer = #{webInfo.footer}, " +
-            "background_image = #{webInfo.backgroundImage}, " +
-            "avatar = #{webInfo.avatar}, " +
-            "random_avatar = #{webInfo.randomAvatar}, " +
-            "random_name = #{webInfo.randomName}, " +
-            "random_cover = #{webInfo.randomCover}, " +
-            "waifu_json = #{webInfo.waifuJson}, " +
-            "status = #{webInfo.status}, " +
-            "enable_waifu = #{webInfo.enableWaifu}, " +
-            "home_page_pull_up_height = #{webInfo.homePagePullUpHeight}, " +
-            "api_enabled = #{webInfo.apiEnabled}, " +
-            "api_key = #{webInfo.apiKey}, " +
-            "nav_config = #{webInfo.navConfig}, " +
-            "footer_background_image = #{webInfo.footerBackgroundImage}, " +
-            "footer_background_config = #{webInfo.footerBackgroundConfig}, " +
-            "email = #{webInfo.email}, " +
-            "minimal_footer = #{webInfo.minimalFooter}, " +
-            "enable_auto_night = #{webInfo.enableAutoNight}, " +
-            "auto_night_start = #{webInfo.autoNightStart}, " +
-            "auto_night_end = #{webInfo.autoNightEnd}, " +
-            "enable_gray_mode = #{webInfo.enableGrayMode} " +
-            "WHERE id = #{webInfo.id}")
-    int updateWebInfoById(@Param("webInfo") WebInfo webInfo);
+    int updateWebInfoById(@Param("id") Integer id,
+                         @Param("webName") String webName,
+                         @Param("webTitle") String webTitle,
+                         @Param("footer") String footer,
+                         @Param("backgroundImage") String backgroundImage,
+                         @Param("avatar") String avatar,
+                         @Param("waifuJson") String waifuJson,
+                         @Param("status") Boolean status,
+                         @Param("enableWaifu") Boolean enableWaifu,
+                         @Param("homePagePullUpHeight") Integer homePagePullUpHeight,
+                         @Param("apiEnabled") Boolean apiEnabled,
+                         @Param("apiKey") String apiKey,
+                         @Param("navConfig") String navConfig,
+                         @Param("footerBackgroundImage") String footerBackgroundImage,
+                         @Param("footerBackgroundConfig") String footerBackgroundConfig,
+                         @Param("email") String email,
+                         @Param("minimalFooter") Boolean minimalFooter,
+                         @Param("enableAutoNight") Boolean enableAutoNight,
+                         @Param("autoNightStart") String autoNightStart,
+                         @Param("autoNightEnd") String autoNightEnd,
+                         @Param("enableGrayMode") Boolean enableGrayMode);
+
+    /**
+     * 只更新公告
+     */
+    int updateNoticesOnly(@Param("id") Integer id, @Param("notices") String notices);
+
+    /**
+     * 只更新随机名称
+     */
+    int updateRandomNameOnly(@Param("id") Integer id, @Param("randomName") String randomName);
+
+    /**
+     * 只更新随机头像
+     */
+    int updateRandomAvatarOnly(@Param("id") Integer id, @Param("randomAvatar") String randomAvatar);
+
+    /**
+     * 只更新随机封面
+     */
+    int updateRandomCoverOnly(@Param("id") Integer id, @Param("randomCover") String randomCover);
 
 }
