@@ -179,4 +179,10 @@ public class WebInfo implements Serializable {
      */
     @TableField(value = "enable_gray_mode", exist = true)
     private Boolean enableGrayMode;
+
+    /**
+     * 动态标题开关 [0:关闭,1:开启]
+     */
+    @TableField(value = "enable_dynamic_title", exist = true)
+    private Boolean enableDynamicTitle;
 }

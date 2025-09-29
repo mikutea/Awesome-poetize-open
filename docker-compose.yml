@@ -47,7 +47,10 @@ services:
       context: .
       dockerfile: docker/poetize-ui/Dockerfile
       args:
+        # AES加密密钥
         - VUE_APP_POETIZE_AES_KEY=${POETIZE_AES_KEY:-sarasarasarasara}
+        # 生产模式(反调试、混淆、日志移除)
+        - VUE_APP_PRODUCTION_MODE=true
     container_name: poetize-ui
     environment:
       - TZ=Asia/Shanghai
@@ -189,6 +192,8 @@ services:
       - REDIS_PASSWORD=poetize_redis_2025
       - REDIS_DB=0
       - REDIS_MAX_CONNECTIONS=20
+      # OAuth代理配置
+      - OAUTH_PROXY_DOMAIN=${OAUTH_PROXY_DOMAIN:-}
     volumes:
       - ./py/data:/app/data
       - /etc/localtime:/etc/localtime:ro
@@ -278,6 +283,8 @@ services:
       - SPRING_REDIS_LETTUCE_POOL_MIN_IDLE=5
       # Token安全配置
       - TOKEN_SECRET_KEY=your_super_secure_random_key_here_at_least_32_chars
+      # OAuth代理配置
+      - OAUTH_PROXY_DOMAIN=${OAUTH_PROXY_DOMAIN:-}
     networks:
       poetize-network:
         ipv4_address: 172.28.147.7

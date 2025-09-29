@@ -83,7 +83,9 @@ export default {
         'github': 'GitHub',
         'google': 'Google',
         'yandex': 'Yandex',
-        'x': 'Twitter'
+        'x': 'Twitter',
+        'qq': 'QQ',
+        'baidu': 'Baidu'
       }
       return platformNames[this.provider] || this.provider
     }

@@ -2166,45 +2166,25 @@ async function renderLetterPage(lang = 'zh') {
 }
 
 
-// ===== 百宝箱页面渲染函数 =====
-async function renderFavoritePage(lang = 'zh') {
+// ===== 友人帐页面渲染函数 =====
+async function renderFriendsPage(lang = 'zh') {
   try {
-    const [webInfo, seoConfig, collects, friends, siteInfo] = await Promise.all([
+    const [webInfo, seoConfig, friends, siteInfo] = await Promise.all([
       fetchWebInfo(),
       fetchSeoConfig(),
-      fetchCollects(),
       fetchFriends(),
       fetchSiteInfo()
     ]);
 
-    // 调试：记录获取到的数据
-    logger.info('收藏页数据已获取', {
-      webInfoKeys: Object.keys(webInfo),
-      webName: webInfo.webName,
-      webTitle: webInfo.webTitle,
-      avatar: webInfo.avatar,
-      seoConfigKeys: Object.keys(seoConfig),
-      collectsKeys: Object.keys(collects),
-      friendsKeys: Object.keys(friends),
-      siteInfoKeys: Object.keys(siteInfo),
-      siteInfoTitle: siteInfo.title,
-      siteInfoUrl: siteInfo.url,
-      siteInfoCover: siteInfo.cover
-    });
-
-    // 直接使用webInfo的数据，简化逻辑
-    const siteName = webInfo.webTitle || webInfo.webName ;
-    const title = `百宝箱 - ${siteName}`;
-    const description = '收藏夹、友人帐、音乐欣赏 - 发现更多精彩内容';
+    const siteName = webInfo.webTitle || webInfo.webName;
+    const title = `友人帐 - ${siteName}`;
+    const description = '留下你的网站吧，让我们建立友谊的桥梁';
     const author = webInfo.webName || seoConfig.default_author || 'Admin';
-    
-    // 网站地址：优先使用SEO配置，fallback到环境变量或webInfo
     const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
     const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
     
-    // 在基础关键词基础上添加页面特定关键词
     const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
-    const keywords = `${baseKeywords},百宝箱,收藏夹,友人帐,友链,音乐`;
+    const keywords = `${baseKeywords},友人帐,友链,朋友,网站交换`;
     
     const meta = {
       description,
@@ -2213,100 +2193,66 @@ async function renderFavoritePage(lang = 'zh') {
       'og:title': title,
       'og:description': description,
       'og:type': 'website',
-      'og:url': `${baseUrl}/favorite`,
+      'og:url': `${baseUrl}/friends`,
       'og:image': ogImage,
-      'og:site_name': webInfo.webTitle || webInfo.webName , // 优先使用webTitle
+      'og:site_name': webInfo.webTitle || webInfo.webName,
       'twitter:card': seoConfig.twitter_card || 'summary',
       'twitter:title': title,
       'twitter:description': description,
       'twitter:image': ogImage
     };
     
-    // 使用通用函数添加图标字段
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
 
-    // 构建百宝箱内容
-    const favoriteContent = `
-      <div class="favorite-prerender">
-        <div class="favorite-hero">
-          <h1>百宝箱</h1>
-          <p>收藏夹、友人帐、音乐欣赏</p>
+    const friendsContent = `
+      <div class="friends-prerender">
+        <div class="friends-hero">
+          <h1>友人帐</h1>
+          <p>留下你的网站吧，让我们建立友谊的桥梁</p>
         </div>
         
-        <div class="favorite-sections">
-          <section class="collect-section">
-            <h2>收藏夹</h2>
-            <p>精选网站收藏</p>
-            ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
-              <div class="collect-category">
-                <h3>${category}</h3>
-                <ul>
-                  ${collects[category].map(item => `
-                    <li>
-                      <a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}">
-                        <img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy">
-                        <span>${item.title}</span>
-                        <small>${item.introduction}</small>
-                      </a>
-                    </li>
-                  `).join('')}
-                </ul>
-              </div>
-            `).join('') : '<p>暂无收藏夹</p>'}
-          </section>
+        <div class="friends-main">
+          <!-- 本站信息 -->
+          <div class="site-info">
+            <h3>🌸本站信息</h3>
+            <blockquote>
+              <div>网站名称: ${siteInfo.title || webInfo.webName}</div>
+              <div>网址: ${siteInfo.url || baseUrl}</div>
+              <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
+              <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
+              <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
+            </blockquote>
+          </div>
           
-          <section class="friend-section">
-            <h2>友人帐</h2>
-            <p>留下你的网站，与更多朋友交流</p>
-            
-            <!-- 本站信息 -->
-            <div class="site-info">
-              <h3>🌸本站信息</h3>
-              <blockquote>
-                <div>网站名称: ${siteInfo.title || webInfo.webName }</div>
-                <div>网址: ${siteInfo.url || baseUrl}</div>
-                <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
-                <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
-                <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
-              </blockquote>
+          <!-- 友链列表 -->
+          ${Object.keys(friends).length > 0 ? `
+            <div class="friends-list">
+              <h3>友情链接</h3>
+              ${Object.keys(friends).map(category => `
+                <div class="friend-category">
+                  <h4>${category}</h4>
+                  <ul>
+                    ${friends[category].map(friend => `
+                      <li>
+                        <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
+                          <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
+                          <span>${friend.title}</span>
+                          <small>${friend.introduction}</small>
+                        </a>
+                      </li>
+                    `).join('')}
+                  </ul>
+                </div>
+              `).join('')}
             </div>
-            
-            <!-- 友链列表 -->
-            ${Object.keys(friends).length > 0 ? `
-              <div class="friends-list">
-                <h3>友情链接</h3>
-                ${Object.keys(friends).map(category => `
-                  <div class="friend-category">
-                    <h4>${category}</h4>
-                    <ul>
-                      ${friends[category].map(friend => `
-                        <li>
-                          <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
-                            <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
-                            <span>${friend.title}</span>
-                            <small>${friend.introduction}</small>
-                          </a>
-                        </li>
-                      `).join('')}
-                    </ul>
-                  </div>
-                `).join('')}
-              </div>
-            ` : '<p>暂无友链，欢迎交换友链</p>'}
-          </section>
-          
-          <section class="music-section">
-            <h2>曲乐</h2>
-            <p>一曲肝肠断，天涯何处觅知音</p>
-          </section>
+          ` : '<p>暂无友链，欢迎交换友链</p>'}
         </div>
         
-        <!-- 动态内容占位符 -->
         <div id="dynamic-content-placeholder" style="display:none;">
           <script>
             window.PRERENDER_DATA = {
-              type: 'favorite',
+              type: 'friends',
               lang: '${lang}',
               timestamp: ${Date.now()}
             };
@@ -2318,15 +2264,180 @@ async function renderFavoritePage(lang = 'zh') {
     return buildHtmlTemplate({ 
       title, 
       meta, 
-      content: favoriteContent, 
+      content: friendsContent, 
       lang, 
-      pageType: 'favorite' 
+      pageType: 'friends' 
     });
   } catch (error) {
-    console.error('渲染收藏页失败:', error);
+    console.error('渲染友人帐页面失败:', error);
     throw error;
   }
 }
+
+// ===== 曲乐页面渲染函数 =====
+async function renderMusicPage(lang = 'zh') {
+  try {
+    const [webInfo, seoConfig] = await Promise.all([
+      fetchWebInfo(),
+      fetchSeoConfig()
+    ]);
+
+    const siteName = webInfo.webTitle || webInfo.webName;
+    const title = `曲乐 - ${siteName}`;
+    const description = '一曲肝肠断，天涯何处觅知音';
+    const author = webInfo.webName || seoConfig.default_author || 'Admin';
+    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
+    
+    const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
+    const keywords = `${baseKeywords},曲乐,音乐,娱乐,音频`;
+    
+    const meta = {
+      description,
+      keywords,
+      author,
+      'og:title': title,
+      'og:description': description,
+      'og:type': 'website',
+      'og:url': `${baseUrl}/music`,
+      'og:image': ogImage,
+      'og:site_name': webInfo.webTitle || webInfo.webName,
+      'twitter:card': seoConfig.twitter_card || 'summary',
+      'twitter:title': title,
+      'twitter:description': description,
+      'twitter:image': ogImage
+    };
+    
+    addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
+    addSearchEngineVerificationTags(meta, seoConfig);
+
+    const musicContent = `
+      <div class="music-prerender">
+        <div class="music-hero">
+          <h1>曲乐</h1>
+          <p>一曲肝肠断，天涯何处觅知音</p>
+        </div>
+        
+        <div class="music-main">
+          <div class="music-placeholder">
+            <p>音乐内容将在页面加载完成后显示</p>
+          </div>
+        </div>
+        
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            window.PRERENDER_DATA = {
+              type: 'music',
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
+      </div>
+    `;
+
+    return buildHtmlTemplate({ 
+      title, 
+      meta, 
+      content: musicContent, 
+      lang, 
+      pageType: 'music' 
+    });
+  } catch (error) {
+    console.error('渲染曲乐页面失败:', error);
+    throw error;
+  }
+}
+
+// ===== 收藏夹页面渲染函数 =====
+async function renderFavoritesPage(lang = 'zh') {
+  try {
+    const [webInfo, seoConfig, collects] = await Promise.all([
+      fetchWebInfo(),
+      fetchSeoConfig(),
+      fetchCollects()
+    ]);
+
+    const siteName = webInfo.webTitle || webInfo.webName;
+    const title = `收藏夹 - ${siteName}`;
+    const description = '将本网站添加到您的收藏夹吧，发现更多精彩内容';
+    const author = webInfo.webName || seoConfig.default_author || 'Admin';
+    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
+    
+    const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
+    const keywords = `${baseKeywords},收藏夹,书签,网站收藏,精选网站`;
+    
+    const meta = {
+      description,
+      keywords,
+      author,
+      'og:title': title,
+      'og:description': description,
+      'og:type': 'website',
+      'og:url': `${baseUrl}/favorites`,
+      'og:image': ogImage,
+      'og:site_name': webInfo.webTitle || webInfo.webName,
+      'twitter:card': seoConfig.twitter_card || 'summary',
+      'twitter:title': title,
+      'twitter:description': description,
+      'twitter:image': ogImage
+    };
+    
+    addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
+    addSearchEngineVerificationTags(meta, seoConfig);
+
+    const favoritesContent = `
+      <div class="favorites-prerender">
+        <div class="favorites-hero">
+          <h1>收藏夹</h1>
+          <p>将本网站添加到您的收藏夹吧，发现更多精彩内容</p>
+        </div>
+        
+        <div class="favorites-main">
+          ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
+            <div class="collect-category">
+              <h3>${category}</h3>
+              <ul>
+                ${collects[category].map(item => `
+                  <li>
+                    <a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}">
+                      <img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy">
+                      <span>${item.title}</span>
+                      <small>${item.introduction}</small>
+                    </a>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          `).join('') : '<p>暂无收藏夹</p>'}
+        </div>
+        
+        <div id="dynamic-content-placeholder" style="display:none;">
+          <script>
+            window.PRERENDER_DATA = {
+              type: 'favorites',
+              lang: '${lang}',
+              timestamp: ${Date.now()}
+            };
+          </script>
+        </div>
+      </div>
+    `;
+
+    return buildHtmlTemplate({ 
+      title, 
+      meta, 
+      content: favoritesContent, 
+      lang, 
+      pageType: 'favorites' 
+    });
+  } catch (error) {
+    console.error('渲染收藏夹页面失败:', error);
+    throw error;
+  }
+}
+
 
 // ===== 默认分类页面渲染函数（显示所有分类列表）=====
 async function renderDefaultSortPage(lang = 'zh') {
@@ -2793,9 +2904,20 @@ async function renderPages(type, params = {}) {
             outputPath = path.join(OUTPUT_ROOT, 'home');
             break;
             
-          case 'favorite':
-            html = await renderFavoritePage(lang);
-            outputPath = path.join(OUTPUT_ROOT, 'favorite');
+            
+          case 'friends':
+            html = await renderFriendsPage(lang);
+            outputPath = path.join(OUTPUT_ROOT, 'friends');
+            break;
+            
+          case 'music':
+            html = await renderMusicPage(lang);
+            outputPath = path.join(OUTPUT_ROOT, 'music');
+            break;
+            
+          case 'favorites':
+            html = await renderFavoritesPage(lang);
+            outputPath = path.join(OUTPUT_ROOT, 'favorites');
             break;
             
           case 'sort':
@@ -3106,13 +3228,13 @@ app.post('/render/pages', async (req, res) => {
     });
   }
 
-  if (!['home', 'favorite', 'sort', 'allSorts', 'about', 'message', 'weiYan', 'love', 'travel', 'privacy', 'letter', 'verify', '403', '404', 'oauth-callback'].includes(type)) {
+  if (!['home', 'friends', 'music', 'favorites', 'sort', 'allSorts', 'about', 'message', 'weiYan', 'love', 'travel', 'privacy', 'letter', 'verify', '403', '404', 'oauth-callback'].includes(type)) {
     logger.warn('无效的页面类型', { requestId, type });
     return res.status(400).json({ 
       message: '无效的页面类型',
       requestId,
       received: type,
-      supported: ['home', 'favorite', 'sort', 'allSorts', 'about', 'message', 'weiYan', 'love', 'travel', 'privacy', 'letter', 'verify', '403', '404', 'oauth-callback'],
+      supported: ['home', 'friends', 'music', 'favorites', 'sort', 'allSorts', 'about', 'message', 'weiYan', 'love', 'travel', 'privacy', 'letter', 'verify', '403', '404', 'oauth-callback'],
       timestamp: new Date().toISOString()
     });
   }

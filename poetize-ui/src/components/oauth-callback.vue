@@ -8,16 +8,16 @@
       
       <div v-else-if="success" class="success-section">
         <i class="el-icon-success" style="font-size: 48px; color: var(--green);"></i>
-        <h3>绑定成功！</h3>
+        <h3>{{ operationType === 'bind' ? '绑定成功！' : '登录成功！' }}</h3>
         <p>{{ successMessage }}</p>
         <el-button type="primary" @click="goToUserCenter">返回个人中心</el-button>
       </div>
       
       <div v-else class="error-section">
         <i class="el-icon-error" style="font-size: 48px; color: var(--red);"></i>
-        <h3>绑定失败</h3>
+        <h3>{{ getErrorTitle() }}</h3>
         <p>{{ errorMessage }}</p>
-        <el-button type="primary" @click="goToUserCenter">返回个人中心</el-button>
+        <el-button type="primary" @click="goToLogin">{{ getErrorButtonLabel() }}</el-button>
       </div>
     </div>
   </div>
@@ -31,7 +31,8 @@ export default {
       loading: true,
       success: false,
       successMessage: "",
-      errorMessage: ""
+      errorMessage: "",
+      operationType: 'login' // Default to login
     };
   },
   mounted() {
@@ -48,6 +49,8 @@ export default {
         const success = urlParams.get('success');
         const message = urlParams.get('message');
         const platformType = urlParams.get('platform') || this.$route.query.platform;
+        const context = (urlParams.get('action') || urlParams.get('context') || this.$route.query.action || 'login').toLowerCase();
+        this.operationType = ['bind', 'binding'].includes(context) ? 'bind' : 'login';
 
         // 检查是否已经处理完成（来自Python后端的直接结果）
         if (success === 'true') {
@@ -57,7 +60,8 @@ export default {
 
         // 检查是否有错误
         if (error) {
-          this.handleError(`授权失败: ${error}`);
+          const friendlyMessage = this.translateError(error, platformType);
+          this.handleError(friendlyMessage);
           return;
         }
 
@@ -120,6 +124,51 @@ export default {
 
     goToUserCenter() {
       this.$router.push('/user');
+    },
+
+    goToLogin() {
+      this.$router.push('/user');
+    },
+
+    getErrorTitle() {
+      return this.operationType === 'bind' ? '绑定失败' : '登录失败';
+    },
+
+    getErrorButtonLabel() {
+      return this.operationType === 'bind' ? '返回个人中心' : '返回登录页';
+    },
+
+    translateError(error, platformType) {
+      const normalizedError = (error || '').toLowerCase();
+      const providerName = (platformType || '').toLowerCase();
+      const actionText = this.operationType === 'bind' ? '绑定' : '登录';
+
+      if (normalizedError.includes('oauth_error') || normalizedError.includes('timeout')) {
+        if (['github', 'google', 'x', 'twitter', 'yandex'].includes(providerName)) {
+          return `${this.formatProviderName(providerName)} ${actionText}服务暂时不可用，可能由于网络限制导致授权失败，请稍后再试或选择 Gitee。`;
+        }
+        return `第三方${actionText}服务暂时不可用，请稍后再试。`;
+      }
+
+      if (normalizedError.includes('config_error') || normalizedError.includes('not configured')) {
+        return `该第三方账号暂未配置${actionText}，请联系管理员。`;
+      }
+
+      return `授权失败: ${error}`;
+    },
+
+    formatProviderName(provider) {
+      const mapping = {
+        github: 'GitHub',
+        google: 'Google',
+        gitee: 'Gitee',
+        qq: 'QQ',
+        x: 'Twitter',
+        twitter: 'Twitter',
+        yandex: 'Yandex',
+        baidu: 'Baidu'
+      };
+      return mapping[provider] || provider || '第三方';
     }
   }
 };

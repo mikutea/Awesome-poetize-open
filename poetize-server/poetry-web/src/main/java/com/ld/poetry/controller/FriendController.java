@@ -8,6 +8,7 @@ import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ResourcePathMapper;
 import com.ld.poetry.entity.ResourcePath;
 import com.ld.poetry.utils.PoetryUtil;
+import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.vo.ResourcePathVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,9 @@ public class FriendController {
     @Autowired
     private ResourcePathMapper resourcePathMapper;
 
+    @Autowired
+    private PrerenderClient prerenderClient;
+
     /**
      * 保存友链
      */
@@ -56,6 +60,14 @@ public class FriendController {
         friend.setType(CommonConst.RESOURCE_PATH_TYPE_FRIEND);
         friend.setStatus(Boolean.FALSE);
         resourcePathMapper.insert(friend);
+        
+        // 重新渲染友人帐页面（无论审核状态如何都渲染，因为页面会显示申请表单）
+        try {
+            prerenderClient.renderFriendsPage();
+        } catch (Exception e) {
+            // 预渲染失败不影响主流程
+        }
+        
         return PoetryResult.success();
     }
 

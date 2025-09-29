@@ -143,15 +143,40 @@ public class PrerenderClient {
         }
     }
 
+
     /**
-     * 渲染百宝箱页面
+     * 渲染友人帐页面
      */
-    public void renderFavoritePage() {
+    public void renderFriendsPage() {
         try {
-            renderPage("favorite", null);
-            log.info("已提交百宝箱页面到 prerender-worker");
+            renderPage("friends", null);
+            log.info("已提交友人帐页面到 prerender-worker");
         } catch (Exception e) {
-            log.warn("渲染百宝箱页面失败: {}", e.getMessage());
+            log.warn("渲染友人帐页面失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 渲染曲乐页面
+     */
+    public void renderMusicPage() {
+        try {
+            renderPage("music", null);
+            log.info("已提交曲乐页面到 prerender-worker");
+        } catch (Exception e) {
+            log.warn("渲染曲乐页面失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 渲染收藏夹页面
+     */
+    public void renderFavoritesPage() {
+        try {
+            renderPage("favorites", null);
+            log.info("已提交收藏夹页面到 prerender-worker");
+        } catch (Exception e) {
+            log.warn("渲染收藏夹页面失败: {}", e.getMessage());
         }
     }
 
@@ -285,13 +310,17 @@ public class PrerenderClient {
     }
 
     /**
-     * 渲染主要页面（首页和百宝箱）
+     * 渲染主要页面（首页和三个百宝箱子页面）
      */
     public void renderMainPages() {
         try {
             renderHomePage();
             Thread.sleep(500); // 避免并发过高
-            renderFavoritePage();
+            renderFriendsPage();
+            Thread.sleep(500);
+            renderMusicPage();
+            Thread.sleep(500);
+            renderFavoritesPage();
         } catch (Exception e) {
             log.warn("渲染主要页面失败: {}", e.getMessage());
         }
@@ -321,7 +350,13 @@ public class PrerenderClient {
             renderHomePage();
             Thread.sleep(500); // 避免并发过高
             
-            renderFavoritePage();
+            renderFriendsPage();
+            Thread.sleep(500);
+            
+            renderMusicPage();
+            Thread.sleep(500);
+            
+            renderFavoritesPage();
             Thread.sleep(500);
             
             renderAboutPage();
@@ -414,11 +449,26 @@ public class PrerenderClient {
         deletePage("home", null, null);
     }
 
+
     /**
-     * 删除百宝箱页面的预渲染文件
+     * 删除友人帐页面的预渲染文件
      */
-    public void deleteFavoritePage() {
-        deletePage("favorite", null, null);
+    public void deleteFriendsPage() {
+        deletePage("friends", null, null);
+    }
+
+    /**
+     * 删除曲乐页面的预渲染文件
+     */
+    public void deleteMusicPage() {
+        deletePage("music", null, null);
+    }
+
+    /**
+     * 删除收藏夹页面的预渲染文件
+     */
+    public void deleteFavoritesPage() {
+        deletePage("favorites", null, null);
     }
 
     /**
@@ -506,7 +556,9 @@ public class PrerenderClient {
      */
     public void deleteMainPages() {
         deleteHomePage();
-        deleteFavoritePage();
+        deleteFriendsPage();
+        deleteMusicPage();
+        deleteFavoritesPage();
     }
 
     /**

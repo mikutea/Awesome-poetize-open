@@ -6,7 +6,7 @@
       <div v-show="toolbar.visible || ($common.mobile() || mobile)"
            @mouseenter="hoverEnter = true"
            @mouseleave="hoverEnter = false"
-           :class="[{ enter: toolbar.enter }, { hoverEnter: (hoverEnter || this.$route.path === '/favorite' || this.$route.path === '/travel' || this.$route.path === '/privacy') && !toolbar.enter }]"
+           :class="[{ enter: toolbar.enter }, { hoverEnter: (hoverEnter || this.$route.path === '/favorite' || this.$route.path === '/friends' || this.$route.path === '/music' || this.$route.path === '/favorites' || this.$route.path === '/travel' || this.$route.path === '/privacy') && !toolbar.enter }]"
            class="toolbar-content myBetween">
         <!-- 网站名称 -->
         <div class="toolbar-title">
@@ -56,10 +56,24 @@
                 </div>
               </li>
 
-              <!-- 百宝箱 -->
-              <li v-if="item.name === '百宝箱'" :key="'nav-'+index" @click="$router.push({path: '/favorite'})">
+              <!-- 友人帐 -->
+              <li v-if="item.name === '友人帐'" :key="'nav-'+index" @click="$router.push({path: '/friends'})">
                 <div class="my-menu">
-                  🧰 <span>百宝箱</span>
+                  🤝 <span>友人帐</span>
+                </div>
+              </li>
+
+              <!-- 曲乐 -->
+              <li v-if="item.name === '曲乐'" :key="'nav-'+index" @click="$router.push({path: '/music'})">
+                <div class="my-menu">
+                  🎵 <span>曲乐</span>
+                </div>
+              </li>
+
+              <!-- 收藏夹 -->
+              <li v-if="item.name === '收藏夹'" :key="'nav-'+index" @click="$router.push({path: '/favorites'})">
+                <div class="my-menu">
+                  📁 <span>收藏夹</span>
                 </div>
               </li>
 
@@ -220,10 +234,24 @@
               </div>
             </li>
 
-            <!-- 百宝箱 -->
-            <li v-if="item.name === '百宝箱'" :key="'mobile-nav-'+index" @click="smallMenu({path: '/favorite'})">
+            <!-- 友人帐 -->
+            <li v-if="item.name === '友人帐'" :key="'mobile-nav-'+index" @click="smallMenu({path: '/friends'})">
               <div>
-                🧰 <span>百宝箱</span>
+                🤝 <span>友人帐</span>
+              </div>
+            </li>
+
+            <!-- 曲乐 -->
+            <li v-if="item.name === '曲乐'" :key="'mobile-nav-'+index" @click="smallMenu({path: '/music'})">
+              <div>
+                🎵 <span>曲乐</span>
+              </div>
+            </li>
+
+            <!-- 收藏夹 -->
+            <li v-if="item.name === '收藏夹'" :key="'mobile-nav-'+index" @click="smallMenu({path: '/favorites'})">
+              <div>
+                📁 <span>收藏夹</span>
               </div>
             </li>
 
@@ -499,9 +527,11 @@
           { name: "首页", icon: "🏡", link: "/", type: "internal", order: 1, enabled: true },
           { name: "记录", icon: "📒", link: "#", type: "dropdown", order: 2, enabled: true },
           { name: "家", icon: "❤️‍🔥", link: "/love", type: "internal", order: 3, enabled: true },
-          { name: "百宝箱", icon: "🧰", link: "/favorite", type: "internal", order: 4, enabled: true },
-          { name: "留言", icon: "📪", link: "/message", type: "internal", order: 5, enabled: true },
-          { name: "联系我", icon: "💬", link: "#chat", type: "special", order: 6, enabled: true }
+          { name: "友人帐", icon: "🤝", link: "/friends", type: "internal", order: 4, enabled: true },
+          { name: "曲乐", icon: "🎵", link: "/music", type: "internal", order: 5, enabled: true },
+          { name: "收藏夹", icon: "📁", link: "/favorites", type: "internal", order: 6, enabled: true },
+          { name: "留言", icon: "📪", link: "/message", type: "internal", order: 7, enabled: true },
+          { name: "联系我", icon: "💬", link: "#chat", type: "special", order: 8, enabled: true }
         ];
       }
     },
@@ -1331,4 +1361,30 @@
   justify-content: center;
   margin-top: 10px;
 }
+
+/* 手机端菜单样式 */
+.small-menu {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.small-menu li {
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+}
+
+.small-menu li > div:first-child {
+  padding: 15px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--black);
+  transition: all 0.3s ease;
+}
+
+.small-menu li:hover > div:first-child {
+  background-color: var(--lightBackground);
+  color: var(--themeBackground);
+}
+
 </style>

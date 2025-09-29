@@ -109,8 +109,10 @@ import 'mavon-editor/dist/css/index.css'
 import {vueBaberrage} from 'vue-baberrage'
 import AsyncNotification from './components/common/AsyncNotification.vue'
 
-// 初始化反调试逻辑
-const disposeAntiDebug = initAntiDebug();
+// 初始化反调试逻辑 - 通过生产模式环境变量控制
+const disposeAntiDebug = initAntiDebug({ 
+  enableInDev: process.env.VUE_APP_PRODUCTION_MODE === 'true' 
+});
 
 Vue.use(ElementUI)
 Vue.use(vueBaberrage)

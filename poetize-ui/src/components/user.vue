@@ -1074,7 +1074,8 @@
               { key: 'x', name: 'Twitter', icon: '/static/svg/x.svg', title: 'Twitter登录', configKey: 'twitter' },
               { key: 'yandex', name: 'Yandex', icon: '/static/svg/yandex.svg', title: 'Yandex登录' },
               { key: 'gitee', name: 'Gitee', icon: '/static/svg/gitee.svg', title: 'Gitee登录' },
-              { key: 'qq', name: 'QQ', icon: '/static/svg/qq.svg', title: 'QQ登录' }
+              { key: 'qq', name: 'QQ', icon: '/static/svg/qq.svg', title: 'QQ登录' },
+              { key: 'baidu', name: 'Baidu', icon: '/static/svg/baidu.svg', title: 'Baidu登录' }
             ];
 
             // 检查每个平台是否启用
@@ -1742,6 +1743,8 @@
       justify-content: center !important;
       align-items: center !important;
       gap: 8px !important;
+      /* 确保横向排列，不受父容器flex-direction影响 */
+      flex-direction: row !important;
     }
 
     .third-party-login-btn {
@@ -1763,6 +1766,8 @@
       gap: 4px !important;
       max-width: 100% !important;
       overflow: hidden !important;
+      /* 强制保持横向排列，不受父容器flex-direction: column影响 */
+      flex-direction: row !important;
     }
 
     .third-party-login-btn {
@@ -1781,6 +1786,8 @@
     .third-party-login-container {
       padding: 6px 1px !important;
       gap: 3px !important;
+      /* 强制保持横向排列，不受父容器flex-direction: column影响 */
+      flex-direction: row !important;
     }
 
     .third-party-login-btn {

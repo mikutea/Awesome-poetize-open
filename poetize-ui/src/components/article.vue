@@ -416,8 +416,8 @@
           if ("0" !== localStorage.getItem("showSubscribe")) {
             this.$notify.success(
               '文章订阅',
-              '点击文章下方订阅/取消订阅专栏（标签）',
-              3000
+              '点击文章下方订阅/取消订阅专栏',
+              15000
             );
             // 设置延时关闭提示
             setTimeout(() => {
@@ -1115,6 +1115,11 @@
 
             // 获取文章可用的翻译语言并生成动态按钮
             this.getArticleAvailableLanguages();
+          } else {
+            // 文章数据为空，说明文章不存在，跳转到404页面
+            console.log('文章不存在，跳转到404页面');
+            this.$router.push('/404');
+            return;
           }
 
           // 处理"最新进展"数据
@@ -1144,17 +1149,25 @@
             }
             this.tips = error.message.substr(4);
             this.showPasswordDialog = true;
+          } else if (error && error.message && (
+            error.message.includes('文章不存在') || 
+            error.message.includes('文章未找到') ||
+            error.message.includes('404') ||
+            error.message.includes('Not Found')
+          )) {
+            // 文章不存在，跳转到404页面
+            console.log('文章不存在，跳转到404页面:', error.message);
+            this.$router.push('/404');
+            return;
           } else {
-            // 其他错误（网络错误、文章不存在等），不显示密码框
+            // 其他错误（网络错误等），显示错误消息但不跳转
             this.$message({
               message: error ? error.message : '加载失败，请重试',
               type: "error",
               customClass: "message-index"
             });
             
-            // 只有密码错误才显示密码对话框
-            // 其他错误不应该显示密码对话框
-            console.log('非密码错误，不显示密码对话框');
+            console.log('其他错误，不显示密码对话框:', error.message);
           }
         })
         .finally(() => {

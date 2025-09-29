@@ -3,6 +3,7 @@ OAuth配置管理
 统一的配置获取和验证机制
 """
 
+import os
 from typing import Dict, Any, Optional
 from .exceptions import ConfigurationError
 
@@ -22,7 +23,7 @@ class OAuthConfigManager:
         "google": {
             "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
             "token_url": "https://oauth2.googleapis.com/token",
-            "user_info_url": "https://people.googleapis.com/v1/people/me",
+            "user_info_url": "https://www.googleapis.com/oauth2/v2/userinfo",
             "scope": "openid email profile"
         },
         "x": {
@@ -51,8 +52,17 @@ class OAuthConfigManager:
             "openid_url": "https://graph.qq.com/oauth2.0/me",
             "user_info_url": "https://graph.qq.com/user/get_user_info",
             "scope": "get_user_info"
+        },
+        "baidu": {
+            "auth_url": "https://openapi.baidu.com/oauth/2.0/authorize",
+            "token_url": "https://openapi.baidu.com/oauth/2.0/token",
+            "user_info_url": "https://openapi.baidu.com/rest/2.0/passport/users/getInfo",
+            "scope": "basic"
         }
     }
+    
+    # 需要代理的海外平台
+    PROXY_REQUIRED_PLATFORMS = {"github", "google", "x", "yandex"}
     
     def __init__(self, config_source_func=None):
         """
@@ -62,6 +72,8 @@ class OAuthConfigManager:
             config_source_func: 配置源函数，用于获取动态配置
         """
         self.config_source_func = config_source_func
+        # 获取代理配置
+        self.oauth_proxy_domain = os.getenv("OAUTH_PROXY_DOMAIN", "").strip()
     
     def get_provider_config(self, provider: str) -> Dict[str, Any]:
         """
@@ -89,6 +101,9 @@ class OAuthConfigManager:
             config = template.copy()
             if dynamic_config:
                 config.update(dynamic_config)
+            
+            # 应用代理配置
+            config = self._apply_proxy_config(provider, config)
             
             # 验证配置完整性
             self._validate_provider_config(provider, config)
@@ -189,3 +204,42 @@ class OAuthConfigManager:
             template: 配置模板
         """
         self.PROVIDER_TEMPLATES[provider] = template
+    
+    def _apply_proxy_config(self, provider: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        应用代理配置到提供商配置
+
+        Args:
+            provider: 提供商名称
+            config: 原始配置
+
+        Returns:
+            Dict[str, Any]: 应用代理后的配置
+        """
+        if not self.oauth_proxy_domain or provider not in self.PROXY_REQUIRED_PLATFORMS:
+            return config
+
+        proxied_config = config.copy()
+
+        if provider == "github":
+            proxied_config["token_url"] = f"{self.oauth_proxy_domain}/github/login/oauth/access_token"
+            proxied_config["user_info_url"] = f"{self.oauth_proxy_domain}/github/api/user"
+            if "emails_url" in proxied_config:
+                proxied_config["emails_url"] = f"{self.oauth_proxy_domain}/github/api/user/emails"
+
+        elif provider == "google":
+            proxied_config["token_url"] = f"{self.oauth_proxy_domain}/google/oauth2/token"
+            proxied_config["user_info_url"] = f"{self.oauth_proxy_domain}/google/oauth2/v2/userinfo"
+
+        elif provider in {"x", "twitter"}:
+            if "request_token_url" in proxied_config:
+                proxied_config["request_token_url"] = f"{self.oauth_proxy_domain}/x/api/oauth/request_token"
+            if "access_token_url" in proxied_config:
+                proxied_config["access_token_url"] = f"{self.oauth_proxy_domain}/x/api/oauth/access_token"
+            proxied_config["user_info_url"] = f"{self.oauth_proxy_domain}/x/api/1.1/account/verify_credentials.json"
+
+        elif provider == "yandex":
+            proxied_config["token_url"] = f"{self.oauth_proxy_domain}/yandex/token"
+            proxied_config["user_info_url"] = f"{self.oauth_proxy_domain}/yandex/login/info"
+
+        return proxied_config

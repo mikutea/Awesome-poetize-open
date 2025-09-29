@@ -13,7 +13,8 @@ from .providers import (
     TwitterProvider,
     YandexProvider,
     GiteeProvider,
-    QQProvider
+    QQProvider,
+    BaiduProvider
 )
 
 
@@ -27,7 +28,8 @@ class OAuthProviderFactory:
         "x": TwitterProvider,
         "yandex": YandexProvider,
         "gitee": GiteeProvider,
-        "qq": QQProvider
+        "qq": QQProvider,
+        "baidu": BaiduProvider
     }
     
     def __init__(self, config_manager: OAuthConfigManager = None):

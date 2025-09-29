@@ -576,7 +576,9 @@
           'github': 'GitHub',
           'google': 'Google',
           'yandex': 'Yandex',
-          'x': 'Twitter'
+          'x': 'Twitter',
+          'qq': 'QQ',
+          'baidu': 'Baidu'
         };
         return platformNames[provider] || provider;
       },

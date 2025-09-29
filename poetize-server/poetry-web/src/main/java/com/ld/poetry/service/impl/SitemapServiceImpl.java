@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 import java.net.MalformedURLException;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -165,18 +166,19 @@ public class SitemapServiceImpl implements SitemapService {
         java.util.Date today = getTodayDate();
         
         // 定义页面及其优先级：根据页面重要性和用户访问频率设置
-        Map<String, Double> pagesPriorities = Map.of(
-            "/sort", 0.6,        // 分类列表页 - 导航性质，较重要
-            "/user", 0.5,        // 用户页面（登录/个人中心） - 重要功能
-            "/weiYan", 0.5,      // 微言页面 - 重要功能
-            "/message", 0.5,     // 留言页面 - 重要功能
-            "/about", 0.4,       // 关于页面 - 信息页面
-            "/favorite", 0.4,    // 收藏页面 - 功能页面
-            "/travel", 0.4,      // 旅拍页面 - 内容页面
-            "/love", 0.3,        // 恋爱笔记 - 个人页面
-            "/letter", 0.3,      // 信件页面 - 个人页面
-            "/privacy", 0.2      // 隐私政策 - 法律页面
-        );
+        Map<String, Double> pagesPriorities = new HashMap<>();
+        pagesPriorities.put("/sort", 0.6);        // 分类列表页 - 导航性质，较重要
+        pagesPriorities.put("/user", 0.5);        // 用户页面（登录/个人中心） - 重要功能
+        pagesPriorities.put("/weiYan", 0.5);      // 微言页面 - 重要功能
+        pagesPriorities.put("/message", 0.5);     // 留言页面 - 重要功能
+        pagesPriorities.put("/friends", 0.5);     // 友人帐页面 - 重要功能页面
+        pagesPriorities.put("/about", 0.4);       // 关于页面 - 信息页面
+        pagesPriorities.put("/music", 0.4);       // 曲乐页面 - 功能页面
+        pagesPriorities.put("/favorites", 0.4);   // 收藏夹页面 - 功能页面
+        pagesPriorities.put("/travel", 0.4);      // 旅拍页面 - 内容页面
+        pagesPriorities.put("/love", 0.3);        // 恋爱笔记 - 个人页面
+        pagesPriorities.put("/letter", 0.3);      // 信件页面 - 个人页面
+        pagesPriorities.put("/privacy", 0.2);     // 隐私政策 - 法律页面
         
         for (Map.Entry<String, Double> entry : pagesPriorities.entrySet()) {
             String page = entry.getKey();

@@ -1,70 +1,30 @@
 <template>
   <div>
-    <div class="favorite-container">
+    <div class="favorites-container">
       <!-- 封面 -->
-      <div class="favorite-header my-animation-slide-top">
+      <div class="favorites-header my-animation-slide-top">
         <!-- 背景图片 -->
         <video class="index-video" autoplay="autoplay" muted="muted" loop="loop"
                preload="metadata" 
                :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
         </video>
-        <div style="position: absolute;left: 0;top: 0;padding: 5px 20px">
+        <div style="position: absolute;left: 0;top: 0;padding: 5px 20px; position: absolute; left: 20px; top: 25px; margin: 10px;">
           <!-- 标题 -->
           <div style="color: var(--white);margin: 0 10px">
             <div style="font-size: 30px;font-weight: bold;line-height: 2">
-              百宝箱
+              收藏夹
             </div>
-          </div>
-          <div class="card-container">
-            <!-- 友人帐 -->
-            <div @click="changeFavorite(3)"
-                 class="card-item">
-              <div class="favorite-image"></div>
-              <div style="position: absolute;left: 0;top: 0;padding: 20px 25px 15px">
-                <div class="card-name">
-                  友人帐
-                </div>
-                <div class="card-desc">
-                  留下你的网站吧
-                </div>
-              </div>
-            </div>
-
-            <!-- 曲乐 -->
-            <div @click="changeFavorite(2)"
-                 class="card-item">
-              <div class="favorite-image"></div>
-              <div style="position: absolute;left: 0;top: 0;padding: 20px 25px 15px">
-                <div class="card-name">
-                  曲乐
-                </div>
-                <div class="card-desc">
-                  一曲肝肠断，天涯何处觅知音
-                </div>
-              </div>
-            </div>
-
-            <!-- 收藏夹 -->
-            <div @click="changeFavorite(1)"
-                 class="card-item">
-              <div class="favorite-image"></div>
-              <div style="position: absolute;left: 0;top: 0;padding: 20px 25px 15px">
-                <div class="card-name">
-                  收藏夹
-                </div>
-                <div class="card-desc">
-                  将本网站添加到您的收藏夹吧
-                </div>
-              </div>
+            <div style="font-size: 16px;opacity: 0.8;margin-top: 10px">
+              将本网站添加到您的收藏夹吧，发现更多精彩内容
             </div>
           </div>
         </div>
       </div>
 
       <!-- 内容 -->
-      <div class="favorite-content">
+      <div class="favorites-content">
         <!-- 收藏夹 -->
-        <div v-show="card === 1 && !$common.isEmpty(collects)" class="my-animation-hideToShow">
+        <div v-if="!$common.isEmpty(collects)" class="my-animation-hideToShow">
           <div v-for="(value, key) in collects" :key="key" style="margin-top: 20px">
             <div class="collect-classify">
               {{key}}
@@ -88,15 +48,12 @@
             </div>
           </div>
         </div>
-
-        <!-- 曲乐 -->
-        <div v-show="card === 2" class="my-animation-hideToShow">
-          <funny></funny>
-        </div>
-
-        <!-- 友人帐 -->
-        <div v-show="card === 3" class="my-animation-hideToShow">
-          <friend></friend>
+        
+        <!-- 暂无收藏提示 -->
+        <div v-else class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-text">暂无收藏内容</div>
+          <div class="empty-desc">管理员还没有添加收藏内容哦~</div>
         </div>
       </div>
     </div>
@@ -109,21 +66,15 @@
 </template>
 
 <script>
-
   const myFooter = () => import( "./common/myFooter");
-  const funny = () => import( "./funny");
-  const friend = () => import( "./friend");
 
   export default {
     components: {
-      myFooter,
-      funny,
-      friend
+      myFooter
     },
 
     data() {
       return {
-        card: null,
         collects: {}
       }
     },
@@ -133,9 +84,9 @@
     watch: {},
 
     created() {
-      this.card = 3;
-      // 自动重定向到友人帐页面（保持向后兼容性）
-      this.$router.replace('/friends');
+      // 设置页面标题
+      this.$store.commit("setTitle", "收藏夹 | " + this.$store.state.sysConfig.webName);
+      this.getCollect();
     },
 
     mounted() {
@@ -145,14 +96,6 @@
     methods: {
       toUrl(url) {
         window.open(url);
-      },
-      changeFavorite(card) {
-        if (card === 1) {
-          if (this.$common.isEmpty(this.collects)) {
-            this.getCollect(card);
-          }
-        }
-        this.card = card;
       },
       getCollect() {
         this.$http.get(this.$constant.baseURL + "/webInfo/listCollect")
@@ -173,15 +116,14 @@
 </script>
 
 <style scoped>
-
-  .favorite-container {
+  .favorites-container {
     padding: 25px;
     background: var(--favoriteBg);
   }
 
-  .favorite-header {
+  .favorites-header {
     margin: 60px auto 30px;
-    height: 330px;
+    height: 200px;
     position: relative;
     overflow: hidden;
     border-radius: 20px;
@@ -194,61 +136,10 @@
     object-fit: cover;
   }
 
-  .favorite-image::before {
-    content: "";
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    background-color: var(--translucent);
-  }
-
-  .card-container {
-    display: flex;
-    flex-wrap: wrap;
-    margin-top: 60px;
-  }
-
-  .card-item {
-    transition: all 0.3s;
-    position: relative;
-    width: 250px;
-    height: 120px;
-    border-radius: 20px;
-    animation: hideToShow 1s ease-in-out;
-    cursor: pointer;
-    overflow: hidden;
-    margin: 10px;
-    color: var(--white);
-  }
-
-  .card-item:hover {
-    transform: translateY(-6px);
-  }
-
-  .card-name {
-    font-weight: bold;
-    font-size: 25px;
-  }
-
-  .card-name:after {
-    top: 50px;
-    width: 22px;
-    left: 26px;
-    height: 2px;
-    background: var(--white);
-    content: "";
-    border-radius: 1px;
-    position: absolute;
-  }
-
-  .card-desc {
-    font-weight: bold;
-    margin-top: 15px;
-  }
-
-  .favorite-content {
+  .favorites-content {
     margin: 0 auto;
     max-width: 1200px;
+    padding: 40px 0;
   }
 
   .collect-classify {
@@ -322,29 +213,45 @@
     -webkit-box-orient: vertical;
   }
 
-  @media screen and (max-width: 906px) {
-    .card-container {
-      margin-top: 0;
-    }
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--greyFont);
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+  }
+
+  .empty-text {
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 10px;
+  }
+
+  .empty-desc {
+    font-size: 14px;
+    opacity: 0.7;
   }
 
   @media screen and (max-width: 906px) {
+    .favorites-header {
+      height: 180px;
+    }
+    
     .favorite-item {
       width: calc(100% / 3 - 20px);
-    }
-
-    .favorite-header {
-      height: 360px;
     }
   }
 
   @media screen and (max-width: 636px) {
+    .favorites-header {
+      height: 160px;
+    }
+    
     .favorite-item {
       width: calc(100% / 2 - 20px);
-    }
-
-    .favorite-header {
-      height: 500px;
     }
   }
 

@@ -263,6 +263,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "yandex": return "Yandex";
             case "gitee": return "Gitee";
             case "qq": return "QQ";
+            case "baidu": return "Baidu";
             default: return platformType;
         }
     }
@@ -278,6 +279,7 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
             case "yandex": return 4;
             case "gitee": return 5;
             case "qq": return 6;
+            case "baidu": return 7;
             default: return 99;
         }
     }
@@ -456,6 +458,11 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         ThirdPartyOauthConfig qq = createDefaultConfig("qq");
         qq.setScope("get_user_info");
         configs.add(qq);
+
+        // Baidu配置
+        ThirdPartyOauthConfig baidu = createDefaultConfig("baidu");
+        baidu.setScope("basic");
+        configs.add(baidu);
 
         return configs;
     }

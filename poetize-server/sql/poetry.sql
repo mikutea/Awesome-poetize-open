@@ -162,6 +162,7 @@ CREATE TABLE `poetize`.`web_info` (
   `auto_night_start` int DEFAULT 23 COMMENT '夜间开始时间(小时)',
   `auto_night_end` int DEFAULT 7 COMMENT '夜间结束时间(小时)',
   `enable_gray_mode` tinyint(1) DEFAULT 0 COMMENT '灰色模式开关[0:否，1:是]',
+  `enable_dynamic_title` tinyint(1) DEFAULT 1 COMMENT '动态标题开关[0:否，1:是]',
 
   PRIMARY KEY (`id`)
 ) ENGINE=Aria DEFAULT CHARSET=utf8mb4 COMMENT='网站信息表';
@@ -551,7 +552,8 @@ INSERT INTO `poetize`.`third_party_oauth_config` (`platform_type`, `platform_nam
 ('twitter', 'Twitter', 'tweet.read users.read', 0, 0, 3, 'Twitter OAuth登录配置，需要在Twitter Developer Portal中创建应用', 0),
 ('yandex', 'Yandex', 'login:email login:info', 0, 0, 4, 'Yandex OAuth登录配置，需要在Yandex OAuth中创建应用', 0),
 ('gitee', 'Gitee', 'user_info emails', 0, 0, 5, 'Gitee OAuth登录配置，需要在Gitee第三方应用中创建应用', 0),
-('qq', 'QQ', 'get_user_info', 0, 0, 6, 'QQ OAuth登录配置，需要在QQ互联平台中创建应用', 0);
+('qq', 'QQ', 'get_user_info', 0, 0, 6, 'QQ OAuth登录配置，需要在QQ互联平台中创建应用', 0),
+('baidu', 'Baidu', 'basic', 0, 0, 7, 'Baidu OAuth登录配置，需要在Baidu开发者平台中创建应用', 0);
 
 INSERT INTO `poetize`.`resource_path` (`title`, `cover`, `introduction`, `type`, `status`,  `remark`) VALUES ('POETIZE', 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg', '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～', 'siteInfo', 1, 'https://s1.ax1x.com/2022/11/10/z9VlHs.png');
 

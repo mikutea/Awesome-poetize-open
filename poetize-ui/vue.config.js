@@ -103,14 +103,17 @@ module.exports = {
       }
     },
     optimization: {
-      minimize: true,
+      minimize: process.env.VUE_APP_PRODUCTION_MODE === 'true',
       minimizer: [
         new TerserPlugin({
           terserOptions: {
             compress: {
-              drop_console: true,
-              drop_debugger: true
-            }
+              // 统一由 VUE_APP_PRODUCTION_MODE 控制（反调试、混淆、日志移除）
+              drop_console: process.env.VUE_APP_PRODUCTION_MODE === 'true',
+              drop_debugger: process.env.VUE_APP_PRODUCTION_MODE === 'true'
+            },
+            mangle: process.env.VUE_APP_PRODUCTION_MODE === 'true', // 变量名混淆
+            keep_fnames: process.env.VUE_APP_PRODUCTION_MODE !== 'true' // 保留函数名
           }
         })
       ],

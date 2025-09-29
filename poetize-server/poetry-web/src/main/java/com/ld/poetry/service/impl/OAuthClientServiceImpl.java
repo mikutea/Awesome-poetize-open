@@ -7,6 +7,7 @@ import com.ld.poetry.service.ThirdPartyOauthConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -39,6 +40,10 @@ public class OAuthClientServiceImpl implements OAuthClientService {
     @Qualifier("oauthRestTemplate")
     private RestTemplate restTemplate;
     
+    // OAuth代理域名配置
+    @Value("${oauth.proxy.domain:}")
+    private String oauthProxyDomain;
+    
     @Override
     public String buildAuthUrl(String platformType, String state) {
         try {
@@ -56,7 +61,7 @@ public class OAuthClientServiceImpl implements OAuthClientService {
             } else {
                 builder.queryParam("client_id", config.getClientId());
             }
-            
+
             builder.queryParam("redirect_uri", config.getRedirectUri())
                    .queryParam("state", state)
                    .queryParam("response_type", "code");
@@ -373,12 +378,30 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 return "https://gitee.com/oauth/authorize";
             case "qq":
                 return "https://graph.qq.com/oauth2.0/authorize";
+            case "baidu":
+                return "https://openapi.baidu.com/oauth/2.0/authorize";
             default:
                 throw new RuntimeException("不支持的平台: " + platformType);
         }
     }
     
     private String getTokenUrl(String platformType) {
+        if (StringUtils.hasText(oauthProxyDomain)) {
+            switch (platformType.toLowerCase()) {
+                case "github":
+                    return oauthProxyDomain + "/github/login/oauth/access_token";
+                case "google":
+                    return oauthProxyDomain + "/google/oauth2/token";
+                case "twitter":
+                case "x":
+                    return oauthProxyDomain + "/x/api/2/oauth2/token";
+                case "yandex":
+                    return oauthProxyDomain + "/yandex/token";
+                default:
+                    break;
+            }
+        }
+
         switch (platformType.toLowerCase()) {
             case "github":
                 return "https://github.com/login/oauth/access_token";
@@ -393,12 +416,30 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 return "https://gitee.com/oauth/token";
             case "qq":
                 return "https://graph.qq.com/oauth2.0/token";
+            case "baidu":
+                return "https://openapi.baidu.com/oauth/2.0/token";
             default:
                 throw new RuntimeException("不支持的平台: " + platformType);
         }
     }
     
     private String getUserInfoUrl(String platformType) {
+        if (StringUtils.hasText(oauthProxyDomain)) {
+            switch (platformType.toLowerCase()) {
+                case "github":
+                    return oauthProxyDomain + "/github/api/user";
+                case "google":
+                    return oauthProxyDomain + "/google/oauth2/v2/userinfo";
+                case "twitter":
+                case "x":
+                    return oauthProxyDomain + "/x/api/2/users/me";
+                case "yandex":
+                    return oauthProxyDomain + "/yandex/login/info";
+                default:
+                    break;
+            }
+        }
+
         switch (platformType.toLowerCase()) {
             case "github":
                 return "https://api.github.com/user";
@@ -413,6 +454,8 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 return "https://gitee.com/api/v5/user";
             case "qq":
                 return "https://graph.qq.com/user/get_user_info";
+            case "baidu":
+                return "https://openapi.baidu.com/rest/2.0/passport/users/getInfo";
             default:
                 throw new RuntimeException("不支持的平台: " + platformType);
         }
@@ -441,6 +484,9 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 break;
             case "qq":
                 builder.queryParam("scope", "get_user_info");
+                break;
+            case "baidu":
+                builder.queryParam("scope", "basic");
                 break;
         }
     }
@@ -489,6 +535,12 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 userInfo.put("username", rawUserInfo.get("nickname"));
                 userInfo.put("email", null); // QQ API不直接提供邮箱
                 userInfo.put("avatar", rawUserInfo.get("figureurl_qq_2")); // 使用高清头像
+                break;
+            case "baidu":
+                userInfo.put("uid", rawUserInfo.get("uid"));
+                userInfo.put("username", rawUserInfo.get("uname"));
+                userInfo.put("email", rawUserInfo.get(null)); // Baidu API不直接提供邮箱
+                userInfo.put("avatar", rawUserInfo.get("portrait"));
                 break;
             default:
                 // 默认处理

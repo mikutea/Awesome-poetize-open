@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div>
+    <div class="message-hero-section">
       <el-image style="animation: header-effect 2s"
                 class="background-image"
                 v-once
@@ -27,6 +27,12 @@
           </button>
         </div>
       </div>
+      <!-- 向下滑动提示 -->
+      <div class="scroll-down-hint" @click="scrollToComments">
+        <i class="el-icon-arrow-down scroll-down-arrow"></i>
+        <div class="scroll-down-text">向下滑动查看更多</div>
+      </div>
+      
       <!-- 弹幕 -->
       <div class="barrage-container">
         <vue-baberrage :barrageList="barrageList" :loop="true"></vue-baberrage>
@@ -62,6 +68,13 @@
       this.getTreeHole();
     },
     methods: {
+      scrollToComments() {
+        // 平滑滚动到评论区
+        window.scrollTo({
+          top: window.innerHeight,
+          behavior: 'smooth'
+        });
+      },
       getTreeHole() {
         this.$http.get(this.$constant.baseURL + "/webInfo/listTreeHole")
           .then((res) => {
@@ -179,5 +192,70 @@
     max-width: 800px;
     margin: 0 auto;
     padding: 40px 20px;
+  }
+
+  /* 首屏容器样式 */
+  .message-hero-section {
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* 向下滑动提示样式 */
+  .scroll-down-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    color: var(--white);
+    z-index: 15;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .scroll-down-hint:hover {
+    transform: translateX(-50%) translateY(-5px);
+    opacity: 0.8;
+  }
+
+  .scroll-down-arrow {
+    font-size: 24px;
+    animation: bounce 2s infinite;
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  .scroll-down-text {
+    font-size: 12px;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
+
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+      transform: translateY(0);
+    }
+    40% {
+      transform: translateY(-8px);
+    }
+    60% {
+      transform: translateY(-4px);
+    }
+  }
+
+  /* 响应式调整 */
+  @media screen and (max-width: 768px) {
+    .scroll-down-hint {
+      bottom: 20px;
+    }
+    
+    .scroll-down-arrow {
+      font-size: 20px;
+    }
+    
+    .scroll-down-text {
+      font-size: 11px;
+    }
   }
 </style>

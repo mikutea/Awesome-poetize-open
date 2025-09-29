@@ -103,39 +103,6 @@
             <span>返回上页</span>
           </button>
         </div>
-
-        <!-- 搜索建议 -->
-        <div class="search-section">
-          <p class="search-hint">或者试试搜索你想要的内容</p>
-          <div class="search-wrapper">
-            <input 
-              type="text" 
-              class="search-input" 
-              placeholder="搜索文章、标签..." 
-              v-model="searchQuery"
-              @keyup.enter="performSearch"
-            />
-            <button class="search-btn" @click="performSearch">
-              <i class="fa fa-search"></i>
-            </button>
-          </div>
-        </div>
-
-        <!-- 热门推荐 -->
-        <div class="recommendations" v-if="recommendations.length > 0">
-          <p class="rec-title">热门内容推荐</p>
-          <div class="rec-list">
-            <a 
-              v-for="item in recommendations" 
-              :key="item.id"
-              class="rec-item"
-              @click="goToArticle(item.id)"
-            >
-              <i class="fa fa-file-text-o"></i>
-              <span>{{ item.articleTitle }}</span>
-            </a>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -150,15 +117,9 @@
 export default {
   name: 'NotFound',
   data() {
-    return {
-      searchQuery: '',
-      recommendations: []
-    }
+    return {}
   },
   mounted() {
-    // 获取热门文章推荐
-    this.getRecommendations();
-    
     // 设置页面标题
     document.title = '页面未找到 - 404';
   },
@@ -175,33 +136,6 @@ export default {
       }
     },
     
-    performSearch() {
-      if (this.searchQuery.trim()) {
-        // 跳转到搜索页面或执行搜索逻辑
-        this.$router.push({ 
-          path: '/', 
-          query: { search: this.searchQuery.trim() }
-        });
-      }
-    },
-    
-    goToArticle(articleId) {
-      this.$router.push(`/article/${articleId}`);
-    },
-    
-    async getRecommendations() {
-      try {
-        // 获取热门文章（智能热度算法排序，已修复重复计数问题）
-        const res = await this.$http.get(this.$constant.baseURL + "/article/getArticlesByLikesTop");
-        if (res.data && res.data.length > 0) {
-          this.recommendations = res.data.slice(0, 4); // 只显示前4个
-        }
-      } catch (error) {
-        console.log('获取推荐文章失败:', error);
-        // 可以设置一些默认推荐
-        this.recommendations = [];
-      }
-    }
   }
 }
 </script>
@@ -209,9 +143,7 @@ export default {
 <style scoped>
 .not-found-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-  background-size: 400% 400%;
-  animation: gradientShift 6s ease infinite;
+  background: #1a1a2e;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -220,12 +152,6 @@ export default {
   overflow: hidden;
   padding: 20px;
   box-sizing: border-box;
-}
-
-/* 背景动画 */
-@keyframes gradientShift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
 }
 
 /* 星空效果 */
@@ -595,96 +521,7 @@ export default {
   background: rgba(255,255,255,0.3);
 }
 
-/* 搜索区域 */
-.search-section {
-  margin: 40px 0;
-}
 
-.search-hint {
-  color: white;
-  margin-bottom: 15px;
-  opacity: 0.9;
-}
-
-.search-wrapper {
-  display: flex;
-  max-width: 400px;
-  margin: 0 auto;
-  border-radius: 50px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.1);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.2);
-}
-
-.search-input {
-  flex: 1;
-  padding: 15px 20px;
-  border: none;
-  background: transparent;
-  color: white;
-  font-size: 1rem;
-  outline: none;
-}
-
-.search-input::placeholder {
-  color: rgba(255,255,255,0.7);
-}
-
-.search-btn {
-  padding: 15px 20px;
-  border: none;
-  background: linear-gradient(135deg, #ff4b2b, #ff416c);
-  color: white;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.search-btn:hover {
-  background: linear-gradient(135deg, #ff416c, #e73c7e);
-}
-
-/* 推荐区域 */
-.recommendations {
-  margin-top: 40px;
-}
-
-.rec-title {
-  color: white;
-  margin-bottom: 20px;
-  font-weight: 600;
-}
-
-.rec-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.rec-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 20px;
-  background: rgba(255,255,255,0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 25px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  border: 1px solid rgba(255,255,255,0.1);
-}
-
-.rec-item:hover {
-  background: rgba(255,255,255,0.2);
-  transform: translateX(5px);
-}
-
-.rec-item i {
-  opacity: 0.8;
-}
 
 /* 底部提示 */
 .footer-hint {
@@ -727,9 +564,6 @@ export default {
     justify-content: center;
   }
   
-  .search-wrapper {
-    max-width: 300px;
-  }
   
   .illustration-container {
     height: 200px;

@@ -1377,6 +1377,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return "Yandex";
             case "gitee":
                 return "Gitee";
+            case "qq":
+                return "QQ";
+            case "baidu":
+                return "Baidu";
             default:
                 return platformType;
         }

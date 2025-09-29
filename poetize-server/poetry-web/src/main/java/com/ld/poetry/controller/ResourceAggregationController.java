@@ -68,14 +68,16 @@ public class ResourceAggregationController {
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
         resourcePathMapper.insert(resourcePath);
         
-        // 如果是收藏夹类型或本站信息类型的资源，重新渲染百宝箱页面
-        if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType()) ||
-            CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
-            try {
-                prerenderClient.renderFavoritePage();
-            } catch (Exception e) {
-                // 预渲染失败不影响主流程
+        // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
+        try {
+            if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
+                prerenderClient.renderFavoritesPage();
+            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
+                       CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
+                prerenderClient.renderFriendsPage();
             }
+        } catch (Exception e) {
+            // 预渲染失败不影响主流程
         }
         
         return PoetryResult.success();
@@ -92,11 +94,15 @@ public class ResourceAggregationController {
         
         resourcePathMapper.deleteById(id);
         
-        // 如果是收藏夹类型或本站信息类型的资源，重新渲染百宝箱页面
-        if (resourcePath != null && (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePath.getType()) ||
-            CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePath.getType()))) {
+        // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
+        if (resourcePath != null) {
             try {
-                prerenderClient.renderFavoritePage();
+                if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePath.getType())) {
+                    prerenderClient.renderFavoritesPage();
+                } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePath.getType()) || 
+                           CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePath.getType())) {
+                    prerenderClient.renderFriendsPage();
+                }
             } catch (Exception e) {
                 // 预渲染失败不影响主流程
             }
@@ -124,14 +130,16 @@ public class ResourceAggregationController {
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
         resourcePathMapper.updateById(resourcePath);
         
-        // 如果是收藏夹类型或本站信息类型的资源，重新渲染百宝箱页面
-        if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType()) ||
-            CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
-            try {
-                prerenderClient.renderFavoritePage();
-            } catch (Exception e) {
-                // 预渲染失败不影响主流程
+        // 如果是收藏夹类型、本站信息类型或友链类型的资源，重新渲染相关页面
+        try {
+            if (CommonConst.RESOURCE_PATH_TYPE_FAVORITES.equals(resourcePathVO.getType())) {
+                prerenderClient.renderFavoritesPage();
+            } else if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) || 
+                       CommonConst.RESOURCE_PATH_TYPE_FRIEND.equals(resourcePathVO.getType())) {
+                prerenderClient.renderFriendsPage();
             }
+        } catch (Exception e) {
+            // 预渲染失败不影响主流程
         }
         
         return PoetryResult.success();

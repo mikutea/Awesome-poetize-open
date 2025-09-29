@@ -135,7 +135,7 @@ public class OAuthCallbackController {
     @GetMapping("/providers")
     public PoetryResult<Map<String, Object>> getSupportedProviders() {
         return PoetryResult.success(Map.of(
-            "providers", new String[]{"github", "google", "twitter", "yandex", "gitee"},
+            "providers", new String[]{"github", "google", "twitter", "yandex", "gitee", "qq", "baidu"},
             "callback_endpoint", "/oauth/callback",
             "method", "POST"
         ));

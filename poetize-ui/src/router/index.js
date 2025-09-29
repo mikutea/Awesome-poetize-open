@@ -50,6 +50,18 @@ const routes = [
       name: "favorite",
       component: () => import('../components/favorite')
     }, {
+      path: "/friends",
+      name: "friends",
+      component: () => import('../components/FriendLinks')
+    }, {
+      path: "/music",
+      name: "music",
+      component: () => import('../components/Music')
+    }, {
+      path: "/favorites",
+      name: "favorites",
+      component: () => import('../components/Favorites')
+    }, {
       path: "/travel",
       name: "travel",
       component: () => import('../components/travel')
@@ -187,8 +199,13 @@ const routes = [
     component: () => import('../components/Forbidden')
   },
   {
-    path: '*',
+    path: '/404',
     name: 'notFound',
+    component: () => import('../components/NotFound')
+  },
+  {
+    path: '*',
+    name: 'catchAll',
     component: () => import('../components/NotFound')
   }
 ]

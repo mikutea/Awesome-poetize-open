@@ -124,6 +124,21 @@
             </span>
         </el-form-item>
 
+        <!-- 动态标题开关 -->
+        <el-form-item label="动态标题" prop="enableDynamicTitle">
+          <el-switch v-model="webInfo.enableDynamicTitle"></el-switch>
+          <span :style="{
+                marginLeft: '10px',
+                fontSize: '12px',
+                color: webInfo.enableDynamicTitle ? '#67c23a' : '#f56c6c'
+              }">
+              {{ webInfo.enableDynamicTitle ? '已开启' : '已关闭' }}
+            </span>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            关闭后将直接显示页面标题，不会在离开/返回页面时变化
+          </div>
+        </el-form-item>
+
         <!-- 首页横幅高度 -->
         <el-form-item label="首页横幅高度" prop="homePagePullUpHeight">
           <el-input-number v-model="webInfo.homePagePullUpHeight" :min="10" :max="100" style="width: 120px;"></el-input-number>
@@ -139,12 +154,12 @@
             <div slot="reference" style="cursor: help;">
               <el-input 
                 v-model="navConfigText" 
-                placeholder="例如：首页,记录,家,百宝箱,留言,联系我">
+                placeholder="例如：首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我">
               </el-input>
             </div>
             <div>
               <p style="margin-top: 0">请填写您希望显示的导航项，<b>以逗号分隔</b>。系统将按照您输入的顺序显示这些导航项。</p>
-              <p>可用的导航项包括：首页、记录、家、百宝箱、留言、联系我。</p>
+              <p>可用的导航项包括：首页、记录、家、友人帐、曲乐、收藏夹、留言、联系我。</p>
               
               <!-- 导航栏预览 -->
               <div class="nav-preview-section">
@@ -761,7 +776,7 @@
                 <span class="platform-name">{{ platform.name }}</span>
               </div>
               <el-switch
-                v-model="thirdLoginConfig[platform.type].enabled"
+                :value="thirdLoginConfig[platform.type] && thirdLoginConfig[platform.type].enabled"
                 @change="handlePlatformToggle(platform.type, $event)"
                 active-color="#13ce66"
                 inactive-color="#ff4949"
@@ -770,7 +785,7 @@
             </div>
             
             <div class="platform-form">
-              <el-form label-position="top" :disabled="!thirdLoginConfig.enable || !thirdLoginConfig[platform.type].enabled">
+              <el-form label-position="top" :disabled="!thirdLoginConfig.enable || !(thirdLoginConfig[platform.type] && thirdLoginConfig[platform.type].enabled)">
                 <!-- 根据平台类型显示不同输入字段 -->
                 <template v-if="platform.type === 'twitter'">
                   <el-form-item label="Client Key">
@@ -810,14 +825,14 @@
               <el-button 
                 type="text" 
                 icon="el-icon-link"
-                :disabled="!thirdLoginConfig.enable || !thirdLoginConfig[platform.type].enabled"
+                :disabled="!thirdLoginConfig.enable || !(thirdLoginConfig[platform.type] && thirdLoginConfig[platform.type].enabled)"
                 @click="openDeveloperCenter(platform.developerUrl)">
                 开发者中心
               </el-button>
               <el-button 
                 type="text" 
                 icon="el-icon-check"
-                :disabled="!thirdLoginConfig.enable || !thirdLoginConfig[platform.type].enabled"
+                :disabled="!thirdLoginConfig.enable || !(thirdLoginConfig[platform.type] && thirdLoginConfig[platform.type].enabled)"
                 @click="testLogin(platform.type)">
                 测试
               </el-button>
@@ -1536,6 +1551,12 @@ X-API-KEY: {{apiConfig.apiKey}}
             client_secret: '',
             redirect_uri: this.$constant.pythonBaseURL + '/callback/qq',
             enabled: true
+          },
+          baidu: {
+            client_id: '',
+            client_secret: '',
+            redirect_uri: this.$constant.pythonBaseURL + '/callback/baidu',
+            enabled: true
           }
         },
         rules: {
@@ -1611,13 +1632,15 @@ X-API-KEY: {{apiConfig.apiKey}}
         apiDetailForm: {
           id: null
         },
-        navConfigText: "首页,记录,家,百宝箱,留言,联系我",
+        navConfigText: "首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我",
         navLoading: false,
         defaultNavItems: [
           { name: "首页", icon: "🏡", link: "/", type: "internal" },
           { name: "记录", icon: "📒", link: "#", type: "dropdown" },
           { name: "家", icon: "❤️‍🔥", link: "/love", type: "internal" },
-          { name: "百宝箱", icon: "🧰", link: "/favorite", type: "internal" },
+          { name: "友人帐", icon: "🤝", link: "/friends", type: "internal" },
+          { name: "曲乐", icon: "🎵", link: "/music", type: "internal" },
+          { name: "收藏夹", icon: "📁", link: "/favorites", type: "internal" },
           { name: "留言", icon: "📪", link: "/message", type: "internal" },
           { name: "联系我", icon: "💬", link: "#chat", type: "special" }
         ],
@@ -1712,6 +1735,12 @@ X-API-KEY: {{apiConfig.apiKey}}
             name: 'QQ',
             type: 'qq',
             developerUrl: 'https://connect.qq.com/manage.html',
+            useClientId: true
+          },
+          {
+            name: 'Baidu',
+            type: 'baidu',
+            developerUrl: 'https://developer.baidu.com/console#app/project',
             useClientId: true
           }
           // 要添加新平台，只需在这里添加配置项即可
@@ -2717,6 +2746,12 @@ X-API-KEY: {{apiConfig.apiKey}}
               client_secret: '',
               redirect_uri: this.$constant.pythonBaseURL + '/callback/qq',
               enabled: false
+            },
+            baidu: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/baidu',
+              enabled: false
             }
           };
           
@@ -2748,6 +2783,10 @@ X-API-KEY: {{apiConfig.apiKey}}
               qq: {
                 ...defaultConfig.qq,
                 ...(res.data.qq || {})
+              },
+              baidu: {
+                ...defaultConfig.baidu,
+                ...(res.data.baidu || {})
               }
             };
             console.log("合并后的第三方登录配置:", this.thirdLoginConfig);
@@ -2796,6 +2835,12 @@ X-API-KEY: {{apiConfig.apiKey}}
               client_id: '',
               client_secret: '',
               redirect_uri: this.$constant.pythonBaseURL + '/callback/qq',
+              enabled: false
+            },
+            baidu: {
+              client_id: '',
+              client_secret: '',
+              redirect_uri: this.$constant.pythonBaseURL + '/callback/baidu',
               enabled: false
             }
           };
@@ -2906,6 +2951,22 @@ X-API-KEY: {{apiConfig.apiKey}}
           }
         }
         
+        // 检查Baidu配置
+        if (this.thirdLoginConfig.baidu.enabled) {
+          if (!this.thirdLoginConfig.baidu.client_id) {
+            this.$message.error("Baidu的Client ID不能为空");
+            hasInvalidConfig = true;
+          }
+          if (!this.thirdLoginConfig.baidu.client_secret) {
+            this.$message.error("Baidu的Client Secret不能为空");
+            hasInvalidConfig = true;
+          }
+          if (!this.thirdLoginConfig.baidu.redirect_uri) {
+            this.$message.error("Baidu的回调地址不能为空");
+            hasInvalidConfig = true;
+          }
+        }
+        
         if (hasInvalidConfig) {
           return;
         }
@@ -2985,7 +3046,8 @@ X-API-KEY: {{apiConfig.apiKey}}
           twitter: './static/svg/x.svg',
           yandex: './static/svg/yandex.svg',
           gitee: './static/svg/gitee.svg',
-          qq: './static/svg/qq.svg'
+          qq: './static/svg/qq.svg',
+          baidu: './static/svg/baidu.svg'
         };
         return iconMapping[type] || '';
       },
@@ -3442,7 +3504,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.getApiConfig();
       },
       resetToDefaultNav() {
-        this.navConfigText = "首页,记录,家,百宝箱,留言,联系我";
+        this.navConfigText = "首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我";
       },
       saveNavConfig() {
         this.navLoading = true;
@@ -3491,7 +3553,9 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.thirdLoginConfig.enable = value;
       },
       handlePlatformToggle(platform, value) {
-        this.thirdLoginConfig[platform].enabled = value;
+        if (this.thirdLoginConfig[platform]) {
+          this.thirdLoginConfig[platform].enabled = value;
+        }
       },
       handleCaptchaToggle(value) {
         // 先设置本地状态，确保UI立即响应

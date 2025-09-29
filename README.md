@@ -7,14 +7,12 @@
   <p align="center">
     让内容创作与社交体验更美好
     <br />
-    <a href="#-功能特性"><strong>探索功能特性 »</strong></a>
     <br />
-    <br />
-    <a href="#-快速开始">快速部署</a>
+    <a href="快速开始">快速部署</a>
     ·
-    <a href="#-部署文档">部署文档</a>
+    <a href="部署文档">部署文档</a>
     ·
-    <a href="#️-开发指南">二次开发</a>
+    <a href="#开发指南">二次开发</a>
   </p>
   <p align="center">
    <img src="https://img.shields.io/badge/license-AGPL--3.0-%3CCOLOR%3E.svg" alt="AGPL License">
@@ -24,25 +22,36 @@
   </p>
 </p>
 
-## 📋目录
+## 目录
 
-- [🙏 项目致谢](#-项目致谢)
-- [📖 项目简介](#-项目简介)
-- [🎨 项目预览](#-项目预览)
-- [🚀 快速开始](#-快速开始)
-- [📋 部署文档](#-部署文档)
-- [📝 配置指南](#-配置指南)
-- [🤝 贡献与许可](#-贡献与许可)
-- [🛠️ 开发指南](#️-开发指南)
-- [🔧 技术栈](#-技术栈)
-- [📞 联系方式](#-联系方式)
-- [📜 版权说明](#-版权说明)
+- [项目简介](#项目致谢)
+- [项目预览](#项目预览)
+- [快速开始](#快速开始)
+- [部署文档](#部署文档)
+- [贡献与许可](#贡献与许可)
+- [开发指南](#开发指南)
+- [技术栈](#技术栈)
+- [联系方式](#联系方式)
+- [版权说明](#版权说明)
 
-## 🙏 项目致谢
+## 项目简介
 
-本项目基于原作者Sara的开源项目 [POETIZE最美博客](https://gitee.com/littledokey/poetize) 进行功能扩展和定制化开发。感谢原作者提供的优秀博客系统基础框架。
+本项目基于开源项目 [POETIZE最美博客](https://gitee.com/littledokey/poetize) 功能扩展和定制化开发，历时半年，这是一个集内容创作、社交互动与技术优化于一体的现代化博客系统，非常适合个人建站和内容创作者使用。
 
-**本分支新增/优化功能**
+<p align="center">
+  <img src="poetize_picture/首页.png" alt="首页" width="100%">
+</p>
+
+<p align="center">博客首页 - 展示个人创作与生活点滴</p>
+
+<p align="center">
+  <img src="poetize_picture/首页1.jpg" alt="文章展示" width="49%">
+  <img src="poetize_picture/首页2.jpg" alt="社交功能" width="49%">
+</p>
+
+<p align="center">左：内容布局展示 | 右：社交功能体验</p>
+
+#### **本分支新增/优化功能**
 
 1. ✅ 一键部署脚本 —— 一行命令自动完成环境配置、HTTPS配置和服务启动
 2. ✅ 后台权限管理 —— 支持多角色分级管理，提升安全性
@@ -67,34 +76,9 @@
 21. ✅ Redis缓存优化 —— 大部分接口使用Redis缓存，提升性能
 22. ✅ 实现token签名算法HMAC-SHA256认证 —— 完全替换简单UUID token，新增防伪造、防篡改、防重放攻击能力
 
-## 📖 项目简介
+更多功能...
 
-Poetize 优化版是一个以博客为核心的全栈平台，融合即时通讯和AI工具，支持一键部署，帮助创作者轻松发布内容并与读者互动。
-
-**适用人群**
-
-* **创作者/博主** – 拥有文章、图片墙、留言等全面功能，与读者直接互动
-* **开发学习者** – 基于Java+Vue全栈技术，集成前后端、数据库、即时通讯的学习项目
-* **小型社群** – 内容发布与成员交流（好友、群聊、朋友圈）一体化平台
-
-无论您是创建个人站点还是学习全栈开发，Poetize 优化版都是理想选择。
-
-## 🎨 项目预览
-
-<p align="center">
-  <img src="poetize_picture/首页.png" alt="首页" width="100%">
-</p>
-
-<p align="center">博客首页 - 展示个人创作与生活点滴</p>
-
-<p align="center">
-  <img src="poetize_picture/首页1.jpg" alt="文章展示" width="49%">
-  <img src="poetize_picture/首页2.jpg" alt="社交功能" width="49%">
-</p>
-
-<p align="center">左：内容布局展示 | 右：社交功能体验</p>
-
-## 🚀 快速开始
+## 快速开始
 
 ```bash
 # 你只需要输入域名邮箱即可
@@ -108,11 +92,11 @@ bash <(curl -sL install.leapya.com)
 * 服务编排与启动
 * 自动HTTPS配置
 
-## 📋 部署文档
+## 部署文档
 
 ### 架构概览
 
-系统采用容器化部署，包含七大核心服务：
+系统采用容器化部署，七大核心服务：
 
 1. 主站前端 (Vue 2)
 2. 聊天室前端 (Vue 3)
@@ -185,7 +169,11 @@ git clone https://github.com/LeapYa/Awesome-poetize-open.git && sudo chmod +x de
 * 管理后台：`http(s)://域名/admin`
 * 默认账号密码：`Sara / aaa`
 
-#### Ollama翻译模型配置（可选）
+### OAuth代理（可选）
+
+我们第三方登录的时候想支持国外第三方登录平台（如谷歌、github等），需要配置海外代理服务器才可以正常第三方登录，否则会失败，具体如何配置请查看[OAuth代理配置说明文档](OAuth代理配置说明.md)
+
+### Ollama翻译模型配置（可选）
 
 如果你想启用本地AI翻译功能，我们也集成了Ollama模型支持。只需要取消 `docker-compose.yml`中的相关注释即可：
 
@@ -204,7 +192,7 @@ vim docker-compose.yml
 * 支持中英文互译
 * 模型数据持久化存储
 
-##### 自定义模型配置
+#### 自定义模型配置
 
 如果你不想使用默认的 `qwen3:0.6b`模型，可以修改为其他支持的模型：
 
@@ -264,13 +252,19 @@ docker ps -a
 # 查看日志
 docker logs poetize-nginx
 
-# 服务管理
-docker-compose restart
-docker-compose down
-docker-compose up -d
+# 服务管理（docker-compose旧版本的命令是docker compose）
+docker compose restart
+docker compose down
+docker compose up -d
 
 # HTTPS手动配置
 docker exec poetize-nginx /enable-https.sh
+
+# 升级项目
+poetize -update
+
+# 迁移博客
+poetize -qy
 ```
 
 ### 注意事项
@@ -286,12 +280,7 @@ docker exec poetize-nginx /enable-https.sh
    * Docker服务状态
    * 端口占用检查
    * 配置文件验证
-2. **编码问题**
-
-   * MySQL字符集
-   * Java连接参数
-   * Nginx字符集
-3. **HTTPS配置失败**
+2. **HTTPS配置失败**
 
    * 域名解析验证
    * 80端口访问性
@@ -299,7 +288,11 @@ docker exec poetize-nginx /enable-https.sh
 
 ### 脚本说明
 
-#### 基本用法
+本项目有多个脚本，主要用于博客的安装、升级、迁移
+
+#### 部署脚本（deploy.sh）
+
+用于将博客部署到当前服务器，会自动帮你安装docker、配置国内镜像源、配置https等，以下是基本用法：
 
 ```bash
 # 交互式部署
@@ -308,28 +301,35 @@ docker exec poetize-nginx /enable-https.sh
 # 参数部署
 ./deploy.sh -d example.com -d www.example.com
 
-# 配置文件部署
-./deploy.sh --config .poetize-config
-
-# 保存配置
-./deploy.sh --domain example.com --save-config
+# 查看帮助/所有子命令
+./deploy.sh -h
 ```
 
-#### 参数说明
+#### 迁移脚本（migrate.sh）
 
-* `-d, --domain` - 域名设置
-* `-e, --email` - 管理员邮箱（非必须）
-* `--enable-https` - 启用HTTPS
-* `--config` - 从文件加载配置
-* `--save-config` - 保存配置
-* `-b, --background` - 后台运行脚本
+用于将当前服务器上的博客一键迁移到另一台服务器，以下是基本用法：
 
-#### 部署流程
+```bash
+# 在源服务器（已有正在运行的博客）执行
+chmod +x ./migrate.sh && ./migrate.sh
+```
 
-1. **环境检查** - 依赖、目录、资源
-2. **配置收集** - 域名、邮箱、HTTPS
-3. **服务部署** - 环境初始化与服务启动
-4. **部署完成** - 汇总、访问信息、常用命令
+#### 状态查看、升级脚本（poetize）
+
+用于将当前服务器的博客升级、查看状态等
+
+```bash
+# 查看帮助/所有子命令
+poetize -h
+
+# 升级到最新版本（拉取最新配置与镜像并平滑重启）
+poetize -update
+
+# 快速迁移引导（在源服务器执行，内部调用 migrate.sh）
+poetize -qy
+```
+
+`poetize` 命令由一键安装脚本安装（bash <(curl -sL install.leapya.com)）。若未安装，可直接在项目根目录使用 `deploy.sh`、`migrate.sh` 完成部署与迁移。
 
 #### 关于国内环境部署
 
@@ -367,54 +367,13 @@ docker exec poetize-nginx /enable-https.sh
 
 通过这些步骤，您可以在中国国内环境中顺利部署项目，避免网络限制带来的问题。
 
-## 📝 配置指南
-
-### 邮箱配置
-
-1. **数据库配置**
-
-   * 移除默认配置，改用数据库存储
-2. **邮箱管理**
-
-   * 后台管理系统 → "网站设置" → 邮箱配置
-   * 支持多邮箱、随机选择、发件人自定义
-3. **常用配置**
-
-   * QQ邮箱: smtp.qq.com (465端口, SSL)
-   * 网易企业: smtphz.qiye.163.com (465端口, SSL)
-   * Gmail: smtp.gmail.com (587端口, STARTTLS)
-   * 更多...
-
-### 第三方登录配置
-
-1. **数据库准备**
-
-   * 执行 `poetize.sql`
-2. **Python服务配置**
-
-   * 依赖安装：`pip install -r requirements.txt`
-   * 环境变量：`.env.example` → `.env`
-   * OAuth密钥配置
-3. **部署选项**
-
-   * 同服务器不同端口（推荐）
-   * 独立服务器
-   * Docker容器
-   * Serverless云服务
-4. **平台开发者设置**
-
-   * GitHub: [Developer Settings](https://github.com/settings/developers)
-   * Google: [Cloud Console](https://console.cloud.google.com/)
-   * Twitter: [Developer Portal](https://developer.twitter.com/en/portal/dashboard)
-   * Yandex: [OAuth](https://oauth.yandex.com/)
-
-## 🤝 贡献与许可
+## 贡献与许可
 
 * 原作者：Sara (POETIZE最美博客)
 * Fork版本开发：LeapYa
 * 开源协议：遵循原项目AGPL协议
 
-## 🛠️ 开发指南
+## 开发指南
 
 ### 环境要求
 
@@ -542,7 +501,6 @@ docker exec poetize-nginx /enable-https.sh
    // pythonBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/python",
    // imBaseURL: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : '') + "/im",
    ```
-
 2. **依赖安装**
 
    ```bash
@@ -735,14 +693,14 @@ Python服务提供以下关键功能：
 * **应用配置** - Java和Python各自配置文件
 * **敏感数据** - 密码、密钥不应提交，使用.gitignore或环境变量
 
-## 🔧 技术栈
+## 技术栈
 
 * **前端** - Vue2/Vue3、Element UI、Socket.io、Live2D
 * **后端** - Spring Boot、MyBatis Plus、Fastapi、OAuth2.0
 * **数据库** - MariaDB 11（兼容MySQL 5.7）
 * **部署** - Docker、Docker Compose、Nginx、Shell脚本
 
-## 📞 联系方式
+## 联系方式
 
 * **邮箱** - enable_lazy@qq.com 或 hi@leapya.com
 * **问题反馈** - [GitHub Issues](https://github.com/LeapYa/Awesome-poetize-open/issues)
