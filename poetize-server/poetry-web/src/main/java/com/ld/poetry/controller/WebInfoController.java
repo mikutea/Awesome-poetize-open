@@ -140,6 +140,7 @@ public class WebInfoController {
             Integer autoNightStart = (Integer) params.get("autoNightStart");
             Integer autoNightEnd = (Integer) params.get("autoNightEnd");
             Boolean enableGrayMode = (Boolean) params.get("enableGrayMode");
+            String mobileDrawerConfig = (String) params.get("mobileDrawerConfig");
 
             // 记录更新前的详细信息
             log.info("开始更新网站基本信息 - ID: {}, webName: {}, webTitle: {}", id, webName, webTitle);
@@ -148,7 +149,7 @@ public class WebInfoController {
             int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, footer, backgroundImage,
                     avatar, waifuJson, status, enableWaifu, homePagePullUpHeight, apiEnabled, apiKey,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
-                    enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode);
+                    enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, mobileDrawerConfig);
             
             log.info("网站基本信息数据库更新结果: {} 行受影响, ID: {}", updateResult, id);
 

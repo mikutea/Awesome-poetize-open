@@ -29,6 +29,7 @@
         <result column="auto_night_start" property="autoNightStart"/>
         <result column="auto_night_end" property="autoNightEnd"/>
         <result column="enable_gray_mode" property="enableGrayMode"/>
+        <result column="mobile_drawer_config" property="mobileDrawerConfig"/>
     </resultMap>
 
     <!-- 通用查询结果列 -->
@@ -36,7 +37,7 @@
         id, web_name, web_title, notices, footer, background_image, avatar, random_avatar, random_name, random_cover,
         waifu_json, status, enable_waifu, home_page_pull_up_height, api_enabled, api_key, nav_config,
         footer_background_image, footer_background_config, email, minimal_footer, enable_auto_night,
-        auto_night_start, auto_night_end, enable_gray_mode
+        auto_night_start, auto_night_end, enable_gray_mode, mobile_drawer_config
     </sql>
 
     <!-- 更新基本网站信息（不包括公告、随机名称等专门管理的字段） -->
@@ -105,6 +106,9 @@
             </if>
             <if test="enableGrayMode != null">
                 enable_gray_mode = #{enableGrayMode},
+            </if>
+            <if test="mobileDrawerConfig != null">
+                mobile_drawer_config = #{mobileDrawerConfig},
             </if>
         </set>
         WHERE id = #{id}

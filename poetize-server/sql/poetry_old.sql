@@ -163,6 +163,7 @@ CREATE TABLE `poetize`.`web_info` (
   `auto_night_end` int DEFAULT 7 COMMENT '夜间结束时间(小时)',
   `enable_gray_mode` tinyint(1) DEFAULT 0 COMMENT '灰色模式开关[0:否，1:是]',
   `enable_dynamic_title` tinyint(1) DEFAULT 1 COMMENT '动态标题开关[0:否，1:是]',
+  `mobile_drawer_config` TEXT NULL COMMENT '移动端侧边栏配置(JSON格式)',
 
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='网站信息表';
@@ -498,11 +499,11 @@ CREATE TABLE IF NOT EXISTS `poetize`.`seo_notification_config` (
 
 INSERT INTO `poetize`.`user`(`id`, `username`, `password`, `phone_number`, `email`, `user_status`, `gender`, `open_id`, `admire`, `subscribe`, `avatar`, `introduction`, `user_type`, `update_by`, `deleted`) VALUES (1, 'Sara', '$2a$12$hQ2N3HlDqxdVrsJ4SKGY1.D6F/I1/dUBFVkckaq1DnJH693mPZS5S', '', '', 1, 1, '', '', '', '', '', 0, 'Sara', 0);
 
-INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`, `minimal_footer`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
+INSERT INTO `poetize`.`web_info`(`id`, `web_name`, `web_title`, `notices`, `footer`, `background_image`, `avatar`, `random_avatar`, `random_name`, `random_cover`, `waifu_json`, `status`, `api_enabled`, `api_key`, `nav_config`, `minimal_footer`, `mobile_drawer_config`) VALUES (1, 'Sara', 'POETIZE', '[]', '云想衣裳花想容， 春风拂槛露华浓。', '', '', '[]', '[]', '["/static/assets/backgroundPicture.jpg"]', '{
     "waifuPath": "/static/live2d-widget/waifu-tips.json",
     "cdnPath": "https://fastly.jsdelivr.net/gh/fghrsh/live2d_api/",
     "tools": ["hitokoto", "asteroids", "switch-model", "switch-texture", "photo", "info", "quit"]
-}', 1, 0, NULL, '{}', 0);
+}', 1, 0, NULL, '[{"name":"首页","icon":"🏡","link":"/","type":"internal","order":1,"enabled":true},{"name":"记录","icon":"📒","link":"#","type":"dropdown","order":2,"enabled":true},{"name":"家","icon":"❤️‍🔥","link":"/love","type":"internal","order":3,"enabled":true},{"name":"友人帐","icon":"🤝","link":"/friends","type":"internal","order":4,"enabled":true},{"name":"曲乐","icon":"🎵","link":"/music","type":"internal","order":5,"enabled":true},{"name":"收藏夹","icon":"📁","link":"/favorites","type":"internal","order":6,"enabled":true},{"name":"留言","icon":"📪","link":"/message","type":"internal","order":7,"enabled":true},{"name":"联系我","icon":"💬","link":"#chat","type":"special","order":8,"enabled":true}]', 0, '{"titleType":"text","titleText":"欢迎光临","avatarSize":100,"backgroundType":"image","backgroundImage":"/assets/toolbar.jpg","backgroundColor":"#000000","backgroundGradient":"linear-gradient(60deg, #ffd7e4, #c8f1ff 95%)","maskOpacity":0.7,"menuFontColor":"#ffffff","showBorder":true,"borderColor":"rgba(255, 255, 255, 0.15)","showSnowflake":true}');
 
 INSERT INTO `poetize`.`family` (`id`, `user_id`, `bg_cover`, `man_cover`, `woman_cover`, `man_name`, `woman_name`, `timing`, `countdown_title`, `countdown_time`, `status`, `family_info`, `like_count`, `create_time`, `update_time`) VALUES (1, 1, '背景封面', '男生头像', '女生头像', 'Sara', 'Abby', '2000-01-01 00:00:00', '春节倒计时', '2025-01-29 00:00:00', 1, '', 0, '2000-01-01 00:00:00', '2000-01-01 00:00:00');
 

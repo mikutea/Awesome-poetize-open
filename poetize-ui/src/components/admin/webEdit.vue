@@ -184,6 +184,16 @@
           </el-popover>
         </el-form-item>
 
+        <!-- 移动端侧边栏配置 -->
+        <el-form-item label="移动端侧边栏">
+          <el-button @click="mobileDrawerDialogVisible = true" type="primary" size="small">
+            <i class="el-icon-setting"></i> 配置移动端侧边栏
+          </el-button>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            自定义移动端侧边栏的背景图片、颜色、渐变等样式
+          </div>
+        </el-form-item>
+
         <el-form-item label="背景" prop="backgroundImage">
           <div style="display: flex">
             <el-input v-model="webInfo.backgroundImage"></el-input>
@@ -1430,6 +1440,198 @@ X-API-KEY: {{apiConfig.apiKey}}
       </div>
     </el-dialog>
 
+    <!-- 移动端侧边栏配置对话框 -->
+    <el-dialog
+      title="移动端侧边栏配置"
+      :visible.sync="mobileDrawerDialogVisible"
+      width="700px"
+      :close-on-click-modal="false"
+      custom-class="mobile-drawer-config-dialog">
+      
+      <el-form label-width="100px" class="drawer-config-form">
+        <!-- 标题类型 -->
+        <el-form-item label="标题类型">
+          <el-radio-group v-model="drawerConfig.titleType">
+            <el-radio label="text">文字</el-radio>
+            <el-radio label="avatar">头像</el-radio>
+          </el-radio-group>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            选择显示文字标题或博客头像
+          </div>
+        </el-form-item>
+
+        <!-- 标题文字 -->
+        <el-form-item label="标题文字" v-if="drawerConfig.titleType === 'text'">
+          <el-input v-model="drawerConfig.titleText" placeholder="欢迎光临"></el-input>
+        </el-form-item>
+
+        <!-- 头像大小 -->
+        <el-form-item label="头像大小" v-if="drawerConfig.titleType === 'avatar'">
+          <el-slider 
+            v-model="drawerConfig.avatarSize" 
+            :min="60" 
+            :max="150" 
+            :step="5"
+            style="width: 300px;">
+          </el-slider>
+          <span style="margin-left: 10px;">{{ drawerConfig.avatarSize }}px</span>
+        </el-form-item>
+
+        <!-- 背景类型 -->
+        <el-form-item label="背景类型">
+          <el-radio-group v-model="drawerConfig.backgroundType">
+            <el-radio label="image">背景图片</el-radio>
+            <el-radio label="color">纯色</el-radio>
+            <el-radio label="gradient">渐变色</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <!-- 背景图片 -->
+        <el-form-item label="背景图片" v-if="drawerConfig.backgroundType === 'image'">
+          <el-input v-model="drawerConfig.backgroundImage" placeholder="图片URL"></el-input>
+          <uploadPicture 
+            :isAdmin="true" 
+            :prefix="'mobileDrawerBg'" 
+            style="margin-top: 10px"
+            @addPicture="addDrawerBackgroundImage"
+            :maxSize="5"
+            :maxNumber="1">
+          </uploadPicture>
+          <div v-if="drawerConfig.backgroundImage" style="margin-top: 10px;">
+            <el-image 
+              :src="drawerConfig.backgroundImage" 
+              style="width: 200px; height: 150px;"
+              fit="cover">
+            </el-image>
+          </div>
+        </el-form-item>
+
+        <!-- 纯色背景 -->
+        <el-form-item label="背景颜色" v-if="drawerConfig.backgroundType === 'color'">
+          <el-color-picker v-model="drawerConfig.backgroundColor"></el-color-picker>
+          <span style="margin-left: 10px;">{{ drawerConfig.backgroundColor }}</span>
+        </el-form-item>
+
+        <!-- 渐变背景 -->
+        <el-form-item label="渐变背景" v-if="drawerConfig.backgroundType === 'gradient'">
+          <el-select v-model="drawerConfig.backgroundGradient" placeholder="选择渐变样式">
+            <el-option 
+              v-for="(gradient, index) in gradientPresets" 
+              :key="index"
+              :label="gradient.name" 
+              :value="gradient.value">
+              <div style="display: flex; align-items: center;">
+                <div :style="{ 
+                  width: '100px', 
+                  height: '20px', 
+                  background: gradient.value, 
+                  marginRight: '10px',
+                  borderRadius: '3px'
+                }"></div>
+                <span>{{ gradient.name }}</span>
+              </div>
+            </el-option>
+          </el-select>
+          <div style="margin-top: 10px;">
+            <div :style="{ 
+              width: '100%', 
+              height: '80px', 
+              background: drawerConfig.backgroundGradient,
+              borderRadius: '8px'
+            }"></div>
+          </div>
+        </el-form-item>
+
+        <!-- 遮罩透明度 -->
+        <el-form-item label="遮罩透明度">
+          <el-slider 
+            v-model="drawerConfig.maskOpacity" 
+            :min="0" 
+            :max="1" 
+            :step="0.05"
+            :format-tooltip="formatOpacity"
+            style="width: 300px;">
+          </el-slider>
+          <span style="margin-left: 10px;">{{ (drawerConfig.maskOpacity * 100).toFixed(0) }}%</span>
+        </el-form-item>
+
+        <!-- 菜单字体颜色 -->
+        <el-form-item label="字体颜色">
+          <el-color-picker v-model="drawerConfig.menuFontColor"></el-color-picker>
+          <span style="margin-left: 10px;">{{ drawerConfig.menuFontColor }}</span>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            设置标题和菜单项的字体颜色
+          </div>
+        </el-form-item>
+
+        <!-- 显示边框 -->
+        <el-form-item label="显示分隔线">
+          <el-switch v-model="drawerConfig.showBorder"></el-switch>
+        </el-form-item>
+
+        <!-- 显示雪花装饰 -->
+        <el-form-item label="雪花装饰" v-if="drawerConfig.titleType === 'avatar'">
+          <el-switch v-model="drawerConfig.showSnowflake"></el-switch>
+          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
+            在头像和菜单之间的分隔线上显示雪花装饰
+          </div>
+        </el-form-item>
+
+        <!-- 边框颜色 -->
+        <el-form-item label="分隔线颜色" v-if="drawerConfig.showBorder">
+          <el-input v-model="drawerConfig.borderColor" placeholder="rgba(255, 255, 255, 0.15)">
+            <template slot="prepend">
+              <el-color-picker 
+                v-model="borderColorPicker" 
+                show-alpha
+                @change="updateBorderColor">
+              </el-color-picker>
+            </template>
+          </el-input>
+        </el-form-item>
+
+        <!-- 预览 -->
+        <el-form-item label="效果预览">
+          <div class="drawer-preview" :style="getDrawerPreviewStyle()">
+            <div class="drawer-preview-header">
+              <!-- 文字标题 -->
+              <div v-if="drawerConfig.titleType === 'text'" class="preview-title" :style="{ color: drawerConfig.menuFontColor }">
+                {{ drawerConfig.titleText || '欢迎光临' }}
+              </div>
+              <!-- 头像 -->
+              <div v-else-if="drawerConfig.titleType === 'avatar'" class="preview-avatar">
+                <el-image :src="webInfo.avatar || '/assets/avatar.jpg'" fit="cover">
+                  <div slot="error" class="image-slot">
+                    <i class="el-icon-picture-outline"></i>
+                  </div>
+                </el-image>
+              </div>
+            </div>
+            <!-- 头像模式下的分隔线 -->
+            <hr v-if="drawerConfig.titleType === 'avatar'" 
+                :class="['preview-divider', { 'show-snowflake': drawerConfig.showSnowflake }]" />
+            <div class="drawer-preview-menu">
+              <div class="preview-menu-item" :style="getMenuItemStyle()">
+                <span :style="{ color: drawerConfig.menuFontColor }">🏡 首页</span>
+              </div>
+              <div class="preview-menu-item" :style="getMenuItemStyle()">
+                <span :style="{ color: drawerConfig.menuFontColor }">📒 记录</span>
+              </div>
+              <div class="preview-menu-item" :style="getMenuItemStyle()">
+                <span :style="{ color: drawerConfig.menuFontColor }">❤️‍🔥 家</span>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <div slot="footer" class="dialog-footer drawer-config-footer">
+        <el-button @click="resetDrawerConfig" class="footer-btn">重置为默认</el-button>
+        <el-button @click="mobileDrawerDialogVisible = false" class="footer-btn">取消</el-button>
+        <el-button type="primary" @click="saveDrawerConfig" class="footer-btn">保存</el-button>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -1634,6 +1836,34 @@ X-API-KEY: {{apiConfig.apiKey}}
         },
         navConfigText: "首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我",
         navLoading: false,
+        // 移动端侧边栏配置
+        mobileDrawerDialogVisible: false,
+        drawerConfig: {
+          titleType: 'text', // 'text' 或 'avatar'
+          titleText: '欢迎光临',
+          avatarSize: 100,
+          backgroundType: 'image',
+          backgroundImage: '/assets/toolbar.jpg',
+          backgroundColor: '#000000',
+          backgroundGradient: 'linear-gradient(60deg, #ffd7e4, #c8f1ff 95%)',
+          maskOpacity: 0.7,
+          menuFontColor: '#ffffff',
+          showBorder: true,
+          borderColor: 'rgba(255, 255, 255, 0.15)',
+          showSnowflake: true
+        },
+        borderColorPicker: '#ffffff',
+        gradientPresets: [
+          { name: '粉蓝渐变（默认）', value: 'linear-gradient(60deg, #ffd7e4, #c8f1ff 95%)' },
+          { name: '紫色梦幻', value: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+          { name: '海洋蓝', value: 'linear-gradient(135deg, #0093E9 0%, #80D0C7 100%)' },
+          { name: '日落橙', value: 'linear-gradient(135deg, #FDBB2D 0%, #22C1C3 100%)' },
+          { name: '粉色浪漫', value: 'linear-gradient(135deg, #F093FB 0%, #F5576C 100%)' },
+          { name: '绿色清新', value: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)' },
+          { name: '深空紫', value: 'linear-gradient(135deg, #434343 0%, #000000 100%)' },
+          { name: '炫彩渐变', value: 'linear-gradient(to right, #ee7752, #e73c7e, #23a6d5, #23d5ab)' },
+          { name: '夜空蓝', value: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)' },
+        ],
         defaultNavItems: [
           { name: "首页", icon: "🏡", link: "/", type: "internal" },
           { name: "记录", icon: "📒", link: "#", type: "dropdown" },
@@ -1892,6 +2122,31 @@ X-API-KEY: {{apiConfig.apiKey}}
                     opacity: 100,
                     textShadow: false,
                     maskColor: 'rgba(0, 0, 0, 0.5)'
+                  };
+                }
+              }
+              
+              // 解析移动端侧边栏配置
+              if (res.data.mobileDrawerConfig) {
+                try {
+                  this.drawerConfig = JSON.parse(res.data.mobileDrawerConfig);
+                  this.webInfo.mobileDrawerConfig = res.data.mobileDrawerConfig;
+                } catch (e) {
+                  console.error("解析移动端侧边栏配置失败:", e);
+                  // 使用默认配置
+                  this.drawerConfig = {
+                    titleType: 'text',
+                    titleText: '欢迎光临',
+                    avatarSize: 100,
+                    backgroundType: 'image',
+                    backgroundImage: '/assets/toolbar.jpg',
+                    backgroundColor: '#000000',
+                    backgroundGradient: 'linear-gradient(60deg, #ffd7e4, #c8f1ff 95%)',
+                    maskOpacity: 0.7,
+                    menuFontColor: '#ffffff',
+                    showBorder: true,
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    showSnowflake: true
                   };
                 }
               }
@@ -3586,6 +3841,84 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.webInfo.footerBackgroundImage = res;
       },
 
+      // 移动端侧边栏配置相关方法
+      addDrawerBackgroundImage(res) {
+        this.drawerConfig.backgroundImage = res;
+      },
+      
+      formatOpacity(val) {
+        return `${(val * 100).toFixed(0)}%`;
+      },
+      
+      updateBorderColor(color) {
+        if (color) {
+          this.drawerConfig.borderColor = color;
+        }
+      },
+      
+      getDrawerPreviewStyle() {
+        let background = '';
+        if (this.drawerConfig.backgroundType === 'image' && this.drawerConfig.backgroundImage) {
+          background = `url(${this.drawerConfig.backgroundImage}) center center / cover no-repeat`;
+        } else if (this.drawerConfig.backgroundType === 'color') {
+          background = this.drawerConfig.backgroundColor;
+        } else if (this.drawerConfig.backgroundType === 'gradient') {
+          background = this.drawerConfig.backgroundGradient;
+        }
+        
+        return {
+          background: background,
+          position: 'relative',
+          '--drawer-mask-opacity': this.drawerConfig.maskOpacity
+        };
+      },
+      
+      getMenuItemStyle() {
+        return {
+          borderBottom: this.drawerConfig.showBorder ? `1px solid ${this.drawerConfig.borderColor}` : 'none'
+        };
+      },
+      
+      resetDrawerConfig() {
+        this.drawerConfig = {
+          titleType: 'text',
+          titleText: '欢迎光临',
+          avatarSize: 100,
+          backgroundType: 'image',
+          backgroundImage: '/assets/toolbar.jpg',
+          backgroundColor: '#000000',
+          backgroundGradient: 'linear-gradient(60deg, #ffd7e4, #c8f1ff 95%)',
+          maskOpacity: 0.7,
+          menuFontColor: '#ffffff',
+          showBorder: true,
+          borderColor: 'rgba(255, 255, 255, 0.15)',
+          showSnowflake: true
+        };
+        this.$message.success('已重置为默认配置');
+      },
+      
+      saveDrawerConfig() {
+        // 将配置转换为JSON字符串
+        const configJson = JSON.stringify(this.drawerConfig);
+        
+        // 更新webInfo
+        this.webInfo.mobileDrawerConfig = configJson;
+        
+        // 保存到后端
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateWebInfo", {
+          id: this.webInfo.id,
+          mobileDrawerConfig: configJson
+        }, true)
+          .then(() => {
+            this.$message.success('移动端侧边栏配置保存成功！');
+            this.mobileDrawerDialogVisible = false;
+            this.getWebInfo();
+          })
+          .catch((error) => {
+            this.$message.error('保存失败: ' + (error.response?.data?.message || error.message));
+          });
+      },
+
       // AI聊天配置相关方法
       async loadAiConfigs() {
         try {
@@ -3965,6 +4298,268 @@ X-API-KEY: {{apiConfig.apiKey}}
   .nav-item-dropdown {
     font-size: 12px;
     margin-left: 3px;
+  }
+
+  /* 移动端侧边栏预览样式 */
+  .drawer-preview {
+    width: 100%;
+    min-height: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .drawer-preview {
+    --drawer-mask-opacity: 0.7;
+  }
+
+  .drawer-preview::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, var(--drawer-mask-opacity));
+    z-index: 1;
+  }
+
+  .drawer-preview-header {
+    position: relative;
+    z-index: 2;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .preview-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 2px;
+  }
+
+  .preview-avatar {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: auto;
+  }
+
+  .preview-avatar .el-image {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 预览区域的分隔线 */
+  .preview-divider {
+    position: relative;
+    margin: 30px auto 20px;
+    border: 0;
+    border-top: 1px dashed var(--lightGreen);
+    overflow: visible;
+    z-index: 2;
+  }
+
+  .preview-divider::before {
+    position: absolute;
+    top: 50%;
+    left: 5%;
+    transform: translateY(-50%);
+    color: var(--lightGreen);
+    content: "";
+    font-size: 28px;
+    line-height: 1;
+  }
+
+  .preview-divider.show-snowflake::before {
+    content: "❄";
+  }
+
+  .drawer-preview-menu {
+    position: relative;
+    z-index: 2;
+    padding: 10px 0;
+  }
+
+  .preview-menu-item {
+    padding: 15px 20px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+
+  .preview-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* 配置对话框表单样式 */
+  .drawer-config-form .el-form-item__label {
+    text-align: left !important;
+    padding-right: 8px;
+  }
+
+  /* 配置对话框底部按钮样式 */
+  .drawer-config-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .drawer-config-footer .footer-btn {
+    min-width: 100px;
+  }
+
+  /* 移动端侧边栏配置对话框适配 */
+  @media screen and (max-width: 768px) {
+    .mobile-drawer-config-dialog {
+      width: 95% !important;
+      margin: 0 !important;
+    }
+
+    .mobile-drawer-config-dialog .el-dialog__header {
+      padding: 15px 20px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-dialog__title {
+      font-size: 16px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-dialog__body {
+      padding: 15px 20px !important;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .mobile-drawer-config-dialog .el-form {
+      margin: 0 !important;
+    }
+
+    .mobile-drawer-config-dialog .el-form-item {
+      margin-bottom: 15px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-form-item__label {
+      width: 55px !important;
+      font-size: 12px !important;
+      padding-right: 4px !important;
+      line-height: 1.2 !important;
+      white-space: normal !important;
+      word-break: break-all !important;
+    }
+
+    .mobile-drawer-config-dialog .el-form-item__content {
+      margin-left: 55px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .mobile-drawer-config-dialog .el-radio {
+      margin-right: 0 !important;
+    }
+
+    .mobile-drawer-config-dialog .el-input {
+      font-size: 14px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-slider {
+      width: 100% !important;
+    }
+
+    .mobile-drawer-config-dialog .el-select {
+      width: 100% !important;
+    }
+
+    .mobile-drawer-config-dialog .el-select-dropdown__item {
+      padding: 8px 12px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-color-picker {
+      width: auto !important;
+    }
+
+    /* 预览区域适配 */
+    .mobile-drawer-config-dialog .drawer-preview {
+      min-height: 250px !important;
+      border-radius: 8px !important;
+    }
+
+    .mobile-drawer-config-dialog .drawer-preview-header {
+      padding: 15px !important;
+    }
+
+    .mobile-drawer-config-dialog .preview-title {
+      font-size: 18px !important;
+    }
+
+    .mobile-drawer-config-dialog .preview-menu-item {
+      padding: 12px 15px !important;
+      font-size: 14px !important;
+    }
+
+    /* 图片上传组件适配 */
+    .mobile-drawer-config-dialog .el-image {
+      width: 150px !important;
+      height: 100px !important;
+    }
+
+    /* 底部按钮适配 */
+    .mobile-drawer-config-dialog .el-dialog__footer {
+      padding: 12px 20px !important;
+    }
+
+    .mobile-drawer-config-dialog .drawer-config-footer {
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .mobile-drawer-config-dialog .drawer-config-footer .footer-btn {
+      width: 100% !important;
+      margin: 0 !important;
+      height: 40px !important;
+      font-size: 15px !important;
+      min-width: unset !important;
+    }
+  }
+
+  /* 超小屏幕适配 */
+  @media screen and (max-width: 480px) {
+    .mobile-drawer-config-dialog {
+      width: 98% !important;
+    }
+
+    .mobile-drawer-config-dialog .el-dialog__body {
+      padding: 10px 15px !important;
+      max-height: 65vh;
+    }
+
+    .mobile-drawer-config-dialog .el-form-item__label {
+      width: 50px !important;
+      font-size: 11px !important;
+      padding-right: 3px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-form-item__content {
+      margin-left: 50px !important;
+    }
+
+    .mobile-drawer-config-dialog .drawer-preview {
+      min-height: 200px !important;
+    }
+
+    .mobile-drawer-config-dialog .preview-title {
+      font-size: 16px !important;
+    }
+
+    .mobile-drawer-config-dialog .el-image {
+      width: 120px !important;
+      height: 80px !important;
+    }
   }
 
 </style>

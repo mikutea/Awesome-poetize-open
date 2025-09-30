@@ -61,7 +61,8 @@ export default new Vuex.Store({
       "avatar": "",
       "minimalFooter": false,
       "navConfig": "[]",  // 初始为空数组字符串
-      "homePagePullUpHeight": 50  // 首页横幅高度默认值
+      "homePagePullUpHeight": 50,  // 首页横幅高度默认值
+      "mobileDrawerConfig": ""  // 移动端侧边栏配置
     }),
     visitCounts: {},
     // 验证码相关状态

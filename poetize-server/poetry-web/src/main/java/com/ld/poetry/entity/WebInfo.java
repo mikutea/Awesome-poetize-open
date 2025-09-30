@@ -185,4 +185,10 @@ public class WebInfo implements Serializable {
      */
     @TableField(value = "enable_dynamic_title", exist = true)
     private Boolean enableDynamicTitle;
+
+    /**
+     * 移动端侧边栏配置(JSON格式)
+     */
+    @TableField(value = "mobile_drawer_config", exist = true)
+    private String mobileDrawerConfig;
 }

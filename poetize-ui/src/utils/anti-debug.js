@@ -93,6 +93,14 @@ function handleKeydown(event) {
   }
 }
 
+function handleContextMenu(event) {
+  // 拦截右键菜单，防止通过右键"检查"打开开发者工具
+  event.preventDefault();
+  event.stopPropagation();
+  scheduleDebuggerLoop();
+  return false;
+}
+
 export function initAntiDebug({ enableInDev = false } = {}) {
   if (typeof window === 'undefined') {
     return () => {};
@@ -117,6 +125,7 @@ export function initAntiDebug({ enableInDev = false } = {}) {
   window.addEventListener('focus', checkDevTools, true);
   window.addEventListener('blur', checkDevTools, true);
   window.addEventListener('keydown', handleKeydown, true);
+  window.addEventListener('contextmenu', handleContextMenu, true);
 
   return () => {
     if (intervalId) {
@@ -128,6 +137,7 @@ export function initAntiDebug({ enableInDev = false } = {}) {
     window.removeEventListener('focus', checkDevTools, true);
     window.removeEventListener('blur', checkDevTools, true);
     window.removeEventListener('keydown', handleKeydown, true);
+    window.removeEventListener('contextmenu', handleContextMenu, true);
   };
 }
 

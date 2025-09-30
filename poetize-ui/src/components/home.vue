@@ -199,9 +199,30 @@
                :show-close="false"
                size="65%"
                custom-class="toolbarDrawer"
-               title="欢迎光临"
-               direction="ltr">
+               :title="showDrawerTitle ? drawerTitle : ' '"
+               direction="ltr"
+               :wrapper-closable="true">
+      <!-- 自定义头像标题 -->
+      <div v-if="showDrawerAvatar" slot="title" class="drawer-avatar-container">
+        <img 
+          :src="$store.state.webInfo.avatar" 
+          :style="{
+            width: drawerAvatarSize + 'px',
+            height: drawerAvatarSize + 'px',
+            borderRadius: '50%',
+            objectFit: 'cover',
+            cursor: 'pointer',
+            transition: 'transform 0.3s'
+          }"
+          class="drawer-avatar"
+          @error="handleAvatarError"
+        />
+      </div>
       <div>
+        <!-- 头像模式下的分隔线 -->
+        <hr v-if="showDrawerAvatar" 
+            :class="['drawer-divider', { 'show-snowflake': showDrawerSnowflake }]" />
+        
         <ul class="small-menu">
           <!-- 遍历导航项并按配置顺序显示 -->
           <template v-for="(item, index) in orderedNavItems">
@@ -316,7 +337,9 @@
         scrollTop: 0,
         toolbarDrawer: false,
         mobile: false,
-        visitCountInterval: null
+        visitCountInterval: null,
+        // 移动端侧边栏配置
+        drawerConfig: null
       }
     },
     mounted() {
@@ -468,6 +491,16 @@
         };
         this.$store.commit("changeToolbarStatus", toolbarStatus);
       },
+      
+      // 监听侧边栏打开状态，应用动态样式
+      toolbarDrawer(newVal) {
+        if (newVal) {
+          // drawer打开时应用样式
+          this.$nextTick(() => {
+            this.applyDrawerStyles();
+          });
+        }
+      }
     },
     created() {
       // 获取网站信息
@@ -500,6 +533,24 @@
       },
       mainContainerStyle() {
         return {};
+      },
+      drawerTitle() {
+        if (this.drawerConfig && this.drawerConfig.titleText) {
+          return this.drawerConfig.titleText;
+        }
+        return '欢迎光临';
+      },
+      showDrawerTitle() {
+        return !this.drawerConfig || this.drawerConfig.titleType === 'text';
+      },
+      showDrawerAvatar() {
+        return this.drawerConfig && this.drawerConfig.titleType === 'avatar';
+      },
+      drawerAvatarSize() {
+        return (this.drawerConfig && this.drawerConfig.avatarSize) || 100;
+      },
+      showDrawerSnowflake() {
+        return this.drawerConfig && this.drawerConfig.showSnowflake !== false;
       },
       orderedNavItems() {
         try {
@@ -1043,6 +1094,72 @@
       },
       getWebsitConfig() {
         this.$store.dispatch("getWebsitConfig");
+        // 加载侧边栏配置
+        this.loadDrawerConfig();
+      },
+      loadDrawerConfig() {
+        try {
+          if (this.$store.state.webInfo && this.$store.state.webInfo.mobileDrawerConfig) {
+            this.drawerConfig = JSON.parse(this.$store.state.webInfo.mobileDrawerConfig);
+            // 应用动态样式
+            this.$nextTick(() => {
+              this.applyDrawerStyles();
+            });
+          }
+        } catch (e) {
+          console.error('解析移动端侧边栏配置失败:', e);
+        }
+      },
+      applyDrawerStyles() {
+        if (!this.drawerConfig) return;
+        
+        const drawerElement = document.querySelector('.toolbarDrawer');
+        if (!drawerElement) return;
+        
+        // 设置背景
+        if (this.drawerConfig.backgroundType === 'image' && this.drawerConfig.backgroundImage) {
+          drawerElement.style.background = `url(${this.drawerConfig.backgroundImage}) center center / cover no-repeat`;
+        } else if (this.drawerConfig.backgroundType === 'color') {
+          drawerElement.style.background = this.drawerConfig.backgroundColor;
+        } else if (this.drawerConfig.backgroundType === 'gradient') {
+          drawerElement.style.background = this.drawerConfig.backgroundGradient;
+        }
+        
+        // 设置遮罩透明度
+        const maskElement = drawerElement.querySelector('::before');
+        if (this.drawerConfig.maskOpacity !== undefined) {
+          drawerElement.style.setProperty('--drawer-mask-opacity', this.drawerConfig.maskOpacity);
+        }
+        
+        // 设置标题和菜单字体颜色
+        const headerElement = drawerElement.querySelector('.el-drawer__header');
+        if (headerElement && this.drawerConfig.menuFontColor) {
+          headerElement.style.color = this.drawerConfig.menuFontColor;
+        }
+        
+        // 设置菜单字体颜色
+        if (this.drawerConfig.menuFontColor) {
+          drawerElement.style.setProperty('--menu-font-color', this.drawerConfig.menuFontColor);
+        }
+        
+        // 设置边框样式
+        const menuItems = drawerElement.querySelectorAll('.small-menu li');
+        menuItems.forEach(item => {
+          if (this.drawerConfig.showBorder) {
+            item.style.borderBottom = `1px solid ${this.drawerConfig.borderColor}`;
+          } else {
+            item.style.borderBottom = 'none';
+          }
+        });
+        
+        // 最后一个菜单项不显示边框
+        if (menuItems.length > 0 && this.drawerConfig.showBorder) {
+          menuItems[menuItems.length - 1].style.borderBottom = 'none';
+        }
+      },
+      handleAvatarError(e) {
+        // 头像加载失败时使用默认头像
+        e.target.src = '/assets/avatar.jpg';
       },
       loadFont() {
       },
@@ -1151,7 +1268,7 @@
   margin-left: 44px;
   font-size: 17px;
   position: relative;
-  color: var(--white);
+  color: var(--menu-font-color);
   padding: 8px 15px;
   transition: all 0.3s ease;
 }
@@ -1370,6 +1487,10 @@
 }
 
 /* 手机端菜单样式 */
+.toolbarDrawer {
+  --menu-font-color: #ffffff;
+}
+
 .small-menu {
   padding: 0;
   margin: 0;
@@ -1387,20 +1508,51 @@
 }
 
 .small-menu li > div:first-child {
-  padding: 15px 20px;
+  padding: 10px 20px;
   font-size: 16px;
   font-weight: bold;
-  color: var(--white);
+  color: var(--menu-font-color);
   transition: all 0.3s ease;
 }
 
 .small-menu li:hover > div:first-child {
   background-color: rgba(255, 255, 255, 0.1);
-  color: var(--white);
 }
 
 .small-menu li:active > div:first-child {
   background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 移动端侧边栏头像样式 */
+.drawer-avatar-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0;
+}
+
+/* 头像和菜单之间的分隔线 */
+.drawer-divider {
+  position: relative;
+  margin: 30px auto 20px;
+  border: 0;
+  border-top: 1px dashed var(--lightGreen);
+  overflow: visible;
+}
+
+.drawer-divider::before {
+  position: absolute;
+  top: 50%;
+  left: 5%;
+  transform: translateY(-50%);
+  color: var(--lightGreen);
+  content: "";
+  font-size: 28px;
+  line-height: 1;
+}
+
+.drawer-divider.show-snowflake::before {
+  content: "❄";
 }
 
 </style>
