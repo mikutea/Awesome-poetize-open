@@ -280,9 +280,7 @@ body {
 
 /* 导航栏 */
 .toolbarDrawer {
-    position: relative;
     background: var(--toolbar) center center / cover no-repeat;
-    letter-spacing: 3px;
 }
 
 .toolbarDrawer .el-drawer__header {

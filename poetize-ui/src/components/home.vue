@@ -1151,6 +1151,13 @@
   margin-left: 44px;
   font-size: 17px;
   position: relative;
+  color: var(--white);
+  padding: 8px 15px;
+  transition: all 0.3s ease;
+}
+
+.sortMenu:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .sortMenu:after {
@@ -1370,21 +1377,30 @@
 }
 
 .small-menu li {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.small-menu li:last-child {
+  border-bottom: none;
 }
 
 .small-menu li > div:first-child {
   padding: 15px 20px;
   font-size: 16px;
   font-weight: bold;
-  color: var(--black);
+  color: var(--white);
   transition: all 0.3s ease;
 }
 
 .small-menu li:hover > div:first-child {
-  background-color: var(--lightBackground);
-  color: var(--themeBackground);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+}
+
+.small-menu li:active > div:first-child {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 </style>
