@@ -51,6 +51,9 @@
             <if test="webTitle != null and webTitle != ''">
                 web_title = #{webTitle},
             </if>
+            <if test="siteAddress != null">
+                site_address = #{siteAddress},
+            </if>
             
             <!-- 基本信息字段：允许空值覆盖（只要不是null就更新） -->
             <if test="footer != null">

@@ -286,6 +286,21 @@ public class CacheConstants {
      * 搜索引擎推送结果缓存过期时间（秒）- 6小时
      */
     public static final long SEARCH_ENGINE_PING_RESULT_EXPIRE_TIME = 21600;
+    
+    // ================================ 二维码相关缓存 ================================
+    
+    /**
+     * 文章二维码缓存键前缀
+     * 格式: poetize:qrcode:article:{articleId}
+     * 说明：存储文章分享二维码的字节数组，避免重复生成
+     */
+    public static final String ARTICLE_QRCODE_PREFIX = CACHE_PREFIX + "qrcode:article:";
+    
+    /**
+     * 二维码缓存过期时间（秒）- 永久缓存
+     * 说明：二维码内容基于文章ID固定不变，仅在文章更新/删除时主动清理缓存
+     */
+    public static final long QRCODE_EXPIRE_TIME = 0;
 
     // ================================ 缓存过期时间常量 ================================
     
@@ -555,5 +570,16 @@ public class CacheConstants {
     public static String buildIpTodayVisitKey(String date, String ip, Integer userId) {
         String userSuffix = userId != null ? "_" + userId : "";
         return IP_TODAY_VISIT_PREFIX + date + ":" + ip + userSuffix;
+    }
+    
+    // ================================ 二维码缓存键构建方法 ================================
+    
+    /**
+     * 构建文章二维码缓存键
+     * @param articleId 文章ID
+     * @return 缓存键
+     */
+    public static String buildArticleQRCodeKey(Integer articleId) {
+        return ARTICLE_QRCODE_PREFIX + articleId;
     }
 }

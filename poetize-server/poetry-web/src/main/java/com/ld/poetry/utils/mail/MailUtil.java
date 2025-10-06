@@ -54,7 +54,7 @@ public class MailUtil {
     private MailService mailService;
 
     @Autowired
-    private ResourcePathMapper resourcePathMapper;
+    private com.ld.poetry.dao.WebInfoMapper webInfoMapper;
 
     private String mailText;
 
@@ -109,19 +109,17 @@ public class MailUtil {
     }
 
     /**
-     * 动态获取网站URL
-     * @return 网站URL
+     * 获取网站URL
+     * 优先级：web_info.site_address > 环境变量SITE_URL > 默认值
+     * 
+     * @return 网站URL（不带尾部斜杠）
      */
-    private String getSiteUrl() {
+    public String getSiteUrl() {
         try {
-            // 从资源聚合表中获取网站信息
-            LambdaQueryChainWrapper<ResourcePath> wrapper = new LambdaQueryChainWrapper<>(resourcePathMapper);
-            ResourcePath siteInfo = wrapper.eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_SITE_INFO)
-                    .eq(ResourcePath::getStatus, Boolean.TRUE)
-                    .one();
-            
-            if (siteInfo != null && StringUtils.hasText(siteInfo.getUrl())) {
-                String url = siteInfo.getUrl().trim();
+            // 1. 优先从 web_info 表获取 site_address 字段
+            com.ld.poetry.entity.WebInfo webInfo = webInfoMapper.selectById(1);
+            if (webInfo != null && StringUtils.hasText(webInfo.getSiteAddress())) {
+                String url = webInfo.getSiteAddress().trim();
                 // 确保URL以http://或https://开头
                 if (!url.startsWith("http://") && !url.startsWith("https://")) {
                     url = "https://" + url;
@@ -130,14 +128,14 @@ public class MailUtil {
                 if (url.endsWith("/")) {
                     url = url.substring(0, url.length() - 1);
                 }
-                log.info("动态获取网站URL成功: {}", url);
+                log.debug("从 web_info 表获取网站URL: {}", url);
                 return url;
             }
         } catch (Exception e) {
-            log.warn("动态获取网站URL失败，尝试从环境变量获取: {}", e.getMessage());
+            log.warn("从 web_info 表获取网站URL失败，尝试从环境变量获取: {}", e.getMessage());
         }
         
-        // 如果数据库中未配置或获取失败，尝试从环境变量获取
+        // 2. 如果数据库中未配置或获取失败，尝试从环境变量获取
         String envSiteUrl = System.getenv("SITE_URL");
         if (StringUtils.hasText(envSiteUrl)) {
             String url = envSiteUrl.trim();
@@ -149,13 +147,13 @@ public class MailUtil {
             if (url.endsWith("/")) {
                 url = url.substring(0, url.length() - 1);
             }
-            log.info("从环境变量获取网站URL成功: {}", url);
+            log.debug("从环境变量获取网站URL: {}", url);
             return url;
         }
         
-        // 如果环境变量也未配置，返回默认URL
-        log.info("使用默认网站URL");
-        return "#";
+        // 3. 如果环境变量也未配置，返回默认URL
+        log.debug("使用默认网站URL: http://localhost");
+        return "http://localhost";
     }
 
     /**

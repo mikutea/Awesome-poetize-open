@@ -35,57 +35,6 @@
         
         <div :class="{'disabled-section': !seoConfig.enable}">
         
-        <el-form-item label="网站地址">
-          <div class="site-address-container">
-            <el-input 
-              v-model="seoConfig.site_address" 
-              placeholder="自动检测的网站地址"
-              :readonly="!editingSiteAddress"
-              class="site-address-input">
-            </el-input>
-            
-            <!-- 简约地址操作按钮 -->
-            <div class="simple-address-actions" v-if="!editingSiteAddress">
-              <el-button 
-                size="small" 
-                @click="detectSiteAddress" 
-                :loading="detectingAddress"
-                class="simple-address-btn">
-                {{ detectingAddress ? '检测中...' : '自动检测' }}
-              </el-button>
-              
-              <el-button 
-                size="small" 
-                @click="startEditSiteAddress"
-                class="simple-address-btn">
-                手动编辑
-              </el-button>
-            </div>
-            
-            <!-- 编辑状态下的按钮 -->
-            <div class="simple-address-actions" v-if="editingSiteAddress">
-              <el-button 
-                size="small" 
-                type="primary" 
-                @click="editingSiteAddress = false"
-                class="simple-address-btn">
-                确认
-              </el-button>
-              
-              <el-button 
-                size="small" 
-                @click="cancelEditSiteAddress"
-                class="simple-address-btn">
-                取消
-              </el-button>
-            </div>
-          </div>
-          <span class="tip">
-            网站的完整访问地址，用于生成站点地图和其他SEO功能。
-            <strong>推荐使用自动检测</strong>，系统会根据当前访问地址自动填写。
-          </span>
-        </el-form-item>
-        
         <el-form-item label="网站描述">
           <el-input v-model="seoConfig.site_description" type="textarea" :rows="2" maxlength="200"></el-input>
           <span class="tip">描述应当简明扼要，不超过200字符。<b class="warning-tip">注意：为保持一致性，请优先在"网站设置"中修改网站描述，该处的设置将覆盖此处配置。</b></span>
@@ -1264,15 +1213,11 @@ export default {
   data() {
     return {
       initialLoad: true,
-      editingSiteAddress: false,
-      detectingAddress: false,
-      originalSiteAddress: '',
       currentStoreType: null, // 添加当前存储类型属性
       isMobile: false, // 移动端检测
       isTouch: false, // 触摸设备检测
       seoConfig: {
         enable: false,
-        site_address: "",
         site_description: "Poetize：作诗，有诗意地描写。个人博客，生活倒影，记录生活。",
         site_keywords: "Poetize,博客,个人网站,生活笔记,记录生活",
         default_author: "poetize",
@@ -1385,13 +1330,6 @@ export default {
       this.addMobileOptimizations();
     }
     
-    // 组件挂载后，如果网站地址为空则自动检测
-    this.$nextTick(async () => {
-      if (!this.seoConfig.site_address) {
-        console.log('网站地址为空，自动检测...');
-        await this.detectSiteAddress();
-      }
-    });
     
     // 添加文档点击事件监听器
     document.addEventListener('click', this.handleDocumentClick);
@@ -1560,87 +1498,6 @@ export default {
       }
     },
     
-    // 自动检测网站地址
-    async detectSiteAddress() {
-      this.detectingAddress = true;
-      console.log('开始自动检测网站地址...');
-      
-      try {
-        // 1. 前端检测
-        const currentOrigin = window.location.origin;
-        let frontendDetected = currentOrigin;
-        
-        // 处理标准端口
-        if (currentOrigin.includes(':3000') || currentOrigin.includes(':8080')) {
-          frontendDetected = currentOrigin;
-        } else if (currentOrigin.includes(':80') && currentOrigin.startsWith('http://')) {
-          frontendDetected = currentOrigin.replace(':80', '');
-        } else if (currentOrigin.includes(':443') && currentOrigin.startsWith('https://')) {
-          frontendDetected = currentOrigin.replace(':443', '');
-        }
-        
-        console.log('前端检测结果:', frontendDetected);
-        
-        // 2. 获取后端检测结果
-        let backendDetected = frontendDetected;
-        let detectionConsistent = true;
-        
-        try {
-          const backendResponse = await this.$http.get(this.$constant.baseURL + '/admin/seo/detectSiteUrl');
-          if (backendResponse && backendResponse.code === 200) {
-            backendDetected = backendResponse.data.detected_url;
-            detectionConsistent = frontendDetected === backendDetected;
-            console.log('后端检测结果:', backendDetected);
-            console.log('前后端检测一致性:', detectionConsistent);
-          }
-        } catch (backendError) {
-          console.warn('获取后端检测结果失败，使用前端检测结果:', backendError.message);
-        }
-        
-        // 3. 使用检测结果
-        const finalUrl = backendDetected || frontendDetected;
-        this.seoConfig.site_address = finalUrl;
-        
-        // 4. 显示结果消息
-        if (detectionConsistent) {
-          console.log('检测完成：', finalUrl);
-        } else {
-          this.$message({
-            type: 'warning',
-            message: `检测完成：${finalUrl}（前后端检测结果略有差异，已采用后端结果）`,
-            duration: 5000
-          });
-          console.warn('前后端检测结果不一致:', {
-            frontend: frontendDetected,
-            backend: backendDetected,
-            final: finalUrl
-          });
-        }
-        
-        console.log('最终使用的网站地址:', finalUrl);
-        
-      } catch (error) {
-        console.error('自动检测网站地址失败:', error);
-        this.$message({
-          type: 'error',
-          message: '自动检测失败，请手动输入网站地址'
-        });
-      } finally {
-        this.detectingAddress = false;
-      }
-    },
-    
-         // 开始编辑网站地址
-     startEditSiteAddress() {
-       this.originalSiteAddress = this.seoConfig.site_address;
-       this.editingSiteAddress = true;
-     },
-     
-     // 取消编辑网站地址
-     cancelEditSiteAddress() {
-       this.seoConfig.site_address = this.originalSiteAddress;
-       this.editingSiteAddress = false;
-     },
     
     saveEnableStatus(status) {
       // 确保状态是布尔值

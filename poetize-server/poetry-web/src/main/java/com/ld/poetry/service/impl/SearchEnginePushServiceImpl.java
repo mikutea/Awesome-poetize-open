@@ -228,7 +228,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             return Map.of("success", false, "message", "无法获取SEO配置");
         }
         
-        String siteAddress = (String) seoConfig.get("site_address");
+        // 直接从 MailUtil 获取网站地址
+        String siteAddress = mailUtil.getSiteUrl();
         if (!StringUtils.hasText(siteAddress)) {
             return Map.of("success", false, "message", "网站地址未配置");
         }
@@ -253,6 +254,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
             
             if (seoConfig != null && !seoConfig.isEmpty()) {
+                // site_address 已迁移至 web_info 表，使用的地方应直接调用 mailUtil.getSiteUrl()
+                
                 // 更新缓存
                 cachedSeoConfig = seoConfig;
                 configCacheTime = currentTime;
@@ -287,7 +290,7 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
         // 返回一个基本的配置，只启用简单的ping推送
         Map<String, Object> fallbackConfig = new HashMap<>();
         fallbackConfig.put("enable", true);
-        fallbackConfig.put("site_address", "http://localhost");
+        // site_address 已迁移至 web_info 表，使用的地方应直接调用 mailUtil.getSiteUrl()
         
         // 所有搜索引擎推送都禁用，避免无配置的推送
         fallbackConfig.put("baidu_push_enabled", false);
@@ -376,7 +379,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 return result;
             }
             
-            String siteAddress = (String) seoConfig.get("site_address");
+            // 直接从 MailUtil 获取网站地址
+            String siteAddress = mailUtil.getSiteUrl();
             if (!StringUtils.hasText(siteAddress)) {
                 result.put("success", false);
                 result.put("message", "网站地址未配置");
@@ -656,7 +660,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 return result;
             }
             
-            String siteAddress = (String) seoConfig.get("site_address");
+            // 直接从 MailUtil 获取网站地址
+            String siteAddress = mailUtil.getSiteUrl();
             if (!StringUtils.hasText(siteAddress)) {
                 result.put("success", false);
                 result.put("message", "网站地址未配置");
@@ -712,7 +717,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 return result;
             }
             
-            String siteAddress = (String) seoConfig.get("site_address");
+            // 直接从 MailUtil 获取网站地址
+            String siteAddress = mailUtil.getSiteUrl();
             if (!StringUtils.hasText(siteAddress)) {
                 result.put("success", false);
                 result.put("message", "网站地址未配置");
@@ -764,7 +770,8 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 return result;
             }
             
-            String siteAddress = (String) seoConfig.get("site_address");
+            // 直接从 MailUtil 获取网站地址
+            String siteAddress = mailUtil.getSiteUrl();
             if (!StringUtils.hasText(siteAddress)) {
                 result.put("success", false);
                 result.put("message", "网站地址未配置");

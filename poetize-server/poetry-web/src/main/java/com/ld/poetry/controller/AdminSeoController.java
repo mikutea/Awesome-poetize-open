@@ -120,11 +120,6 @@ public class AdminSeoController {
         try {
             Map<String, Object> config = seoConfigService.getSeoConfigAsJson();
             
-            // 如果没有site_address，自动检测并填充
-            if (!StringUtils.hasText((String) config.get("site_address"))) {
-                Map<String, Object> urlInfo = seoMetaService.detectSiteUrl(request);
-                config.put("site_address", urlInfo.get("detected_url"));
-            }
 
             return PoetryResult.success(config);
         } catch (Exception e) {

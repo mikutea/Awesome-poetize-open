@@ -22,6 +22,9 @@ public class RobotsServiceImpl implements RobotsService {
 
     @Autowired
     private SearchEnginePushServiceImpl searchEnginePushService;
+    
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     private static final String ROBOTS_CACHE_KEY = "seo:robots";
     private static final int ROBOTS_CACHE_EXPIRE_TIME = 24 * 60 * 60; // 24小时缓存
@@ -52,12 +55,13 @@ public class RobotsServiceImpl implements RobotsService {
                 return null;
             }
 
-            // 获取网站地址并替换占位符
-            String siteAddress = (String) seoConfig.get("site_address");
+            // 直接从 MailUtil 获取网站地址并替换占位符
+            String siteAddress = mailUtil.getSiteUrl();
             if (StringUtils.hasText(siteAddress)) {
-                robotsTemplate = robotsTemplate.replace("{site_address}", siteAddress.replaceAll("/$", ""));
+                robotsTemplate = robotsTemplate.replace("{site_address}", siteAddress);
+                log.debug("已替换 robots.txt 中的网站地址: {}", siteAddress);
             } else {
-                log.warn("SEO配置中没有site_address，保留占位符");
+                log.warn("无法获取网站地址，保留占位符");
             }
 
             log.debug("robots.txt生成成功，长度: {}", robotsTemplate.length());

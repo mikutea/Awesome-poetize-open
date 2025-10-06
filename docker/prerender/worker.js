@@ -1717,7 +1717,7 @@ async function renderHomePage(lang = 'zh') {
     const description = seoConfig.site_description || `${webInfo.webName} - 个人博客网站，分享技术文章、生活感悟。`;
     const keywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
     const author = seoConfig.default_author || webInfo.webName || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(seoConfig.og_image || webInfo.avatar || '', baseUrl);
     
     const meta = {
@@ -1812,7 +1812,7 @@ async function renderAboutPage(lang = 'zh') {
     const title = `关于我们 - ${webInfo.webTitle || webInfo.webName }`;
     const description = webInfo.about || '了解更多关于我们的信息';
     const keywords = `关于,${webInfo.webName },博客,个人简介`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -1868,7 +1868,7 @@ async function renderMessagePage(lang = 'zh') {
     const title = `留言板 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '欢迎在这里留下您的宝贵意见和建议';
     const keywords = `留言,反馈,建议,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -1919,7 +1919,7 @@ async function renderWeiYanPage(lang = 'zh') {
     const title = `微言 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '记录生活点滴，分享心情随笔';
     const keywords = `微言,动态,心情,随笔,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -1970,7 +1970,7 @@ async function renderLovePage(lang = 'zh') {
     const title = `恋爱记录 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '记录美好的爱情时光';
     const keywords = `恋爱,爱情,记录,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -2021,7 +2021,7 @@ async function renderTravelPage(lang = 'zh') {
     const title = `旅行日记 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '记录旅途中的美好时光和所见所闻';
     const keywords = `旅行,日记,游记,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -2072,7 +2072,7 @@ async function renderPrivacyPage(lang = 'zh') {
     const title = `隐私政策 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '了解我们如何保护您的个人隐私信息';
     const keywords = `隐私政策,隐私保护,个人信息,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -2125,7 +2125,7 @@ async function renderLetterPage(lang = 'zh') {
     const title = `信件 - ${webInfo.webTitle || webInfo.webName }`;
     const description = '查看和管理您的信件';
     const keywords = `信件,私信,消息,${webInfo.webName }`;
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     
     const meta = {
       description,
@@ -2180,7 +2180,7 @@ async function renderFriendsPage(lang = 'zh') {
     const title = `友人帐 - ${siteName}`;
     const description = '留下你的网站吧，让我们建立友谊的桥梁';
     const author = webInfo.webName || seoConfig.default_author || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
     
     const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
@@ -2218,7 +2218,7 @@ async function renderFriendsPage(lang = 'zh') {
             <h3>🌸本站信息</h3>
             <blockquote>
               <div>网站名称: ${siteInfo.title || webInfo.webName}</div>
-              <div>网址: ${siteInfo.url || baseUrl}</div>
+              <div>网址: ${baseUrl}</div>
               <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
               <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
               <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
@@ -2286,7 +2286,7 @@ async function renderMusicPage(lang = 'zh') {
     const title = `曲乐 - ${siteName}`;
     const description = '一曲肝肠断，天涯何处觅知音';
     const author = webInfo.webName || seoConfig.default_author || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
     
     const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
@@ -2362,7 +2362,7 @@ async function renderFavoritesPage(lang = 'zh') {
     const title = `收藏夹 - ${siteName}`;
     const description = '将本网站添加到您的收藏夹吧，发现更多精彩内容';
     const author = webInfo.webName || seoConfig.default_author || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(webInfo.avatar || seoConfig.og_image || '', baseUrl);
     
     const baseKeywords = seoConfig.site_keywords || '博客,个人网站,技术分享';
@@ -2452,7 +2452,7 @@ async function renderDefaultSortPage(lang = 'zh') {
     const title = `文章分类 - ${siteName}`;
     const description = '浏览所有文章分类，找到您感兴趣的内容主题';
     const author = seoConfig.default_author || webInfo.webName || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(seoConfig.og_image || webInfo.avatar || '', baseUrl);
     
     // 在基础关键词基础上添加页面特定关键词
@@ -2559,7 +2559,7 @@ async function renderSortPage(sortId, labelId = null, lang = 'zh') {
     const title = `${sortData.sortName} - ${siteName}`;
     const description = sortData.sortDescription || `${sortData.sortName}分类下的所有文章`;
     const author = seoConfig.default_author || webInfo.webName || 'Admin';
-    const baseUrl = seoConfig.site_address || process.env.SITE_URL || '';
+    const baseUrl = webInfo.siteAddress || process.env.SITE_URL || 'http://localhost';
     const ogImage = ensureAbsoluteImageUrl(seoConfig.og_image || webInfo.avatar || '', baseUrl);
     
     // 在基础关键词基础上添加分类特定关键词

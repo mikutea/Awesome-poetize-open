@@ -182,10 +182,15 @@
               </span>
             </div>
           </blockquote>
-          <!-- 订阅 -->
+          <!-- 订阅和分享按钮 -->
           <div class="myCenter" id="article-like">
             <div class="subscribe-button" :class="{'subscribed': subscribe}" @click="subscribeLabel()">
               {{ subscribe ? '已订阅' : '订阅' }}
+              <i class="el-icon-upload"></i>
+            </div>
+            <div class="share-card-button" @click="openShareCardDialog()">
+              卡片分享
+              <i class="el-icon-share"></i>
             </div>
           </div>
 
@@ -298,6 +303,65 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 卡片分享弹窗 -->
+    <el-dialog title="卡片分享"
+               :visible.sync="shareCardDialogVisible"
+               width="500px"
+               :top="shareCardDialogTop"
+               :append-to-body="true"
+               custom-class="share-card-dialog"
+               center>
+      <div class="share-card-container">
+        <!-- 卡片预览 -->
+        <div class="share-card-preview" ref="shareCard" id="shareCard">
+          <!-- 作者头像 -->
+          <div class="card-avatar-container">
+            <img :src="article.avatar || $store.state.webInfo.avatar || '/poetize.jpg'" 
+                 alt="作者头像" 
+                 class="card-avatar" />
+          </div>
+          
+          <!-- 日期 -->
+          <div class="card-date">
+            {{ formatDate(article.createTime) }}
+          </div>
+          
+          <!-- 标题 -->
+          <div class="card-title">
+            {{ articleTitle }}
+          </div>
+          
+          <!-- 封面图片 -->
+          <div class="card-cover">
+            <img :src="article.articleCover" alt="文章封面" />
+          </div>
+          
+          <!-- 底部信息 -->
+          <div class="card-footer">
+            <!-- 作者名 -->
+            <div class="card-author">
+              {{ article.username }}
+            </div>
+            
+            <!-- 分隔线 -->
+            <hr class="card-divider" />
+            
+            <!-- 品牌标识和二维码 -->
+            <div class="card-bottom">
+              <div class="card-brand">{{ $store.state.webInfo.webTitle || 'POETIZE' }}</div>
+              <div class="card-qrcode" ref="qrcode"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 底部按钮 -->
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="shareCardDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="downloadShareCard()">下载卡片</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -352,7 +416,8 @@
         sourceLanguageName: '中文', // 源语言名称
         languageMap: {}, // 语言映射
         availableLanguages: [], // 文章实际可用的翻译语言
-        availableLanguageButtons: [] // 动态生成的语言按钮列表
+        availableLanguageButtons: [], // 动态生成的语言按钮列表
+        shareCardDialogVisible: false // 卡片分享弹窗显示状态
       };
     },
 
@@ -608,6 +673,33 @@
       articleTitle() {
         // 如果当前语言不是源语言且已有翻译标题，则显示翻译标题，否则显示原始标题
         return (this.currentLang !== this.sourceLanguage && this.translatedTitle) ? this.translatedTitle : this.article.articleTitle;
+      },
+      
+      // 动态计算对话框距离顶部的距离
+      shareCardDialogTop() {
+        const screenHeight = window.innerHeight;
+        // 预估对话框高度约750px（含标题、内容、按钮）
+        const dialogHeight = 750;
+        
+        // 如果屏幕高度小于对话框高度，靠顶显示
+        if (screenHeight <= dialogHeight + 100) {
+          return '3vh';
+        }
+        
+        // 计算居中位置
+        const centeredTop = (screenHeight - dialogHeight) / 2;
+        
+        // 转换为vh单位
+        const topVh = (centeredTop / screenHeight) * 100;
+        
+        // 根据不同屏幕大小限制范围
+        if (screenHeight < 800) {
+          return Math.max(3, Math.min(8, topVh)) + 'vh';
+        } else if (screenHeight < 1000) {
+          return Math.max(5, Math.min(12, topVh)) + 'vh';
+        } else {
+          return Math.max(8, Math.min(15, topVh)) + 'vh';
+        }
       }
     },
 
@@ -1906,6 +1998,139 @@
           
           this.updateUrlWithLanguage(this.sourceLanguage);
         }
+      },
+
+      // 打开卡片分享弹窗
+      openShareCardDialog() {
+        this.shareCardDialogVisible = true;
+        
+        // 延迟生成二维码，确保DOM已渲染
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.generateQRCode();
+          }, 300);
+        });
+      },
+
+      // 格式化日期
+      formatDate(dateStr) {
+        if (!dateStr) return '';
+        
+        try {
+          const date = new Date(dateStr);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          
+          return `${year}年${month}月${day}日`;
+        } catch (error) {
+          console.error('日期格式化失败:', error);
+          return dateStr;
+        }
+      },
+
+      // 生成二维码（调用后端API）
+      generateQRCode() {
+        const qrcodeContainer = this.$refs.qrcode;
+        if (!qrcodeContainer) {
+          console.error('二维码容器未找到');
+          return;
+        }
+
+        // 检查文章ID是否存在
+        if (!this.article || !this.article.id) {
+          console.error('文章ID不存在');
+          qrcodeContainer.innerHTML = '<div style="width: 60px; height: 60px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999;">无效文章</div>';
+          return;
+        }
+
+        // 清空现有内容
+        qrcodeContainer.innerHTML = '';
+
+        // 显示加载中
+        qrcodeContainer.innerHTML = '<div style="width: 60px; height: 60px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999;">加载中...</div>';
+
+        // 调用后端API生成二维码
+        const qrcodeApiUrl = `${this.$constant.baseURL}/qrcode/article/${this.article.id}`;
+
+        // 创建img元素显示二维码
+        const img = document.createElement('img');
+        img.src = qrcodeApiUrl;
+        img.style.width = '60px';
+        img.style.height = '60px';
+        img.style.display = 'block';
+        
+        img.onload = () => {
+          qrcodeContainer.innerHTML = '';
+          qrcodeContainer.appendChild(img);
+        };
+
+        img.onerror = () => {
+          console.error('二维码加载失败');
+          qrcodeContainer.innerHTML = '<div style="width: 60px; height: 60px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999;">加载失败</div>';
+        };
+      },
+
+      // 下载卡片
+      downloadShareCard() {
+        const shareCard = this.$refs.shareCard;
+        if (!shareCard) {
+          this.$message.error('卡片元素未找到');
+          return;
+        }
+
+        // 动态加载html2canvas库
+        if (typeof html2canvas === 'undefined') {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+          script.onload = () => {
+            this.captureAndDownloadCard(shareCard);
+          };
+          script.onerror = () => {
+            this.$message.error('html2canvas库加载失败，请检查网络连接');
+          };
+          document.head.appendChild(script);
+        } else {
+          this.captureAndDownloadCard(shareCard);
+        }
+      },
+
+      // 捕获并下载卡片
+      captureAndDownloadCard(element) {
+        this.$message({
+          message: '正在生成卡片图片...',
+          type: 'info',
+          duration: 2000
+        });
+
+        html2canvas(element, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#F5EFE6',
+          scale: 2, // 提高清晰度
+          logging: false
+        }).then(canvas => {
+          // 转换为图片并下载
+          canvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // 生成文件名
+            const fileName = `${this.article.articleTitle || '文章'}_分享卡片.png`;
+            link.download = fileName;
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            this.$message.success('卡片已下载');
+          }, 'image/png');
+        }).catch(error => {
+          console.error('生成卡片失败:', error);
+          this.$message.error('生成卡片失败，请重试');
+        });
       }
     }
   }
@@ -2059,6 +2284,10 @@
     user-select: none;
   }
 
+  .subscribe-button i {
+    margin-left: 0;
+  }
+
   .subscribe-button:hover {
     background: rgb(99, 28, 132);
     transform: translateY(-1px);
@@ -2073,6 +2302,192 @@
     background: rgb(56, 155, 60);
     box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
   }
+
+  /* 卡片分享按钮样式 */
+  .share-card-button {
+    background: #ff416c;
+    width: 110px;
+    padding: 8px 0;
+    font-size: 16px;
+    text-align: center;
+    color: var(--white);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    user-select: none;
+    margin-left: 15px;
+  }
+
+  .share-card-button i {
+    margin-left: 0;
+  }
+
+  .share-card-button:hover {
+    background: #e63a5f;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(255, 65, 108, 0.3);
+  }
+
+  /* 卡片分享弹窗样式 */
+  .share-card-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background: transparent;
+  }
+
+  .share-card-preview {
+    background: hsla(0, 0%, 100%, .7019607843137254);
+    border-radius: 12px;
+    padding: 25px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    position: relative;
+  }
+
+  .card-avatar-container {
+    display: flex;
+    justify-content: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .card-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-date {
+    font-size: 13px;
+    color: #00000091;
+    margin-bottom: 12px;
+    font-weight: 400;
+  }
+
+  .card-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 18px;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+
+  .card-cover {
+    width: 100%;
+    height: 220px;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+
+  .card-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .card-footer {
+    margin-top: 15px;
+  }
+
+  .card-author {
+    text-align: right;
+    font-size: 14px;
+    color: #00000091;
+    margin-bottom: 15px;
+    font-weight: 500;
+  }
+
+  .card-divider {
+    width: 100%;
+    margin-top: 0;
+    margin-bottom: 10px;
+    border: 1px solid hsla(0, 0%, 60%, .10196078431372549);
+  }
+
+  .card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .card-brand {
+    font-size: 20px;
+    color: #00000091;
+    font-family: 'Arial', sans-serif;
+    line-height: 1;
+    margin: auto 0;
+  }
+
+  .card-qrcode {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card-qrcode img {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 响应式设计 */
+  @media (max-width: 768px) {
+    .share-card-dialog {
+      width: 95% !important;
+    }
+
+    .share-card-preview {
+      max-width: 100%;
+      padding: 18px;
+    }
+
+    .card-avatar {
+      width: 35px;
+      height: 35px;
+    }
+
+    .card-date {
+      font-size: 12px;
+    }
+
+    .card-title {
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+
+    .card-cover {
+      height: 180px;
+    }
+
+    .card-author {
+      font-size: 13px;
+    }
+
+    .card-brand {
+      font-size: 18px;
+      letter-spacing: 1px;
+    }
+
+    .card-qrcode {
+      width: 50px;
+      height: 50px;
+    }
+
+    .share-card-button {
+      margin-left: 10px;
+      width: 100px;
+      font-size: 14px;
+    }
+  }
+
 
   .process-wrap {
     margin: 0 0 40px;
@@ -2290,4 +2705,36 @@
     }
   }
 
+</style>
+
+<style>
+/* 卡片分享对话框样式（非 scoped）*/
+.share-card-dialog .el-dialog {
+  background: #f5f4ce !important;
+  border-radius: 12px !important;
+}
+
+.share-card-dialog .el-dialog__header {
+  background: #f5f4ce !important;
+  border-radius: 12px 12px 0 0 !important;
+  padding: 20px 20px 10px !important;
+}
+
+.share-card-dialog .el-dialog__body {
+  background: #f5f4ce !important;
+  padding: 10px 20px !important;
+}
+
+.share-card-dialog .el-dialog__footer {
+  background: #f5f4ce !important;
+  border-radius: 0 0 12px 12px !important;
+  padding: 10px 20px 20px !important;
+}
+
+.share-card-dialog .el-dialog__footer .el-button {
+  border-radius: 25px;
+  padding: 6px 20px;
+  font-size: 15px;
+  margin-bottom: 20px;
+}
 </style>

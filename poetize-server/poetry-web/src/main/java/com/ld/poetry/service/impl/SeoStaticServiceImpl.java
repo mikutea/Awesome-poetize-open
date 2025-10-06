@@ -30,6 +30,9 @@ public class SeoStaticServiceImpl implements SeoStaticService {
     
     @Autowired
     private CacheService cacheService;
+    
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     // TODO: 当需要完善sitemap生成时，可以添加这些服务
     // @Autowired
@@ -188,10 +191,11 @@ public class SeoStaticServiceImpl implements SeoStaticService {
     // ========== 私有辅助方法 ==========
 
     private String detectSiteUrl(HttpServletRequest request, Map<String, Object> seoConfig) {
-        String siteUrl = getConfigValue(seoConfig, "site_address", "");
+        // 直接从 MailUtil 获取网站地址
+        String siteUrl = mailUtil.getSiteUrl();
         
-        if (!StringUtils.hasText(siteUrl)) {
-            // 从请求中检测
+        if (!StringUtils.hasText(siteUrl) || "http://localhost".equals(siteUrl)) {
+            // 如果获取失败或是默认值，尝试从请求中检测
             String scheme = request.getHeader("X-Forwarded-Proto");
             if (!StringUtils.hasText(scheme)) {
                 scheme = request.getScheme();

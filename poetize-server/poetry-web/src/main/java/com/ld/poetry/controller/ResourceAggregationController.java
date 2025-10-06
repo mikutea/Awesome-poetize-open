@@ -40,6 +40,9 @@ public class ResourceAggregationController {
     private ResourcePathMapper resourcePathMapper;
 
     @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
+
+    @Autowired
     private PrerenderClient prerenderClient;
 
     /**
@@ -63,6 +66,9 @@ public class ResourceAggregationController {
         
         if (CommonConst.RESOURCE_PATH_TYPE_LOVE_PHOTO.equals(resourcePathVO.getType())) {
             resourcePathVO.setRemark(PoetryUtil.getAdminUser().getId().toString());
+        }
+        if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
+            resourcePathVO.setUrl(null);
         }
         ResourcePath resourcePath = new ResourcePath();
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
@@ -126,6 +132,9 @@ public class ResourceAggregationController {
         if (CommonConst.RESOURCE_PATH_TYPE_LOVE_PHOTO.equals(resourcePathVO.getType())) {
             resourcePathVO.setRemark(PoetryUtil.getAdminUser().getId().toString());
         }
+        if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
+            resourcePathVO.setUrl(null);
+        }
         ResourcePath resourcePath = new ResourcePath();
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
         resourcePathMapper.updateById(resourcePath);
@@ -158,13 +167,14 @@ public class ResourceAggregationController {
         if (resourcePath != null) {
             ResourcePathVO resourcePathVO = new ResourcePathVO();
             BeanUtils.copyProperties(resourcePath, resourcePathVO);
+            resourcePathVO.setUrl(mailUtil.getSiteUrl());
             return PoetryResult.success(resourcePathVO);
         }
         
         // 如果没有配置本站信息，返回默认值
         ResourcePathVO defaultSiteInfo = new ResourcePathVO();
         defaultSiteInfo.setTitle("POETIZE");
-        defaultSiteInfo.setUrl(""); // URL留空表示自动获取，也可以手动配置
+        defaultSiteInfo.setUrl(mailUtil.getSiteUrl());
         defaultSiteInfo.setCover("https://s1.ax1x.com/2022/11/10/z9E7X4.jpg");
         defaultSiteInfo.setIntroduction("这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～");
         defaultSiteInfo.setRemark("https://s1.ax1x.com/2022/11/10/z9VlHs.png"); // 使用remark字段存储网站封面

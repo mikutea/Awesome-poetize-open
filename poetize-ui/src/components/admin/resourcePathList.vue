@@ -126,8 +126,10 @@
           </div>
           <div style="margin-top: 10px;margin-bottom: 5px">链接：</div>
           <div style="display: flex">
-            <el-input :disabled="!['friendUrl', 'funny', 'favorites', 'siteInfo'].includes(resourcePath.type)"
-                      v-model="resourcePath.url" :placeholder="resourcePath.type === 'siteInfo' ? '网站地址（留空则自动获取）' : ''"></el-input>
+            <el-input :disabled="!['friendUrl', 'funny', 'favorites'].includes(resourcePath.type)"
+                      v-model="resourcePath.url"
+                      :placeholder="resourcePath.type === 'siteInfo' ? '自动获取（来自网站设置）' : ''"
+                      :class="{'readonly-input': resourcePath.type === 'siteInfo'}"></el-input>
             <div style="width: 66px;margin: 3.5px 0 0 10px">
               <proButton :info="'上传文件'"
                          @click.native="addResourcePathUrl()"
@@ -251,7 +253,11 @@
           });
           return;
         }
-        this.$http.post(this.$constant.baseURL + "/webInfo/" + (this.isUpdate ? "updateResourcePath" : "saveResourcePath"), this.resourcePath, true)
+        const payload = JSON.parse(JSON.stringify(this.resourcePath));
+        if (payload.type === 'siteInfo') {
+          payload.url = '';
+        }
+        this.$http.post(this.$constant.baseURL + "/webInfo/" + (this.isUpdate ? "updateResourcePath" : "saveResourcePath"), payload, true)
           .then((res) => {
             this.$message({
               message: "保存成功！",
@@ -261,12 +267,12 @@
             this.clearDialog();
             this.search();
           })
-          .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
-            });
-          });
+      .catch((error) => {
+        this.$message({
+          message: error.message,
+          type: "error"
+        });
+      });
       },
       search() {
         this.pagination.total = 0;
@@ -289,7 +295,11 @@
           });
       },
       changeStatus(item) {
-        this.$http.post(this.$constant.baseURL + "/webInfo/updateResourcePath", item, true)
+        const payload = JSON.parse(JSON.stringify(item));
+        if (payload.type === 'siteInfo') {
+          payload.url = '';
+        }
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateResourcePath", payload, true)
           .then((res) => {
             this.$message({
               message: "修改成功！",
@@ -337,6 +347,9 @@
       },
       handleEdit(item) {
         this.resourcePath = JSON.parse(JSON.stringify(item));
+        if (this.resourcePath.type === 'siteInfo') {
+          this.resourcePath.url = '';
+        }
         this.addResourcePathDialog = true;
         this.isUpdate = true;
       },

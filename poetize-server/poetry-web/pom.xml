@@ -190,6 +190,18 @@
             <version>1.1.2</version>
         </dependency>
 
+        <!-- ZXing二维码生成库 -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
         <!-- 所需的三方库 -->
         <dependency>
             <groupId>org.checkerframework</groupId>

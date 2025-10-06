@@ -122,6 +122,7 @@ public class WebInfoController {
             Integer id = (Integer) params.get("id");
             String webName = (String) params.get("webName");
             String webTitle = (String) params.get("webTitle");
+            String siteAddress = (String) params.get("siteAddress");
             String footer = (String) params.get("footer");
             String backgroundImage = (String) params.get("backgroundImage");
             String avatar = (String) params.get("avatar");
@@ -146,7 +147,7 @@ public class WebInfoController {
             log.info("开始更新网站基本信息 - ID: {}, webName: {}, webTitle: {}", id, webName, webTitle);
 
             // 调用专门的基本信息更新方法
-            int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, footer, backgroundImage,
+            int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, siteAddress, footer, backgroundImage,
                     avatar, waifuJson, status, enableWaifu, homePagePullUpHeight, apiEnabled, apiKey,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
                     enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, mobileDrawerConfig);

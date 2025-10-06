@@ -266,6 +266,53 @@ public class CacheService {
         }
     }
 
+    // ================================ 二维码缓存 ================================
+
+    /**
+     * 缓存文章二维码
+     * 
+     * @param articleId 文章ID
+     * @param qrCodeData 二维码字节数组
+     */
+    public void cacheArticleQRCode(Integer articleId, byte[] qrCodeData) {
+        if (articleId != null && qrCodeData != null && qrCodeData.length > 0) {
+            String key = CacheConstants.buildArticleQRCodeKey(articleId);
+            redisUtil.set(key, qrCodeData, CacheConstants.QRCODE_EXPIRE_TIME);
+            log.debug("缓存文章二维码: articleId={}, 大小={}bytes", articleId, qrCodeData.length);
+        }
+    }
+
+    /**
+     * 获取缓存的文章二维码
+     * 
+     * @param articleId 文章ID
+     * @return 二维码字节数组，如果不存在返回null
+     */
+    public byte[] getCachedArticleQRCode(Integer articleId) {
+        if (articleId == null) return null;
+        
+        String key = CacheConstants.buildArticleQRCodeKey(articleId);
+        Object cached = redisUtil.get(key);
+        if (cached instanceof byte[]) {
+            log.debug("从缓存获取文章二维码: articleId={}", articleId);
+            return (byte[]) cached;
+        }
+        return null;
+    }
+
+    /**
+     * 删除文章二维码缓存
+     * 
+     * @param articleId 文章ID
+     */
+    public void evictArticleQRCode(Integer articleId) {
+        if (articleId != null) {
+            String key = CacheConstants.buildArticleQRCodeKey(articleId);
+            redisUtil.del(key);
+            log.debug("删除文章二维码缓存: articleId={}", articleId);
+        }
+    }
+
     // ================================ 系统配置缓存 ================================
 
     /**

@@ -222,7 +222,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
             jsonConfig.put("enable", fullConfig.getEnable() != null ? fullConfig.getEnable() : true);
             jsonConfig.put("site_description", nullSafeString(fullConfig.getSiteDescription(), "一个优雅的博客系统，支持多用户和多种内容格式"));
             jsonConfig.put("site_keywords", nullSafeString(fullConfig.getSiteKeywords(), "博客,文章,笔记,技术,Java,Spring Boot,Vue.js"));
-            jsonConfig.put("site_address", nullSafeString(fullConfig.getSiteAddress(), "http://localhost"));
             jsonConfig.put("site_logo", nullSafeString(fullConfig.getSiteLogo(), ""));
             jsonConfig.put("site_icon", nullSafeString(fullConfig.getSiteIcon(), ""));
             jsonConfig.put("site_icon_192", nullSafeString(fullConfig.getSiteIcon192(), ""));
@@ -551,7 +550,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         defaultConfig.put("enable", true);
         defaultConfig.put("site_description", "一个优雅的博客系统，支持多用户和多种内容格式");
         defaultConfig.put("site_keywords", "博客,文章,笔记,技术,Java,Spring Boot,Vue.js");
-        defaultConfig.put("site_address", "http://localhost");
         defaultConfig.put("default_author", "Admin");
         defaultConfig.put("robots_txt", getDefaultRobotsTxt());
         
@@ -628,7 +626,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         seoConfig.setEnable(getBooleanValue(jsonConfig, "enable", true));
         seoConfig.setSiteDescription(getStringValue(jsonConfig, "site_description", ""));
         seoConfig.setSiteKeywords(getStringValue(jsonConfig, "site_keywords", ""));
-        seoConfig.setSiteAddress(getStringValue(jsonConfig, "site_address", ""));
         seoConfig.setSiteLogo(getStringValue(jsonConfig, "site_logo", ""));
         seoConfig.setSiteIcon(getStringValue(jsonConfig, "site_icon", ""));
         seoConfig.setSiteIcon192(getStringValue(jsonConfig, "site_icon_192", ""));
@@ -810,7 +807,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
         config.setEnable(true);
         config.setSiteDescription("一个优雅的博客系统，支持多用户和多种内容格式");
         config.setSiteKeywords("博客,文章,笔记,技术,Java,Spring Boot,Vue.js");
-        config.setSiteAddress("http://localhost");
         config.setDefaultAuthor("Admin");
         config.setRobotsTxt(getDefaultRobotsTxt());
         config.setAutoGenerateMetaTags(true);

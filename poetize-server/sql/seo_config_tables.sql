@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS `poetize`.`seo_config` (
   `enable` tinyint(1) DEFAULT 1 COMMENT 'SEO功能总开关',
   `site_description` text COMMENT '网站描述',
   `site_keywords` text COMMENT '网站关键词',
-  `site_address` varchar(512) COMMENT '网站地址',
   `site_logo` varchar(512) COMMENT '网站Logo',
   `site_icon` varchar(512) COMMENT '网站图标',
   `site_icon_192` varchar(512) COMMENT '网站图标192x192',

@@ -52,6 +52,9 @@ public class SitemapServiceImpl implements SitemapService {
     
     @Autowired
     private com.ld.poetry.service.TranslationService translationService;
+    
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     @Override
     public String generateSitemap() {
@@ -412,37 +415,22 @@ public class SitemapServiceImpl implements SitemapService {
 
     @Override
     public String getSiteBaseUrl() {
-        // 优先从Java SEO配置获取site_address
+        // 使用统一的网站URL获取方法（MailUtil）
+        // 优先级：web_info表 > 环境变量SITE_URL > 默认值
         try {
-            Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
-            if (seoConfig != null) {
-                String siteAddress = (String) seoConfig.get("site_address");
-                if (StringUtils.hasText(siteAddress)) {
-                    // 移除末尾的斜杠
-                    if (siteAddress.endsWith("/")) {
-                        siteAddress = siteAddress.substring(0, siteAddress.length() - 1);
-                    }
-                    log.debug("从Java SEO配置获取网站基础URL: {}", siteAddress);
-                    return siteAddress;
-                }
+            String siteUrl = mailUtil.getSiteUrl();
+            if (StringUtils.hasText(siteUrl)) {
+                log.debug("获取网站基础URL: {}", siteUrl);
+                return siteUrl;
             }
         } catch (Exception e) {
-            log.warn("从Java SEO配置获取网站URL失败，尝试从环境变量获取: {}", e.getMessage());
+            log.warn("获取网站URL失败: {}", e.getMessage());
         }
         
-        // 如果SEO配置不可用，从环境变量获取
-        String siteUrl = System.getenv("SITE_URL");
-        if (StringUtils.hasText(siteUrl)) {
-            // 移除末尾的斜杠
-            if (siteUrl.endsWith("/")) {
-                siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
-            }
-            log.debug("从环境变量SITE_URL获取网站基础URL: {}", siteUrl);
-            return siteUrl;
-        }
-        
-        log.error("无法获取网站基础URL，Java SEO配置和环境变量SITE_URL都不可用");
-        return null;
+        // 如果所有方法都失败，返回默认值
+        String defaultUrl = "http://localhost";
+        log.warn("无法获取网站URL，使用默认值: {}", defaultUrl);
+        return defaultUrl;
     }
 
 

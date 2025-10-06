@@ -43,6 +43,12 @@ public class WebInfo implements Serializable {
     private String webTitle;
 
     /**
+     * 网站地址（完整URL）
+     */
+    @TableField(value = "site_address", exist = true)
+    private String siteAddress;
+
+    /**
      * 公告
      */
     @TableField("notices")

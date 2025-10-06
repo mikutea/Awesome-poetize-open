@@ -22,6 +22,57 @@
           <el-input v-model="webInfo.webTitle"></el-input>
         </el-form-item>
 
+        <el-form-item label="网站地址" prop="siteAddress">
+          <div class="site-address-container">
+            <el-input 
+              v-model="webInfo.siteAddress" 
+              placeholder="自动检测的网站地址"
+              :readonly="!editingSiteAddress"
+              class="site-address-input">
+            </el-input>
+            
+            <!-- 简约地址操作按钮 -->
+            <div class="simple-address-actions" v-if="!editingSiteAddress">
+              <el-button 
+                size="small" 
+                @click="detectSiteAddress" 
+                :loading="detectingAddress"
+                class="simple-address-btn">
+                {{ detectingAddress ? '检测中...' : '自动检测' }}
+              </el-button>
+              
+              <el-button 
+                size="small" 
+                @click="startEditSiteAddress"
+                class="simple-address-btn">
+                手动编辑
+              </el-button>
+            </div>
+            
+            <!-- 编辑状态下的按钮 -->
+            <div class="simple-address-actions" v-if="editingSiteAddress">
+              <el-button 
+                size="small" 
+                type="primary" 
+                @click="editingSiteAddress = false"
+                class="simple-address-btn">
+                确认
+              </el-button>
+              
+              <el-button 
+                size="small" 
+                @click="cancelEditSiteAddress"
+                class="simple-address-btn">
+                取消
+              </el-button>
+            </div>
+          </div>
+          <span class="tip">
+            网站的完整访问地址，用于生成站点地图、二维码和其他功能。
+            <strong>推荐使用自动检测</strong>，系统会根据当前访问地址自动填写。
+          </span>
+        </el-form-item>
+
         <el-form-item label="状态" prop="status">
           <div style="display: flex; align-items: center;">
             <el-switch @change="changeWebStatus" v-model="webInfo.status"></el-switch>
@@ -1668,6 +1719,7 @@ X-API-KEY: {{apiConfig.apiKey}}
           id: null,
           webName: "",
           webTitle: "",
+          siteAddress: "",
           footer: "",
           backgroundImage: "/assets/backgroundPicture.jpg",
           avatar: "",
@@ -1686,6 +1738,10 @@ X-API-KEY: {{apiConfig.apiKey}}
           enableGrayMode: false,
           homePagePullUpHeight: 50,
         },
+        // 网站地址编辑状态
+        editingSiteAddress: false,
+        detectingAddress: false,
+        originalSiteAddress: "",
         notices: [],
         randomAvatar: [],
         randomName: [],
@@ -1768,6 +1824,10 @@ X-API-KEY: {{apiConfig.apiKey}}
           ],
           webTitle: [
             {required: true, message: '请输入网站标题', trigger: 'blur'}
+          ],
+          siteAddress: [
+            {required: true, message: '请输入网站地址或点击自动检测', trigger: 'blur'},
+            {pattern: /^https?:\/\/.+/, message: '请输入完整的网站地址（http://或https://开头）', trigger: 'blur'}
           ],
           footer: [
             // 移除长度限制，页脚内容完全自由
@@ -2080,6 +2140,50 @@ X-API-KEY: {{apiConfig.apiKey}}
             });
           });
       },
+      
+      // 自动检测网站地址
+      async detectSiteAddress() {
+        this.detectingAddress = true;
+        console.log('开始自动检测网站地址...');
+        
+        try {
+          const currentOrigin = window.location.origin;
+          let finalUrl = currentOrigin;
+          
+          // 处理标准端口
+          if (!currentOrigin.includes(':3000') && !currentOrigin.includes(':8080')) {
+            if (currentOrigin.includes(':80') && currentOrigin.startsWith('http://')) {
+              finalUrl = currentOrigin.replace(':80', '');
+            } else if (currentOrigin.includes(':443') && currentOrigin.startsWith('https://')) {
+              finalUrl = currentOrigin.replace(':443', '');
+            }
+          }
+          
+          this.webInfo.siteAddress = finalUrl;
+          console.log('最终使用的网站地址:', finalUrl);
+          
+        } catch (error) {
+          console.error('自动检测网站地址失败:', error);
+          this.$message({
+            type: 'error',
+            message: '自动检测失败，请手动输入网站地址'
+          });
+        } finally {
+          this.detectingAddress = false;
+        }
+      },
+      
+      // 开始编辑网站地址
+      startEditSiteAddress() {
+        this.originalSiteAddress = this.webInfo.siteAddress;
+        this.editingSiteAddress = true;
+      },
+      
+      // 取消编辑网站地址
+      cancelEditSiteAddress() {
+        this.webInfo.siteAddress = this.originalSiteAddress;
+        this.editingSiteAddress = false;
+      },
       // 优化：将getWebInfo改为异步方法
       async getWebInfo() {
         try {
@@ -2088,6 +2192,7 @@ X-API-KEY: {{apiConfig.apiKey}}
               this.webInfo.id = res.data.id;
               this.webInfo.webName = res.data.webName;
               this.webInfo.webTitle = res.data.webTitle;
+              this.webInfo.siteAddress = res.data.siteAddress || "";
               this.webInfo.footer = res.data.footer;
               this.webInfo.backgroundImage = res.data.backgroundImage;
               this.webInfo.avatar = res.data.avatar;
@@ -2189,6 +2294,7 @@ X-API-KEY: {{apiConfig.apiKey}}
               id: this.webInfo.id,
               webName: this.webInfo.webName,
               webTitle: this.webInfo.webTitle,
+              siteAddress: this.webInfo.siteAddress,
               footer: this.webInfo.footer,
               backgroundImage: this.webInfo.backgroundImage,
               avatar: this.webInfo.avatar,
@@ -4074,6 +4180,39 @@ X-API-KEY: {{apiConfig.apiKey}}
     line-height: 40px;
     font-size: 16px;
     color: var(--black);
+  }
+  
+  /* 网站地址容器样式 */
+  .site-address-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .site-address-input {
+    flex: 1;
+  }
+  
+  .simple-address-actions {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .simple-address-btn {
+    min-width: 90px;
+  }
+  
+  .tip {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+  }
+  
+  .tip strong {
+    color: #0071e3;
+    font-weight: 600;
   }
 
   .el-tag {

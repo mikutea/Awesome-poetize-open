@@ -34,7 +34,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.client.RestTemplate;
 import com.ld.poetry.event.ArticleSavedEvent;
 import org.springframework.context.ApplicationEventPublisher;
-
+import com.ld.poetry.service.QRCodeService;
 /**
  * <p>
  * 文章表 前端控制器
@@ -74,6 +74,9 @@ public class ArticleController {
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
+    
+    @Autowired
+    private QRCodeService qrCodeService;
 
     /**
      * 保存文章（同步版本）
@@ -150,6 +153,16 @@ public class ArticleController {
                 }).start();
                 
                 log.info("文章ID {} 保存成功，sitemap更新将通过事件监听器自动处理", articleId);
+                
+                // 异步预生成文章二维码
+                new Thread(() -> {
+                    try {
+                        qrCodeService.preGenerateArticleQRCode(articleId);
+                        log.info("文章ID {} 二维码预生成完成", articleId);
+                    } catch (Exception e) {
+                        log.warn("文章ID {} 二维码预生成失败（不影响保存）: {}", articleId, e.getMessage());
+                    }
+                }).start();
                 
                 // 如果需要推送至搜索引擎且文章可见，异步处理
                 if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine()) && Boolean.TRUE.equals(articleVO.getViewStatus())) {
@@ -300,6 +313,10 @@ public class ArticleController {
             // 传递正确的分类ID，确保分类页面也会被重新渲染
             eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, false, "DELETE"));
             
+            // 清除文章二维码缓存
+            qrCodeService.evictArticleQRCode(id);
+            log.info("文章ID {} 删除成功，已清除二维码缓存", id);
+            
             // 注意：sitemap更新已通过ArticleEventListener中的updateSitemapAsync方法处理
             // 无需在这里重复处理sitemap更新逻辑
         }
@@ -356,6 +373,19 @@ public class ArticleController {
             // 注意：sitemap更新（包括文章可见性变更）已经通过 ArticleEventListener.updateSitemapAsync() 方法处理
             // 无需在这里重复处理sitemap更新
             log.info("文章ID {} 更新完成，sitemap更新将通过事件监听器自动处理", articleId);
+            
+            // 清除旧的二维码缓存并异步预生成新的二维码
+            new Thread(() -> {
+                try {
+                    // 先清除旧缓存
+                    qrCodeService.evictArticleQRCode(articleId);
+                    // 再预生成新二维码
+                    qrCodeService.preGenerateArticleQRCode(articleId);
+                    log.info("文章ID {} 二维码更新完成", articleId);
+                } catch (Exception e) {
+                    log.warn("文章ID {} 二维码更新失败（不影响更新）: {}", articleId, e.getMessage());
+                }
+            }).start();
             
             // 如果需要推送至搜索引擎且文章可见，异步处理
             if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine()) && Boolean.TRUE.equals(articleVO.getViewStatus())) {

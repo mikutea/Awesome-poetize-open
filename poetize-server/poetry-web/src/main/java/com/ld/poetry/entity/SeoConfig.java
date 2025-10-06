@@ -45,12 +45,6 @@ public class SeoConfig implements Serializable {
     private String siteKeywords;
 
     /**
-     * 网站地址
-     */
-    @TableField("site_address")
-    private String siteAddress;
-
-    /**
      * 网站Logo
      */
     @TableField("site_logo")

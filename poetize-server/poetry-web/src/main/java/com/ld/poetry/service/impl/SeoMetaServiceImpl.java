@@ -48,6 +48,9 @@ public class SeoMetaServiceImpl implements SeoMetaService {
 
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     // HTML标签清理的正则表达式
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]*>");
@@ -415,7 +418,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
         structuredData.put("@type", "WebSite");
         structuredData.put("name", getSiteTitle());
         structuredData.put("description", seoConfig.get("site_description"));
-        structuredData.put("url", seoConfig.get("site_address"));
+        // 直接从 MailUtil 获取网站地址
+        structuredData.put("url", mailUtil.getSiteUrl());
 
         return toJsonString(structuredData);
     }

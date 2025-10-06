@@ -36,6 +36,9 @@ public class SeoController {
 
     @Autowired
     private SeoConfigService seoConfigService;
+    
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
     // ========== 元数据生成API（公开接口） ==========
 
@@ -166,7 +169,8 @@ public class SeoController {
             configForNginx.put("og_image", seoConfig.get("og_image"));
             configForNginx.put("site_description", seoConfig.get("site_description"));
             configForNginx.put("site_keywords", seoConfig.get("site_keywords"));
-            configForNginx.put("site_address", seoConfig.get("site_address"));
+            // 直接从 MailUtil 获取网站地址
+            configForNginx.put("site_address", mailUtil.getSiteUrl());
             configForNginx.put("default_author", seoConfig.get("default_author"));
             configForNginx.put("site_short_name", seoConfig.get("site_short_name"));
             configForNginx.put("robots_default", seoConfig.get("robots_default"));

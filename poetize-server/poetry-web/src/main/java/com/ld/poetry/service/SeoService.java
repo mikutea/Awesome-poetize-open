@@ -37,6 +37,9 @@ public class SeoService {
     @Autowired
     private SearchEnginePushService searchEnginePushService;
     
+    @Autowired
+    private com.ld.poetry.utils.mail.MailUtil mailUtil;
+    
     @Value("${PYTHON_SERVICE_URL:http://poetize-python:5000}")
     private String pythonServerUrl;
 
@@ -72,9 +75,8 @@ public class SeoService {
                 log.info("使用Java端完整搜索引擎推送功能");
                 System.out.println("【SEO服务】使用Java端完整搜索引擎推送功能");
                 
-                // 获取SEO配置并构建文章URL - 使用固定的URL格式（与前端路由一致）
-                Map<String, Object> seoConfig = searchEnginePushService.getSeoConfig();
-                String siteAddress = (String) seoConfig.get("site_address");
+                // 直接从 MailUtil 获取网站地址并构建文章URL
+                String siteAddress = mailUtil.getSiteUrl();
                 
                 if (org.springframework.util.StringUtils.hasText(siteAddress)) {
                     

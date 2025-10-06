@@ -1176,7 +1176,17 @@
         }
       },
       handleAvatarError(e) {
-        // 头像加载失败时使用默认头像
+        // 防止无限循环：检查当前 src 是否已经是默认头像
+        if (e.target.src.includes('/assets/avatar.jpg')) {
+          console.warn('默认头像也加载失败，停止重试');
+          // 移除 error 监听器，防止继续触发
+          e.target.onerror = null;
+          // 不做任何处理，让浏览器显示默认的图片加载失败状态
+          return;
+        }
+        
+        // 第一次失败时尝试使用默认头像
+        console.warn('头像加载失败，尝试使用默认头像');
         e.target.src = '/assets/avatar.jpg';
       },
       loadFont() {
