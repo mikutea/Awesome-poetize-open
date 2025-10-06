@@ -1444,7 +1444,7 @@ X-API-KEY: {{apiConfig.apiKey}}
     <el-dialog
       title="移动端侧边栏配置"
       :visible.sync="mobileDrawerDialogVisible"
-      width="700px"
+      width="900px"
       :close-on-click-modal="false"
       custom-class="mobile-drawer-config-dialog">
       

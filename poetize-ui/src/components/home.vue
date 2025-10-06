@@ -217,12 +217,10 @@
           class="drawer-avatar"
           @error="handleAvatarError"
         />
+        <!-- 头像模式下的分隔线 -->
+        <hr :class="['drawer-divider', { 'show-snowflake': showDrawerSnowflake }]" />
       </div>
       <div>
-        <!-- 头像模式下的分隔线 -->
-        <hr v-if="showDrawerAvatar" 
-            :class="['drawer-divider', { 'show-snowflake': showDrawerSnowflake }]" />
-        
         <ul class="small-menu">
           <!-- 遍历导航项并按配置顺序显示 -->
           <template v-for="(item, index) in orderedNavItems">
@@ -650,7 +648,7 @@
       },
 
       goAdmin() {
-        window.open(this.$constant.webURL + "/admin");
+        window.location.href = this.$constant.webURL + "/admin";
       },
 
       logout() {
@@ -1511,6 +1509,10 @@
   --menu-font-color: #ffffff;
 }
 
+.toolbarDrawer /deep/ .el-drawer__header {
+  padding: 20px 0 0;
+}
+
 .small-menu {
   padding: 0;
   margin: 0;
@@ -1546,15 +1548,19 @@
 /* 移动端侧边栏头像样式 */
 .drawer-avatar-container {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   padding: 10px 0;
+  width: 100%;
 }
 
 /* 头像和菜单之间的分隔线 */
 .drawer-divider {
+  align-self: stretch;
+  width: 100%;
   position: relative;
-  margin: 30px auto 20px;
+  margin: 30px auto 0;
   border: 0;
   border-top: 1px dashed var(--lightGreen);
   overflow: visible;
