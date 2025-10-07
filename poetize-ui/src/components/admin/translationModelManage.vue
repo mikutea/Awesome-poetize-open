@@ -1491,11 +1491,47 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   text-align: center;
 }
 
+/* 摘要信息区域 */
+.summary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: #F5F7FA;
+  border-radius: 4px;
+  border: 1px solid #EBEEF5;
+}
+
+.summary-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.summary-note {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.input-tips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
 /* 输入部分 */
 .input-section,
 .stream-mode,
 .translate-section,
-.result-section {
+.test-section,
+.result-section,
+.error-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1503,7 +1539,8 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .input-section label,
 .stream-mode label,
-.result-section label {
+.result-section label,
+.error-section label {
   font-size: 14px;
   font-weight: 500;
   color: #606266;
@@ -1522,7 +1559,8 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 }
 
 /* 翻译按钮 */
-.translate-btn {
+.translate-btn,
+.test-btn {
   width: 200px;
   padding: 12px;
   font-size: 14px;
@@ -1534,11 +1572,13 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   transition: background-color 0.2s ease;
 }
 
-.translate-btn:hover {
+.translate-btn:hover,
+.test-btn:hover {
   background: #1a202c;
 }
 
-.translate-btn i {
+.translate-btn i,
+.test-btn i {
   margin-right: 6px;
 }
 
@@ -1583,34 +1623,123 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 /* 响应式设计 */
 @media (max-width: 768px) {
   .translation-management {
-    padding: 16px;
+    padding: 10px;
+  }
+  
+  /* 表单标签宽度适配 */
+  .config-form {
+    padding: 0 !important;
+  }
+  
+  .config-form .el-form-item__label {
+    width: 100px !important;
+    font-size: 13px !important;
+    padding-right: 8px !important;
+  }
+  
+  .config-form .el-form-item__content {
+    margin-left: 100px !important;
   }
   
   .title-section {
-    padding: 20px;
+    padding: 15px;
   }
   
   .section-content {
-    padding: 20px;
+    padding: 15px 0;
   }
   
+  /* 输入框和选择框全宽 */
+  .full-width,
+  .language-select,
+  .number-input,
+  .timeout-input {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* 语言信息卡片适配 */
   .language-info {
     flex-direction: column;
     gap: 12px;
+    padding: 15px;
+  }
+  
+  .lang-display {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .lang-text {
+    width: 100%;
+    font-size: 13px;
+    padding: 10px;
   }
   
   .arrow-separator {
     transform: rotate(90deg);
   }
   
+  /* 操作按钮区域适配 */
   .action-bar {
-    padding: 16px;
+    padding: 15px 0;
     flex-direction: column;
+    gap: 10px;
   }
   
   .action-btn {
-    width: auto;
-    min-width: 120px;
+    width: 100% !important;
+    min-width: unset !important;
+  }
+  
+  /* 信息面板适配 */
+  .info-panel {
+    padding: 12px;
+    margin-top: 12px;
+  }
+  
+  .info-header {
+    font-size: 13px;
+  }
+  
+  .info-item {
+    font-size: 12px;
+  }
+  
+  /* 提示文本适配 */
+  .form-tip {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  
+  /* 测试对话框适配 */
+  .test-dialog {
+    width: 95% !important;
+  }
+  
+  .dialog-content {
+    padding: 15px;
+  }
+  
+  .test-form {
+    gap: 15px;
+  }
+  
+  /* 翻译按钮适配 */
+  .translate-btn,
+  .test-btn {
+    width: 100% !important;
+    padding: 12px !important;
+  }
+  
+  /* 结果元数据适配 */
+  .result-meta {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .result-meta .el-tag {
+    font-size: 11px;
   }
 }
 
@@ -1766,6 +1895,180 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
   }
 }
 
+/* 超小屏幕适配 */
+@media (max-width: 480px) {
+  .translation-management {
+    padding: 8px;
+  }
+  
+  /* 表单标签进一步缩小 */
+  .config-form .el-form-item__label {
+    width: 85px !important;
+    font-size: 12px !important;
+    padding-right: 6px !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    word-break: break-all !important;
+  }
+  
+  .config-form .el-form-item__content {
+    margin-left: 85px !important;
+  }
+  
+  /* 标签和卡片适配 */
+  .my-tag {
+    font-size: 14px !important;
+    height: 36px !important;
+    line-height: 36px !important;
+    padding: 0 10px !important;
+  }
+  
+  .my-tag svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+  
+  /* 配置区块间距 */
+  .config-section {
+    margin-bottom: 15px;
+  }
+  
+  .section-content {
+    padding: 10px 0;
+  }
+  
+  /* 语言配置适配 */
+  .language-item {
+    min-width: unset;
+    width: 100%;
+  }
+  
+  .language-arrow {
+    height: 16px;
+    font-size: 14px;
+  }
+  
+  /* 信息面板适配 */
+  .info-panel {
+    padding: 10px;
+    margin-top: 10px;
+  }
+  
+  .info-header {
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  
+  .info-item {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  
+  /* 按钮适配 */
+  .action-bar {
+    padding: 12px 0;
+    gap: 8px;
+  }
+  
+  .action-btn {
+    padding: 10px 15px !important;
+    font-size: 13px !important;
+  }
+  
+  /* 提示文本适配 */
+  .form-tip {
+    font-size: 10px;
+    padding: 5px 8px;
+    line-height: 1.4;
+  }
+  
+  /* Alert 提示框适配 */
+  .source-lang-warning .el-alert,
+  .source-lang-info .el-alert {
+    padding: 10px 12px;
+  }
+  
+  .source-lang-warning .el-alert__title,
+  .source-lang-info .el-alert__title {
+    font-size: 12px;
+  }
+  
+  .source-lang-warning .el-alert__content {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  
+  /* 测试对话框适配 */
+  .test-dialog {
+    width: 98% !important;
+  }
+  
+  .dialog-content {
+    padding: 12px;
+  }
+  
+  .test-form {
+    gap: 12px;
+  }
+  
+  /* 对话框输入区域 */
+  .input-section label,
+  .stream-mode label,
+  .result-section label {
+    font-size: 13px;
+  }
+  
+  .source-input .el-textarea__inner,
+  .result-output .el-textarea__inner {
+    font-size: 13px;
+    padding: 10px;
+  }
+  
+  /* 流式模式选择适配 */
+  .stream-options {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .stream-radio {
+    margin-right: 0 !important;
+  }
+  
+  /* 摘要配置适配 */
+  .summary-info {
+    padding: 12px;
+  }
+  
+  .summary-display {
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  
+  .summary-note {
+    font-size: 11px;
+    margin-top: 8px;
+  }
+  
+  .input-tips {
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  
+  /* 对话框底部按钮 */
+  .dialog-footer {
+    padding: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  
+  .dialog-footer .el-button {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+}
+
 /* 统一页面标题样式 */
 .my-tag {
   margin-bottom: 20px !important;
@@ -1819,5 +2122,114 @@ Vue.js具有响应式数据绑定和组件化的特性，这使得开发者可�
 
 .language-select.is-disabled .el-input__suffix {
   color: #c0c4cc !important;
+}
+</style>
+
+<style>
+/* 测试对话框移动端适配 - 非scoped样式，作用于动态创建的dialog */
+@media (max-width: 768px) {
+  .test-dialog .el-dialog {
+    width: 95% !important;
+    margin-top: 5vh !important;
+  }
+  
+  .test-dialog .el-dialog__header {
+    padding: 15px !important;
+  }
+  
+  .test-dialog .el-dialog__title {
+    font-size: 16px !important;
+  }
+  
+  .test-dialog .el-dialog__body {
+    padding: 15px !important;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  
+  .test-dialog .el-dialog__footer {
+    padding: 12px !important;
+  }
+  
+  /* 摘要信息区域 */
+  .test-dialog .summary-info {
+    padding: 12px !important;
+  }
+  
+  .test-dialog .summary-display {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .test-dialog .summary-display .el-tag {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .test-dialog .el-dialog {
+    width: 98% !important;
+    margin-top: 3vh !important;
+  }
+  
+  .test-dialog .el-dialog__header {
+    padding: 12px !important;
+  }
+  
+  .test-dialog .el-dialog__title {
+    font-size: 15px !important;
+  }
+  
+  .test-dialog .el-dialog__body {
+    padding: 12px !important;
+    max-height: 75vh;
+  }
+  
+  .test-dialog .el-dialog__footer {
+    padding: 10px !important;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  
+  .test-dialog .el-dialog__footer .el-button {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  /* 对话框内的标签 */
+  .test-dialog .el-tag {
+    font-size: 11px !important;
+    padding: 0 8px !important;
+    height: 24px !important;
+    line-height: 24px !important;
+  }
+  
+  /* 输入提示 */
+  .test-dialog .input-tips {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    font-size: 11px;
+  }
+  
+  .test-dialog .input-tips .el-tag {
+    margin-right: 0;
+  }
+  
+  .test-dialog .input-tips span {
+    font-size: 11px;
+  }
+  
+  /* 摘要信息 */
+  .test-dialog .summary-info {
+    padding: 10px !important;
+  }
+  
+  .test-dialog .summary-note {
+    font-size: 11px;
+  }
 }
 </style>

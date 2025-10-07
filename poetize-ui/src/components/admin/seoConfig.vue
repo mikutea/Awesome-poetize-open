@@ -1421,12 +1421,6 @@ export default {
 
       // 移动端特有的消息提示
       this.$message.closeAll();
-      this.$message({
-        message: '移动端SEO配置已优化，滑动查看更多选项',
-        type: 'info',
-        duration: 3000,
-        showClose: true
-      });
 
       // 禁用移动端的双击缩放（在表单区域）
       this.$nextTick(() => {

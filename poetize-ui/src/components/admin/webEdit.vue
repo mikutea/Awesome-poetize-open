@@ -605,7 +605,10 @@
             border
             style="width: 100%"
             :class="{'mobile-table': isMobileDevice}"
-            size="small">
+            size="small"
+            @row-click="handleEmailRowClick"
+            @touchstart.native="handleTouchStart"
+            @touchend.native="handleTouchEnd">
             
             <el-table-column
               prop="smtpHost"
@@ -785,7 +788,78 @@
             <el-button @click="emailTestDialogVisible = false">取 消</el-button>
             <el-button type="primary" @click="submitTestEmail" :loading="testEmailLoading">发送测试邮件</el-button>
           </span>
-      </el-dialog>
+        </el-dialog>
+
+        <!-- 邮箱配置详情对话框（移动端） -->
+        <el-dialog 
+          title="邮箱配置详情" 
+          :visible.sync="emailDetailDialogVisible" 
+          width="90%" 
+          :close-on-click-modal="true"
+          custom-class="email-detail-dialog">
+          <div v-if="currentEmailConfig" class="email-detail-content">
+            <el-descriptions :column="1" border size="medium">
+              <el-descriptions-item label="邮箱服务器">
+                {{ currentEmailConfig.host || '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="邮箱地址">
+                {{ currentEmailConfig.username || '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="授权码">
+                <span style="font-family: monospace;">{{ currentEmailConfig.password ? '••••••••' : '未设置' }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="端口">
+                {{ currentEmailConfig.port || '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="发件人名称">
+                {{ currentEmailConfig.senderName || '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="SSL加密">
+                <el-tag :type="currentEmailConfig.useSsl ? 'success' : 'info'" size="small">
+                  {{ currentEmailConfig.useSsl ? '已启用' : '未启用' }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="STARTTLS">
+                <el-tag :type="currentEmailConfig.useStarttls ? 'success' : 'info'" size="small">
+                  {{ currentEmailConfig.useStarttls ? '已启用' : '未启用' }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="认证">
+                <el-tag :type="currentEmailConfig.auth ? 'success' : 'info'" size="small">
+                  {{ currentEmailConfig.auth ? '已启用' : '未启用' }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="currentEmailConfig.enabled ? 'success' : 'danger'" size="small">
+                  {{ currentEmailConfig.enabled ? '已启用' : '已禁用' }}
+                </el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+            
+            <!-- 操作按钮 -->
+            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+              <el-button 
+                type="primary" 
+                size="small" 
+                @click="testEmailFromDetail">
+                <i class="el-icon-check"></i> 测试邮件
+              </el-button>
+              <el-button 
+                size="small"
+                @click="editEmailFromDetail">
+                <i class="el-icon-edit"></i> 编辑配置
+              </el-button>
+              <el-button 
+                size="small"
+                @click="showAdvancedFromDetail">
+                <i class="el-icon-setting"></i> 高级设置
+              </el-button>
+            </div>
+          </div>
+          <span slot="footer" class="dialog-footer">
+            <el-button @click="emailDetailDialogVisible = false">关 闭</el-button>
+          </span>
+        </el-dialog>
       </el-card>
     </div>
 
@@ -924,7 +998,7 @@
         </svg>
         智能验证码配置
       </el-tag>
-      <el-card class="box-card" shadow="never" style="margin-top: 5px; border: none;">
+      <el-card class="box-card captcha-config-card" shadow="never" style="margin-top: 5px; border: none;">
         <el-row style="margin-bottom: 20px;">
           <el-col :span="24">
             <el-form label-width="150px">
@@ -1752,7 +1826,15 @@ X-API-KEY: {{apiConfig.apiKey}}
           testEmail: '',
           currentConfig: null
         },
+        emailDetailDialogVisible: false,
+        currentEmailConfig: null,
+        currentEmailConfigIndex: -1,
         defaultEmailIndex: -1,
+        // 触摸滑动检测
+        touchStartX: 0,
+        touchStartY: 0,
+        touchStartTime: 0,
+        isSwipeGesture: false,
         advancedConfigVisible: false,
         activeConfigTab: 'basic',
         currentAdvancedConfig: {
@@ -2665,13 +2747,19 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.$confirm('是否使用邮箱服务预设？', '添加邮箱', {
           confirmButtonText: '使用预设',
           cancelButtonText: '使用默认配置',
-          type: 'info'
+          type: 'info',
+          customClass: 'mobile-responsive-confirm',
+          distinguishCancelAndClose: true  // 区分取消和关闭
         }).then(() => {
           // 用户选择使用预设
           this.showPresetDialog();
-        }).catch(() => {
-          // 用户选择使用默认配置
-          this.emailConfigs.push(defaultConfig);
+        }).catch((action) => {
+          // 判断是点击取消按钮还是点击叉叉关闭
+          if (action === 'cancel') {
+            // 用户点击"使用默认配置"按钮
+            this.emailConfigs.push(defaultConfig);
+          }
+          // 如果 action === 'close'，说明是点击叉叉或ESC，不做任何操作
         });
       },
       
@@ -4163,6 +4251,109 @@ X-API-KEY: {{apiConfig.apiKey}}
         } catch (error) {
           this.$message.error('配置导入失败：' + error.message);
         }
+      },
+
+      // 触摸开始事件
+      handleTouchStart(event) {
+        if (!this.isMobileDevice) {
+          return;
+        }
+        
+        const touch = event.touches[0];
+        this.touchStartX = touch.clientX;
+        this.touchStartY = touch.clientY;
+        this.touchStartTime = Date.now();
+      },
+
+      // 触摸结束事件
+      handleTouchEnd(event) {
+        if (!this.isMobileDevice) {
+          return;
+        }
+        
+        const touch = event.changedTouches[0];
+        const touchEndX = touch.clientX;
+        const touchEndY = touch.clientY;
+        const touchEndTime = Date.now();
+        
+        // 计算移动距离
+        const deltaX = Math.abs(touchEndX - this.touchStartX);
+        const deltaY = Math.abs(touchEndY - this.touchStartY);
+        const deltaTime = touchEndTime - this.touchStartTime;
+        
+        // 设置阈值：如果移动距离超过10px，或者时间超过300ms，认为是滑动而不是点击
+        const SWIPE_THRESHOLD = 10;
+        const TIME_THRESHOLD = 300;
+        
+        // 如果是滑动操作，标记一下（用于row-click事件判断）
+        if (deltaX > SWIPE_THRESHOLD || deltaY > SWIPE_THRESHOLD || deltaTime > TIME_THRESHOLD) {
+          this.isSwipeGesture = true;
+          // 100ms后重置标记
+          setTimeout(() => {
+            this.isSwipeGesture = false;
+          }, 100);
+        } else {
+          this.isSwipeGesture = false;
+        }
+      },
+
+      // 处理邮箱配置表格行点击事件（移动端）
+      handleEmailRowClick(row, column, event) {
+        // 只在移动设备上响应点击
+        if (!this.isMobileDevice) {
+          return;
+        }
+        
+        // 如果是滑动手势，不触发点击
+        if (this.isSwipeGesture) {
+          return;
+        }
+        
+        // 如果点击的是操作列中的按钮，不触发行点击
+        if (event.target.tagName === 'BUTTON' || 
+            event.target.closest('.el-button') || 
+            event.target.closest('.el-switch') ||
+            event.target.closest('.el-input') ||
+            event.target.closest('.el-input-number')) {
+          return;
+        }
+        
+        // 保存当前邮箱配置和索引
+        this.currentEmailConfig = { ...row };
+        this.currentEmailConfigIndex = this.emailConfigs.indexOf(row);
+        
+        // 显示详情对话框
+        this.emailDetailDialogVisible = true;
+      },
+
+      // 从详情页测试邮件
+      testEmailFromDetail() {
+        this.emailDetailDialogVisible = false;
+        this.$nextTick(() => {
+          this.testEmailConfig(this.currentEmailConfig, this.currentEmailConfigIndex);
+        });
+      },
+
+      // 从详情页编辑配置（关闭详情对话框，让用户直接在表格编辑）
+      editEmailFromDetail() {
+        this.emailDetailDialogVisible = false;
+        this.$message.info('请在表格中直接编辑配置');
+        
+        // 如果可能，滚动到对应的表格行
+        this.$nextTick(() => {
+          const tableElement = document.querySelector('.responsive-table-container');
+          if (tableElement) {
+            tableElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+      },
+
+      // 从详情页显示高级设置
+      showAdvancedFromDetail() {
+        this.emailDetailDialogVisible = false;
+        this.$nextTick(() => {
+          this.showAdvancedConfig(this.currentEmailConfigIndex);
+        });
       }
     }
   }
@@ -4213,6 +4404,44 @@ X-API-KEY: {{apiConfig.apiKey}}
   .tip strong {
     color: #0071e3;
     font-weight: 600;
+  }
+
+  /* 网站地址移动端适配 */
+  @media screen and (max-width: 768px) {
+    .site-address-container {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+    
+    .site-address-input {
+      width: 100%;
+    }
+    
+    .simple-address-actions {
+      width: 100%;
+      justify-content: stretch;
+    }
+    
+    .simple-address-btn {
+      flex: 1;
+      min-width: unset;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    .site-address-container {
+      gap: 8px;
+    }
+    
+    .simple-address-actions {
+      gap: 6px;
+    }
+    
+    .simple-address-btn {
+      font-size: 13px;
+      padding: 8px 12px;
+    }
   }
 
   .el-tag {
@@ -4269,6 +4498,83 @@ X-API-KEY: {{apiConfig.apiKey}}
   .platform-card:hover {
     transform: translateY(-5px);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  /* 移动端第三方登录配置适配 */
+  @media screen and (max-width: 768px) {
+    .third-login-config .platform-cards {
+      grid-template-columns: 1fr;
+      gap: 15px;
+    }
+  }
+
+  /* 超小屏幕适配 - 侧边栏未折叠 */
+  @media screen and (max-width: 500px) {
+    .third-login-config .platform-cards {
+      grid-template-columns: 1fr;
+      gap: 10px;
+      padding: 0;
+    }
+
+    .platform-card {
+      margin: 0;
+      border-radius: 4px;
+    }
+
+    .platform-card:hover {
+      transform: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .platform-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .platform-logo {
+      width: 100%;
+    }
+
+    .platform-actions {
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .platform-actions .el-button {
+      width: 100%;
+      margin: 0 !important;
+    }
+  }
+
+  /* 超小屏幕适配 - 侧边栏折叠 */
+  @media screen and (max-width: 425px) {
+    .third-login-config {
+      padding: 0;
+    }
+
+    .third-login-config .box-card {
+      margin: 0;
+      border-radius: 0;
+    }
+
+    .third-login-config .platform-cards {
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding: 0;
+    }
+
+    .platform-form .el-form-item {
+      margin-bottom: 12px;
+    }
+
+    .platform-form .el-form-item__label {
+      font-size: 13px;
+    }
+
+    .platform-form .el-input {
+      font-size: 14px;
+    }
   }
 
   .platform-header {
@@ -4337,6 +4643,15 @@ X-API-KEY: {{apiConfig.apiKey}}
     
     .mobile-table .el-table__row {
       cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    
+    .mobile-table .el-table__row:active {
+      background-color: #f5f7fa !important;
+    }
+    
+    .mobile-table .el-table__row:hover {
+      background-color: #f0f9ff !important;
     }
     
     .table-actions {
@@ -4354,10 +4669,130 @@ X-API-KEY: {{apiConfig.apiKey}}
       color: #f56c6c;
     }
   }
+  
+  /* 移动端提示面板优化 */
+  .mobile-view-notice {
+    animation: slideInDown 0.3s ease-out;
+  }
+  
+  @keyframes slideInDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 
   .captcha-card-disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  /* 智能验证码配置移动端适配 */
+  @media screen and (max-width: 768px) {
+    /* 应用场景卡片适配 */
+    .captcha-config-card .el-row .el-col-12 {
+      width: 100% !important;
+      margin-bottom: 15px;
+    }
+    
+    /* 表单标签宽度适配 */
+    .captcha-config-card .el-form-item__label {
+      width: auto !important;
+      text-align: left !important;
+      padding-right: 10px !important;
+      font-size: 14px !important;
+    }
+    
+    /* 验证码参数表单适配 */
+    .captcha-config-card .el-tabs .el-form {
+      margin: 0 !important;
+    }
+    
+    .captcha-config-card .el-tabs .el-form-item__label {
+      font-size: 13px !important;
+      line-height: 1.3 !important;
+      white-space: normal !important;
+      word-break: break-all !important;
+    }
+    
+    .captcha-config-card .el-slider {
+      width: 100% !important;
+    }
+    
+    /* 应用场景卡片文字适配 */
+    .captcha-config-card .el-card__header {
+      font-size: 15px !important;
+    }
+    
+    .captcha-config-card .el-card__body p {
+      font-size: 14px !important;
+      margin: 8px 0 !important;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    /* 卡片内边距优化 */
+    .captcha-config-card .el-card__body {
+      padding: 10px !important;
+    }
+    
+    /* 卡片头部适配 */
+    .captcha-config-card .el-card__header {
+      padding: 10px !important;
+      font-size: 14px !important;
+    }
+    
+    /* 表单项间距优化 */
+    .captcha-config-card .el-form-item {
+      margin-bottom: 15px !important;
+    }
+    
+    .captcha-config-card .el-form-item__label {
+      font-size: 12px !important;
+      padding-right: 8px !important;
+      line-height: 1.2 !important;
+    }
+    
+    /* 分隔线文字适配 */
+    .captcha-config-card .el-divider__text {
+      font-size: 13px !important;
+      padding: 0 10px !important;
+    }
+    
+    /* Tabs适配 */
+    .captcha-config-card .el-tabs__item {
+      font-size: 13px !important;
+      padding: 0 10px !important;
+    }
+    
+    /* 输入框和数字输入框适配 */
+    .captcha-config-card .el-input-number {
+      width: 100% !important;
+    }
+    
+    .captcha-config-card .el-input-number__decrease,
+    .captcha-config-card .el-input-number__increase {
+      width: 28px !important;
+    }
+    
+    /* Tooltip内容适配 */
+    .captcha-config-card .el-tooltip {
+      width: 100% !important;
+    }
+    
+    /* 应用场景卡片内容适配 */
+    .captcha-config-card .el-card__body p {
+      font-size: 13px !important;
+      margin: 6px 0 !important;
+    }
+    
+    .captcha-config-card .el-card__body p:last-child {
+      font-size: 11px !important;
+    }
   }
 
   .tag-icon {
@@ -4707,4 +5142,215 @@ X-API-KEY: {{apiConfig.apiKey}}
     }
   }
 
+  /* 邮箱配置详情对话框样式 */
+  .email-detail-dialog {
+    max-width: 600px;
+  }
+
+  .email-detail-content {
+    padding: 0;
+  }
+
+  .email-detail-content .el-descriptions {
+    margin-bottom: 0;
+  }
+
+  .email-detail-content .el-descriptions-item__label {
+    width: 35%;
+    font-weight: 500;
+    background-color: #fafafa;
+  }
+
+  .email-detail-content .el-descriptions-item__content {
+    word-break: break-all;
+  }
+
+  /* 移动端邮箱详情对话框适配 */
+  @media screen and (max-width: 768px) {
+    .email-detail-dialog {
+      width: 95% !important;
+      margin: 0 !important;
+    }
+
+    .email-detail-dialog .el-dialog__body {
+      padding: 15px !important;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .email-detail-content .el-descriptions-item__label {
+      width: 40%;
+      font-size: 13px;
+      padding: 8px 10px !important;
+    }
+
+    .email-detail-content .el-descriptions-item__content {
+      font-size: 13px;
+      padding: 8px 10px !important;
+    }
+
+    .email-detail-content .el-button {
+      font-size: 13px;
+      padding: 8px 15px;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    .email-detail-dialog {
+      width: 98% !important;
+    }
+
+    .email-detail-dialog .el-dialog__header {
+      padding: 15px !important;
+    }
+
+    .email-detail-dialog .el-dialog__title {
+      font-size: 16px !important;
+    }
+
+    .email-detail-dialog .el-dialog__body {
+      padding: 10px !important;
+    }
+
+    .email-detail-content .el-descriptions-item__label {
+      width: 35%;
+      font-size: 12px;
+      padding: 6px 8px !important;
+    }
+
+    .email-detail-content .el-descriptions-item__content {
+      font-size: 12px;
+      padding: 6px 8px !important;
+    }
+
+    .email-detail-content > div:last-child {
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .email-detail-content .el-button {
+      width: 100%;
+      margin: 0 0 8px 0 !important;
+      font-size: 14px;
+    }
+  }
+
+
+</style>
+
+<style>
+/* el-message-box 移动端适配 - 非scoped样式，作用于全局动态元素 */
+@media screen and (max-width: 768px) {
+  /* 通用confirm对话框适配 */
+  .mobile-responsive-confirm {
+    width: 90% !important;
+    max-width: 400px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__header {
+    padding: 15px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__title {
+    font-size: 16px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__content {
+    padding: 15px !important;
+    font-size: 14px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__btns {
+    padding: 10px 15px 15px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__btns button {
+    padding: 10px 20px !important;
+    font-size: 14px !important;
+  }
+
+  /* 预设对话框适配 */
+  .preset-dialog {
+    width: 90% !important;
+    max-width: 500px !important;
+  }
+
+  .preset-dialog .el-message-box__header {
+    padding: 15px !important;
+  }
+
+  .preset-dialog .el-message-box__title {
+    font-size: 16px !important;
+  }
+
+  .preset-dialog .el-message-box__content {
+    padding: 15px !important;
+  }
+
+  .preset-dialog .preset-btn {
+    width: calc(50% - 10px) !important;
+    margin: 5px !important;
+    padding: 12px 8px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .mobile-responsive-confirm {
+    width: 95% !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__header {
+    padding: 12px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__title {
+    font-size: 15px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__content {
+    padding: 12px !important;
+    font-size: 13px !important;
+  }
+
+  .mobile-responsive-confirm .el-message-box__btns {
+    padding: 8px 12px 12px !important;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .mobile-responsive-confirm .el-message-box__btns button {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 12px 20px !important;
+    font-size: 15px !important;
+  }
+
+  /* 预设对话框超小屏幕适配 */
+  .preset-dialog {
+    width: 95% !important;
+  }
+
+  .preset-dialog .el-message-box__header {
+    padding: 12px !important;
+  }
+
+  .preset-dialog .el-message-box__title {
+    font-size: 15px !important;
+  }
+
+  .preset-dialog .el-message-box__content {
+    padding: 12px !important;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .preset-dialog .preset-btn {
+    width: 100% !important;
+    margin: 5px 0 !important;
+    padding: 14px 10px !important;
+    font-size: 14px !important;
+  }
+}
 </style>

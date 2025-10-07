@@ -742,6 +742,31 @@
     animation: gradientBG 120s linear infinite;
   }
 
+  /* 移动端波浪动画加速和优化 */
+  @media screen and (max-width: 768px) {
+    #bannerWave1 {
+      width: 400% !important;
+      animation: gradientBG 40s linear infinite !important;
+    }
+
+    #bannerWave2 {
+      width: 600% !important;
+      animation: gradientBG 40s linear infinite !important;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    #bannerWave1 {
+      width: 400% !important;
+      animation: gradientBG 30s linear infinite !important;
+    }
+
+    #bannerWave2 {
+      width: 600% !important;
+      animation: gradientBG 30s linear infinite !important;
+    }
+  }
+
   /* 光标 */
   .cursor {
     margin-left: 1px;
