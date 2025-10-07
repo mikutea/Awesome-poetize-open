@@ -1,5 +1,27 @@
 /* 通用css */
 
+/* 性能优化: Element UI组件GPU硬件加速 */
+/* 注意：Message组件不加transform，避免影响居中定位 */
+.el-dialog,
+.el-drawer,
+.el-message-box,
+.el-notification,
+.el-loading-mask,
+.el-dropdown-menu,
+.el-select-dropdown,
+.el-popover,
+.el-tooltip__popper {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Message组件单独优化，不使用transform避免影响定位 */
+.el-message {
+  will-change: opacity;
+  backface-visibility: hidden;
+}
+
 /* 隐藏预渲染内容 - 解决首页底部显示预渲染文本的问题 */
 .home-prerender,
 .favorite-prerender, 
@@ -8,8 +30,37 @@
   display: none !important;
 }
 
+/* 性能优化: 为动画元素启用GPU硬件加速 */
+.article-head,
+.article-info-container,
+.article-detail,
+.article-content,
+.entry-content {
+  /* 提示浏览器这些元素会变化，提前优化 */
+  will-change: transform, opacity;
+  /* 启用GPU合成层，减少重绘 */
+  transform: translateZ(0);
+  /* 隐藏元素背面，提升性能 */
+  backface-visibility: hidden;
+  /* 抗锯齿优化 */
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+/* 性能优化: 为图片加载添加硬件加速 */
+.article-image,
+.my-el-image,
+img {
+  will-change: opacity;
+  transform: translateZ(0);
+}
+
 * {
     box-sizing: border-box;
+}
+
+/* 性能优化: 启用全局平滑滚动 */
+html {
+    scroll-behavior: smooth;
 }
 
 html, body, div, span, applet, object, iframe,
@@ -128,8 +179,12 @@ body {
 
 .user-avatar {
     cursor: pointer;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性，避免 transition: all */
+    transition: transform 0.3s ease, opacity 0.3s ease;
     user-select: none;
+    /* GPU硬件加速 */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 .user-avatar:hover {
@@ -199,7 +254,11 @@ body {
 
 .shadow-box {
     box-shadow: 0 1px 20px -6px var(--borderColor);
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    /* GPU硬件加速 */
+    will-change: box-shadow, transform;
+    transform: translateZ(0);
 }
 
 .shadow-box:hover {
@@ -392,9 +451,12 @@ body {
     font-size: unset;
     color: #333 !important;
     border-radius: 8px;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: background-color 0.3s ease, color 0.3s ease, transform 0.3s ease;
     margin: 5px 10px;
     padding: 2px 8px;
+    /* GPU硬件加速 */
+    transform: translateZ(0);
     background-color: rgba(255, 255, 255, 0.5) !important;
     font-weight: bold;
     width: 200px !important;

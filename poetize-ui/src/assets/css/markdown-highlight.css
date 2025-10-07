@@ -372,7 +372,8 @@
 }
 
 .table-wrapper > table tbody > tr {
-    transition: all 0.28s ease;
+    /* 性能优化: 只监听背景色变化 */
+    transition: background-color 0.28s ease;
 }
 
 .table-wrapper > table tbody > tr:hover {

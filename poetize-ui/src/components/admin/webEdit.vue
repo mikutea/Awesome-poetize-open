@@ -205,12 +205,12 @@
             <div slot="reference" style="cursor: help;">
               <el-input 
                 v-model="navConfigText" 
-                placeholder="例如：首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我">
+                placeholder="例如：首页,分类,家,友人帐,曲乐,收藏夹,留言,联系我">
               </el-input>
             </div>
             <div>
               <p style="margin-top: 0">请填写您希望显示的导航项，<b>以逗号分隔</b>。系统将按照您输入的顺序显示这些导航项。</p>
-              <p>可用的导航项包括：首页、记录、家、友人帐、曲乐、收藏夹、留言、联系我。</p>
+              <p>可用的导航项包括：首页、分类、家、友人帐、曲乐、收藏夹、留言、联系我。</p>
               
               <!-- 导航栏预览 -->
               <div class="nav-preview-section">
@@ -1666,7 +1666,7 @@ X-API-KEY: {{apiConfig.apiKey}}
                 <span :style="{ color: drawerConfig.menuFontColor }">🏡 首页</span>
               </div>
               <div class="preview-menu-item" :style="getMenuItemStyle()">
-                <span :style="{ color: drawerConfig.menuFontColor }">📒 记录</span>
+                <span :style="{ color: drawerConfig.menuFontColor }">📑 分类</span>
               </div>
               <div class="preview-menu-item" :style="getMenuItemStyle()">
                 <span :style="{ color: drawerConfig.menuFontColor }">❤️‍🔥 家</span>
@@ -1894,7 +1894,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         apiDetailForm: {
           id: null
         },
-        navConfigText: "首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我",
+        navConfigText: "首页,分类,家,友人帐,曲乐,收藏夹,留言,联系我",
         navLoading: false,
         // 移动端侧边栏配置
         mobileDrawerDialogVisible: false,
@@ -1926,7 +1926,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         ],
         defaultNavItems: [
           { name: "首页", icon: "🏡", link: "/", type: "internal" },
-          { name: "记录", icon: "📒", link: "#", type: "dropdown" },
+          { name: "分类", icon: "📑", link: "#", type: "dropdown" },
           { name: "家", icon: "❤️‍🔥", link: "/love", type: "internal" },
           { name: "友人帐", icon: "🤝", link: "/friends", type: "internal" },
           { name: "曲乐", icon: "🎵", link: "/music", type: "internal" },
@@ -3865,7 +3865,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.getApiConfig();
       },
       resetToDefaultNav() {
-        this.navConfigText = "首页,记录,家,友人帐,曲乐,收藏夹,留言,联系我";
+        this.navConfigText = "首页,分类,家,友人帐,曲乐,收藏夹,留言,联系我";
       },
       saveNavConfig() {
         this.navLoading = true;
@@ -4261,7 +4261,9 @@ X-API-KEY: {{apiConfig.apiKey}}
 
   .platform-card {
     border-radius: 8px;
-    transition: all 0.3s;
+    /* 性能优化: 只监听背景色和边框变化 */
+    transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+    transform: translateZ(0);
   }
 
   .platform-card:hover {
@@ -4399,7 +4401,9 @@ X-API-KEY: {{apiConfig.apiKey}}
     align-items: center;
     cursor: pointer;
     position: relative;
-    transition: all 0.3s;
+    /* 性能优化: 只监听背景色和边框 */
+    transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease;
+    transform: translateZ(0);
   }
 
   .nav-item-preview:hover {

@@ -681,13 +681,27 @@ var rotateSpeed = -TAU / 60;
 var xClock = 0;
 var then = new Date() - 1 / 60;
 
-function animate() {
-  update();
-  illo.renderGraph();
+// 性能优化: 添加帧率控制，3D动画限制在60fps
+var targetFPS = 60;
+var frameInterval = 1000 / targetFPS;
+var lastRenderTime = 0;
+
+function animate(currentTime) {
+  // 帧率控制
+  if (!currentTime) currentTime = performance.now();
+  var deltaTime = currentTime - lastRenderTime;
+  
+  if (deltaTime >= frameInterval) {
+    update();
+    illo.renderGraph();
+    lastRenderTime = currentTime - (deltaTime % frameInterval);
+  }
+  
   requestAnimationFrame(animate);
 }
 
-animate();
+// 启动动画循环
+animate(performance.now());
 
 // -- update -- //
 

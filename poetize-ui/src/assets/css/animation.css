@@ -3,6 +3,12 @@
     animation-duration: 1s;
     animation-timing-function: ease-out;
     animation-fill-mode: both;
+    /* 性能优化: 启用GPU硬件加速，提示浏览器优化动画性能 */
+    will-change: transform, opacity;
+    /* 强制启用GPU合成层 */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-font-smoothing: subpixel-antialiased;
 }
 
 
@@ -23,11 +29,12 @@
 @keyframes slide-top {
     0% {
         opacity: 0;
-        transform: translateY(-20%)
+        /* 性能优化: 使用translate3d替代translateY以启用GPU加速 */
+        transform: translate3d(0, -20%, 0)
     }
     100% {
         opacity: 1;
-        transform: translateY(0)
+        transform: translate3d(0, 0, 0)
     }
 }
 
@@ -35,11 +42,12 @@
 @keyframes slide-bottom {
     0% {
         opacity: 0;
-        transform: translateY(20%)
+        /* 性能优化: 使用translate3d替代translateY以启用GPU加速 */
+        transform: translate3d(0, 20%, 0)
     }
     100% {
         opacity: 1;
-        transform: translateY(0)
+        transform: translate3d(0, 0, 0)
     }
 }
 
@@ -47,12 +55,13 @@
 @keyframes header-effect {
     0% {
         opacity: 0;
-        transform: translateY(-50px);
+        /* 性能优化: 使用translate3d启用GPU加速 */
+        transform: translate3d(0, -50px, 0);
     }
 
     100% {
         opacity: 1;
-        transform: translateY(0);
+        transform: translate3d(0, 0, 0);
     }
 }
 
@@ -84,17 +93,18 @@
 @keyframes my-shake {
     0% {
         opacity: 1;
-        transform: translateY(0px);
+        /* 性能优化: 使用translate3d启用GPU加速 */
+        transform: translate3d(0, 0, 0);
     }
 
     30% {
         opacity: 0.5;
-        transform: translateY(25px);
+        transform: translate3d(0, 25px, 0);
     }
 
     100% {
         opacity: 1;
-        transform: translateY(0px);
+        transform: translate3d(0, 0, 0);
     }
 }
 
@@ -195,17 +205,18 @@
 /* 由左开向右 */
 @keyframes passing {
     0% {
-        transform: translateX(-150%);
+        /* 性能优化: 使用translate3d启用GPU加速 */
+        transform: translate3d(-150%, 0, 0);
         opacity: 0
     }
 
     50% {
-        transform: translateX(0);
+        transform: translate3d(0, 0, 0);
         opacity: 1
     }
 
     100% {
-        transform: translateX(150%);
+        transform: translate3d(150%, 0, 0);
         opacity: 0
     }
 }

@@ -486,7 +486,8 @@
   }
 
   .font-sample {
-    transition: all 0.2s;
+    /* 性能优化: 只监听颜色变化 */
+    transition: color 0.2s ease, background-color 0.2s ease;
   }
 
   .font-sample:hover {

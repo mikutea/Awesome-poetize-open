@@ -200,8 +200,11 @@
   .myEmoji {
     font-size: 18px;
     cursor: pointer;
-    transition: all 0.5s;
+    /* 性能优化: 有旋转动画，需要GPU加速 */
+    transition: transform 0.5s ease, color 0.5s ease;
     margin-right: 12px;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .myEmoji:hover {

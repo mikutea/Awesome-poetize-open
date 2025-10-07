@@ -303,7 +303,8 @@
 
   .icp a, .copyright a {
     text-decoration: none;
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色变化，不需要GPU */
+    transition: color 0.3s ease, opacity 0.3s ease;
   }
 
   .icp a:hover, .copyright a:hover {

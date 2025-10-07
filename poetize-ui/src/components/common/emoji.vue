@@ -57,7 +57,8 @@
   }
 
   .emoji-item:hover {
-    transition: all 0.2s;
+    /* 性能优化: 只监听背景色变化，不需要GPU */
+    transition: background-color 0.2s ease;
     border-radius: 0.25rem;
     background: var(--lightGray);
   }
@@ -69,7 +70,10 @@
   }
 
   .body-enter-active, .body-leave-active {
-    transition: all 0.3s;
+    /* 性能优化: Vue过渡动画，需要GPU加速 */
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   .body-enter, .body-leave-to {

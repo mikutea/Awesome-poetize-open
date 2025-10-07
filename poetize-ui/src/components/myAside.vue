@@ -556,7 +556,8 @@
     border-radius: 1rem;
     margin-bottom: 15px;
     line-height: 30px;
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色变化，不需要transform */
+    transition: color 0.3s ease, background-color 0.3s ease;
   }
 
   .post-sort:hover {
@@ -603,7 +604,10 @@
     cursor: pointer;
     text-align: center;
     margin: 20px auto 0;
-    transition: all 1s;
+    /* 性能优化: 图片有缩放动画，需要GPU加速 */
+    transition: transform 1s ease, opacity 1s ease;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .admire-btn:hover {
@@ -691,7 +695,8 @@
     top: 9px;
     cursor: pointer;
     color: var(--greyFont);
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色变化，不需要GPU */
+    transition: color 0.3s ease, background-color 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -758,7 +763,8 @@
     cursor: pointer;
     color: var(--greyFont);
     opacity: 0.7;
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色和透明度，不需要GPU */
+    transition: color 0.3s ease, opacity 0.3s ease;
     padding: 2px 5px;
   }
 
@@ -781,7 +787,8 @@
     margin-right: 6px;
     margin-bottom: 6px;
     cursor: pointer;
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色变化，不需要GPU */
+    transition: color 0.3s ease, background-color 0.3s ease;
     display: inline-flex;
     align-items: center;
   }
@@ -799,7 +806,8 @@
     cursor: pointer;
     color: var(--greyFont);
     opacity: 0.6;
-    transition: all 0.3s;
+    /* 性能优化: 只监听颜色和透明度，不需要GPU */
+    transition: color 0.3s ease, opacity 0.3s ease;
     padding: 2px;
     border-radius: 50%;
     width: 20px;

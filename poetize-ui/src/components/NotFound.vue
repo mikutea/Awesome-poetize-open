@@ -477,9 +477,11 @@ export default {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: transform 0.3s ease, color 0.3s ease, opacity 0.3s ease;
   text-decoration: none;
   position: relative;
+  transform: translateZ(0);
   overflow: hidden;
 }
 

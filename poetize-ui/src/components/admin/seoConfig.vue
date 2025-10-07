@@ -2242,7 +2242,8 @@ export default {
     -webkit-backdrop-filter: blur(20px);
     margin-bottom: 25px;
     overflow: hidden;
-    transition: all 0.4s ease;
+    /* 性能优化: 只监听高度和透明度变化 */
+    transition: max-height 0.4s ease, opacity 0.4s ease;
   }
   
   .box-card .el-card__header {
@@ -2284,7 +2285,8 @@ export default {
     line-height: 44px;
     font-weight: 500;
     color: #86868b;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* 性能优化: 只监听颜色变化 */
+    transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     margin: 0 4px;
     padding: 0 18px;
   }
@@ -2321,7 +2323,8 @@ export default {
     border-radius: 10px;
     border: 1px solid rgba(0, 0, 0, 0.1);
     background-color: rgba(245, 247, 250, 0.7);
-    transition: all 0.3s;
+    /* 性能优化: 只监听边框和背景色，不需要GPU */
+    transition: border-color 0.3s ease, background-color 0.3s ease;
     padding: 0 15px;
     height: 38px;
     color: #1d1d1f;
@@ -2385,7 +2388,8 @@ export default {
     border-radius: 50%;
     background-color: white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* 性能优化: 只监听背景色和阴影 */
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   ::v-deep .el-switch.is-checked .el-switch__core {
@@ -2414,7 +2418,8 @@ export default {
     cursor: pointer;
     margin-left: 5px;
     font-size: 14px;
-    transition: all 0.2s;
+    /* 性能优化: 只监听颜色变化，不需要GPU */
+    transition: color 0.2s ease;
   }
   
   .help-icon:hover {
@@ -2482,9 +2487,11 @@ export default {
     border-radius: 22px;
     padding: 10px 20px;
     font-weight: 500;
-    transition: all 0.3s;
+    /* 性能优化: 只监听背景色 */
+    transition: background-color 0.3s ease, transform 0.3s ease;
     border: none;
     font-size: 14px;
+    transform: translateZ(0);
   }
   
   ::v-deep .el-button--primary {
@@ -2793,7 +2800,8 @@ export default {
   /* 高级配置展开动画 */
   .advanced-config-enter-active,
   .advanced-config-leave-active {
-    transition: all 0.3s ease;
+    /* 性能优化: Vue过渡动画 */
+    transition: max-height 0.3s ease, opacity 0.3s ease;
   }
   
   .advanced-config-enter,
@@ -2804,7 +2812,8 @@ export default {
 
   /* 高级配置动画 */
   .advanced-config-enter-active, .advanced-config-leave-active {
-    transition: all 0.3s ease;
+    /* 性能优化: Vue过渡动画 */
+    transition: max-height 0.3s ease, opacity 0.3s ease;
   }
 
   .advanced-config-enter, .advanced-config-leave-to {
@@ -2865,7 +2874,8 @@ export default {
     padding: 15px;
     background: #FAFAFA;
     position: relative;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听边框和阴影，不需要GPU */
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
   }
 
   .ai-service-card:hover {
@@ -3075,7 +3085,8 @@ export default {
     border-radius: 16px;
     font-size: 13px;
     font-weight: 500;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听颜色变化，不需要GPU */
+    transition: color 0.3s ease;
   }
 
   /* 图标上传容器样式 */
@@ -3114,7 +3125,8 @@ export default {
     background: white;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听阴影和边框，不需要GPU */
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
   }
   
   .preview-item:hover {
@@ -3321,7 +3333,8 @@ export default {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s;
+    /* 性能优化: 只监听背景色，不需要GPU */
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   .simple-upload .el-upload-dragger:hover {

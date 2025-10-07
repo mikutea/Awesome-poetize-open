@@ -103,7 +103,9 @@
   }
 
   .card-image >>> .el-image__inner {
-    transition: all 1s;
+    /* 性能优化: 图片有缩放动画，需要GPU加速 */
+    transition: transform 1s ease, opacity 1s ease;
+    will-change: transform;
   }
 
   .card-image >>> .el-image__inner:hover {
@@ -121,7 +123,8 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
-    transition: all .2s ease-in-out;
+    /* 性能优化: 只监听颜色变化 */
+    transition: color .2s ease-in-out;
   }
 
   .card-title:hover {

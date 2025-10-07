@@ -17,7 +17,7 @@
               <div class="flip">
                 <div class="front"></div>
                 <div class="back">
-                  <p class="letter">Ming<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;夜にはいつも寒いよね、でも、手を繋いでいると、暖かくなるよ！<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;どんなに寒い夜も、君と二人でいれば、ちっとも寒くない！<br><br>
+                  <p class="letter">Ming<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;夜にはいつも寒いよね、でも、手を繋いでいると、暖かくなるよ！<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;どんなに寒い夜も、君と二人でいれば、ちっとも寒くない！<br><br></p>
                   <p style="float:right; display:block; width:80px;">Hao</p><span class="typed-cursor"
                                                                                   style="animation-iteration-count: infinite;">|</span>
                   <a id="close" href="#">Close</a>
@@ -391,6 +391,9 @@
     padding: 20px 30px;
     color: #837362;
     text-shadow: 0 1px 0 #fff, 0 1px 0 #fff;
+    /* GPU硬件加速 */
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   section.container > form.flip > .front {
@@ -438,6 +441,9 @@
   #letter {
     background: #fafafa;
     width: 90%;
+    /* GPU硬件加速 */
+    will-change: transform, opacity;
+    transform: translateZ(0);
     height: 95%;
     position: absolute;
     left: 5%;
@@ -481,13 +487,20 @@
     -moz-transform-style: preserve-3d;
     transform-style: preserve-3d;
 
+    /* 性能优化: 使用标准的transition语法，启用GPU加速 */
     -webkit-transition: -webkit-transform 0.5s 0s;
     -moz-transition: -moz-transform 0.5s 0s;
-    transition: -moz-transform 0.5s 0s;
+    transition: transform 0.5s 0s;
 
     -webkit-transform-origin: left top;
     -moz-transform-origin: left top;
     transform-origin: left top;
+    
+    /* GPU硬件加速 */
+    will-change: transform;
+    -webkit-backface-visibility: hidden;
+    -moz-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
 
   #letter .flip > .front, #letter .flip > .back {
@@ -497,6 +510,9 @@
     -webkit-backface-visibility: hidden;
     -moz-backface-visibility: hidden;
     backface-visibility: hidden;
+    /* GPU硬件加速 */
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   #letter .flip > .back {

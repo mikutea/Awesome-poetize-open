@@ -259,7 +259,10 @@
     content: '❄';
     font-size: 30px;
     line-height: 1;
-    transition: all 1s ease-in-out;
+    /* 性能优化: 有缩放动画，需要GPU加速 */
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   hr:hover:before {
@@ -273,9 +276,12 @@
     height: 447px;
     position: relative;
     top: 0;
-    transition: all 1s ease-in-out .3s;
+    /* 性能优化: 有位移动画，需要GPU加速 */
+    transition: transform 1s ease-in-out .3s, top 1s ease-in-out .3s, opacity 1s ease-in-out .3s;
     z-index: 0;
     cursor: pointer;
+    will-change: transform, top;
+    transform: translateZ(0);
   }
 
 
@@ -306,8 +312,11 @@
   .envelope {
     position: relative;
     margin: 0 auto;
-    transition: all 1s ease-in-out .3s;
+    /* 性能优化: 有复杂动画，需要GPU加速 */
+    transition: transform 1s ease-in-out .3s, opacity 1s ease-in-out .3s;
     padding: 200px 20px 20px;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .form-main {

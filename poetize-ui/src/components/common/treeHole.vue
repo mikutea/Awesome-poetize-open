@@ -156,7 +156,10 @@
   .avatar-img {
     position: absolute;
     top: 0;
-    transition: all 0.3s ease-in-out;
+    /* 性能优化: 有位移动画，需要GPU加速 */
+    transition: transform 0.3s ease-in-out, top 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    will-change: transform, top;
+    transform: translateZ(0);
   }
 
   .leftTreeHole .avatar-img {
@@ -175,9 +178,11 @@
     position: relative;
     letter-spacing: 0.1em;
     font-weight: 400;
-    transition: all 0.3s ease-in-out;
+    /* 性能优化: 有位移动画，需要GPU加速 */
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out, background-color 0.3s ease-in-out;
     color: var(--black);
     text-align: left;
+    transform: translateZ(0);
     display: inline-block;
   }
 

@@ -8,7 +8,7 @@
                preload="metadata" 
                :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
         </video>
-        <div style="position: absolute;left: 0;top: 0;padding: 5px 20px; position: absolute; left: 20px; top: 25px; margin: 10px;">
+        <div class="favorites-header-content">
           <!-- 标题 -->
           <div style="color: var(--white);margin: 0 10px">
             <div style="font-size: 30px;font-weight: bold;line-height: 2">
@@ -136,6 +136,14 @@
     object-fit: cover;
   }
 
+  .favorites-header-content {
+    position: absolute;
+    left: 20px;
+    top: 25px;
+    padding: 5px 20px;
+    margin: 10px;
+  }
+
   .favorites-content {
     margin: 0 auto;
     max-width: 1200px;
@@ -155,9 +163,11 @@
   }
 
   .favorite-item {
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     border-radius: 12px;
     box-shadow: 0 8px 16px -4px #2c2d300c;
+    transform: translateZ(0);
     background: var(--background);
     display: flex;
     width: calc(100% / 4 - 20px);
@@ -175,7 +185,8 @@
   }
 
   .favorite-item:hover .favorite-item-image {
-    transition: all 0.6s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: width 0.6s ease, height 0.6s ease, opacity 0.6s ease;
     width: 0 !important;
     height: 0 !important;
     opacity: 0;
@@ -188,7 +199,9 @@
 
   .favorite-item-image {
     margin-right: 20px;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: width 0.3s ease, height 0.3s ease, opacity 0.3s ease;
+    will-change: width, height, opacity;
   }
 
   .favorite-item-title {
@@ -243,6 +256,11 @@
     .favorite-item {
       width: calc(100% / 3 - 20px);
     }
+    
+    /* 移动端去掉margin */
+    .favorites-header-content {
+      margin: 0;
+    }
   }
 
   @media screen and (max-width: 636px) {
@@ -252,6 +270,11 @@
     
     .favorite-item {
       width: calc(100% / 2 - 20px);
+    }
+    
+    /* 小屏幕也只去掉margin */
+    .favorites-header-content {
+      margin: 0;
     }
   }
 

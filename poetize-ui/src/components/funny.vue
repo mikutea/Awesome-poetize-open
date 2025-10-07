@@ -230,7 +230,10 @@
     content: '❄';
     font-size: 30px;
     line-height: 1;
-    transition: all 1s ease-in-out;
+    /* 性能优化: 有缩放动画，需要GPU加速 */
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .process-wrap hr:hover:before {
@@ -278,8 +281,11 @@
 
   .funny-avatar {
     cursor: pointer;
-    transition: all 0.5s;
+    /* 性能优化: 有旋转动画，需要GPU加速 */
+    transition: transform 0.5s ease;
     user-select: none;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .funny-avatar:hover {

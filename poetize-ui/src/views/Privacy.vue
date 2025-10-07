@@ -137,7 +137,8 @@ export default {
   margin: 0 auto;
   padding: 20px;
   min-height: calc(100vh - 130px);
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听背景和透明度 */
+  transition: background-color 0.3s ease, opacity 0.3s ease;
 }
 
 .privacy-container {
@@ -148,7 +149,8 @@ export default {
   margin-top: 20px;
   margin-bottom: 20px;
   padding: 30px;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听背景色和阴影 */
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);

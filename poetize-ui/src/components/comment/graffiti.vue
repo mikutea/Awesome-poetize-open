@@ -402,7 +402,8 @@
     float: left;
     margin-right: 20px;
     cursor: pointer;
-    transition: all 0.2s;
+    /* 性能优化: 只监听背景色变化，不需要GPU */
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   .graffiti-color:hover {

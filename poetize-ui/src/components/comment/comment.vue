@@ -1371,7 +1371,8 @@
     text-align: center;
     font-size: 12px !important;
     color: var(--greyFont) !important;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景和颜色变化，不需要GPU */
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
     width: auto;
     min-width: 120px;
   }
@@ -1414,7 +1415,8 @@
     text-align: center;
     font-size: 12px !important;
     color: var(--greyFont) !important;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景和颜色变化，不需要GPU */
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
     width: auto;
     min-width: 120px;
   }
@@ -1459,7 +1461,8 @@
     background: var(--background) !important;
     color: var(--greyFont) !important;
     font-size: 14px !important;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景和颜色变化，不需要GPU */
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   }
 
   .load-more-btn:hover {

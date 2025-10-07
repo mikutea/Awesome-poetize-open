@@ -209,9 +209,11 @@
   }
 
   .card-item {
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
     position: relative;
     width: 250px;
+    transform: translateZ(0);
     height: 120px;
     border-radius: 20px;
     animation: hideToShow 1s ease-in-out;
@@ -264,9 +266,11 @@
   }
 
   .favorite-item {
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     border-radius: 12px;
     box-shadow: 0 8px 16px -4px #2c2d300c;
+    transform: translateZ(0);
     background: var(--background);
     display: flex;
     width: calc(100% / 4 - 20px);
@@ -284,7 +288,8 @@
   }
 
   .favorite-item:hover .favorite-item-image {
-    transition: all 0.6s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: width 0.6s ease, height 0.6s ease, opacity 0.6s ease;
     width: 0 !important;
     height: 0 !important;
     opacity: 0;
@@ -297,7 +302,9 @@
 
   .favorite-item-image {
     margin-right: 20px;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: width 0.3s ease, height 0.3s ease, opacity 0.3s ease;
+    will-change: width, height, opacity;
   }
 
   .favorite-item-title {

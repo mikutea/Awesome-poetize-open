@@ -283,9 +283,11 @@ export default {
   overflow: hidden;
   cursor: pointer;
   pointer-events: auto;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听位移和透明度 */
+  transition: transform 0.3s ease, opacity 0.3s ease, box-shadow 0.3s ease;
   max-width: 350px;
   border-left: 4px solid;
+  transform: translateZ(0);
 }
 
 .notification-item:hover {
@@ -413,11 +415,17 @@ export default {
 
 /* 动画效果 */
 .notification-enter-active {
-  transition: all 0.3s ease;
+  /* 性能优化: Vue过渡动画，需要GPU加速 */
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .notification-leave-active {
-  transition: all 0.3s ease;
+  /* 性能优化: Vue过渡动画，需要GPU加速 */
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .notification-enter {

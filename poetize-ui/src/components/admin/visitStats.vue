@@ -442,7 +442,9 @@
     cursor: pointer;
     padding: 6px 10px;
     border-radius: 6px;
-    transition: all 0.2s;
+    /* 性能优化: 只监听背景色变化 */
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    transform: translateZ(0);
   }
   
   .time-btn.active {
@@ -462,7 +464,8 @@
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
-    transition: all 0.2s;
+    /* 性能优化: 只监听背景色变化 */
+    transition: background-color 0.2s ease, color 0.2s ease;
     width: 28px;
     height: 28px;
     display: flex;

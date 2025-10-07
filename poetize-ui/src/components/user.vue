@@ -32,7 +32,7 @@
             <input v-model="account" type="text" placeholder="用户名/邮箱/手机号">
             <input v-model="password" type="password" placeholder="密码">
             <a href="#" @click="changeDialog('找回密码')">忘记密码？</a>
-            <el-button type="primary" round @click="showLoginVerify()" style="border-radius:8px; width:90%; background: var(--gradualRed); border: none; box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); transition: all 0.3s ease; padding: 12px 30px; font-weight: 600; letter-spacing: 1px;">登 录</el-button>
+            <el-button type="primary" round @click="showLoginVerify()" style="border-radius:8px; width:90%; background: var(--gradualRed); border: none; box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); transition: transform 0.3s ease, box-shadow 0.3s ease; padding: 12px 30px; font-weight: 600; letter-spacing: 1px; transform: translateZ(0);">登 录</el-button>
             
             <!-- 第三方登录区域 - 根据配置动态显示 -->
             <div v-if="thirdPartyLoginConfig.enable && enabledThirdPartyProviders.length > 0">
@@ -46,7 +46,7 @@
                   @click="showThirdPartyLoginVerify(provider.key)"
                   :title="provider.title"
                   class="third-party-login-btn"
-                  style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition:all 0.3s ease;"
+                  style="display:inline-block; width:40px; height:40px; margin:0 10px; border-radius:50%; vertical-align:middle; position:relative; transition: transform 0.3s ease, opacity 0.3s ease; transform: translateZ(0);"
                 >
                   <img :src="provider.icon" :alt="provider.name" height="25" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%);">
                 </a>
@@ -1155,7 +1155,10 @@
   .form-container {
     position: absolute;
     height: 100%;
-    transition: all 0.5s ease-in-out;
+    /* 性能优化: 有位移动画，需要GPU加速 */
+    transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
+    will-change: transform, left;
+    transform: translateZ(0);
   }
 
   .sign-in-container {
@@ -1203,7 +1206,9 @@
     letter-spacing: 2px;
     cursor: pointer;
     box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask);
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听阴影和位移 */
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    transform: translateZ(0);
   }
 
   .in-up button:hover {
@@ -1256,7 +1261,9 @@
     width: 50%;
     height: 100%;
     overflow: hidden;
-    transition: all 0.5s ease-in-out;
+    /* 性能优化: 有位移动画 */
+    transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
+    will-change: transform, left;
   }
 
   .overlay {
@@ -1274,7 +1281,9 @@
     flex-direction: column;
     height: 100%;
     width: 50%;
-    transition: all 0.5s ease-in-out;
+    /* 性能优化: 有位移动画 */
+    transition: transform 0.5s ease-in-out, left 0.5s ease-in-out;
+    will-change: transform, left;
   }
 
   .overlay-right {
@@ -1620,9 +1629,11 @@
     cursor: pointer;
     display: flex;
     align-items: center;
-    transition: all 0.3s;
+    /* 性能优化: 只监听背景色和阴影 */
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
     background-color: var(--background);
     box-shadow: 0 2px 5px var(--miniMask);
+    transform: translateZ(0);
     font-size: 12px;
   }
 
@@ -1652,8 +1663,10 @@
     border: none;
     padding: 0;
     cursor: pointer;
-    transition: all 0.3s;
+    /* 性能优化: 只监听阴影和位移 */
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
     box-shadow: 0 2px 5px var(--mask);
+    transform: translateZ(0);
   }
   
   .login-circle-btn:hover {
@@ -1723,7 +1736,8 @@
     margin: 15px 10px;
     cursor: pointer;
     font-size: 14px;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景色和颜色 */
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   .form-container .submit:hover {

@@ -490,7 +490,8 @@
     box-shadow: 0 15px 40px rgba(0, 0, 0, 0.25);
     min-width: 380px;
     max-width: 90%;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听边框和阴影变化 */
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
     border: 1px solid rgba(0, 0, 0, 0.05);
     background-image: 
       radial-gradient(circle at 95% 15%, rgba(204, 44, 49, 0.05) 5%, transparent 30%),
@@ -565,7 +566,8 @@
     height: 34px;
     cursor: pointer;
     border-radius: 50%;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听颜色和背景色，不需要GPU */
+    transition: color 0.3s ease, background-color 0.3s ease, opacity 0.3s ease;
     color: #555;
   }
   
@@ -671,7 +673,8 @@
     -moz-user-select: none;
     -ms-user-select: none;
     -webkit-user-select: none;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景色变化，不需要GPU */
+    transition: background-color 0.3s ease, color 0.3s ease;
     letter-spacing: 0.5px;
     padding: 0 20px;
     text-overflow: ellipsis;
@@ -724,9 +727,12 @@
     left: 0;
     top: 0;
     cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    /* 性能优化: 滑块有位移动画，需要GPU加速 */
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94), left 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     z-index: 10;
     touch-action: none;
+    will-change: transform, left;
+    transform: translateZ(0);
     overflow: visible;
     display: flex;
     justify-content: center;
@@ -1074,7 +1080,10 @@
     align-items: center;
     color: #cc2c31;
     font-size: 24px;
-    transition: all 0.3s ease;
+    /* 性能优化: 有旋转动画，需要GPU加速 */
+    transition: transform 0.3s ease;
+    will-change: transform;
+    transform: translateZ(0);
   }
   
   .slider-verify-block.success .slider-block-arrow {

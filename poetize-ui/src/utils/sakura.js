@@ -111,8 +111,16 @@ function startSakura() {
     console.warn('无法添加樱花动画canvas到DOM，跳过樱花动画');
     return;
   }
-  cxt = canvas.getContext("2d", {willReadFrequently: true});
+  
+  // 性能优化1: 启用Canvas异步渲染，允许GPU独立处理
+  cxt = canvas.getContext("2d", {
+    willReadFrequently: true,
+    alpha: true,
+    desynchronized: true  // 关键优化：允许Canvas异步渲染，不阻塞主线程
+  });
+  
   var sakuraList = new SakuraList();
+  // 保持原来的50个樱花，通过GPU加速优化性能
   for (var i = 0; i < 50; i++) {
     var sakura, randomX, randomY, randomS, randomR, randomFnx, randomFny, randomFnR;
     randomX = getRandom('x');
@@ -126,11 +134,13 @@ function startSakura() {
     sakura.draw(cxt);
     sakuraList.push(sakura);
   }
-  stop = requestAnimationFrame(function () {
+  
+  // 性能优化3: 跟随显示器刷新率（60Hz=60fps, 120Hz=120fps, 144Hz=144fps）
+  stop = requestAnimationFrame(function animate() {
     cxt.clearRect(0, 0, canvas.width, canvas.height);
     sakuraList.update();
     sakuraList.draw(cxt);
-    stop = requestAnimationFrame(arguments.callee);
+    stop = requestAnimationFrame(animate);
   })
 }
 

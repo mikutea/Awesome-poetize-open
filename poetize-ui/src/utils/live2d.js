@@ -1152,7 +1152,9 @@ async function loadWidget(config) {
           display: flex;
           flex-direction: column;
           z-index: 1002;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听位移和透明度 */
+          transition: transform 0.3s ease, opacity 0.3s ease;
+          transform: translateZ(0);
         }
 
         /* 深色模式样式 */
@@ -1218,7 +1220,8 @@ async function loadWidget(config) {
           cursor: pointer;
           padding: 4px 8px;
           border-radius: 6px;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听背景色和透明度 */
+          transition: background-color 0.3s ease, opacity 0.3s ease;
           opacity: 0.7;
         }
 
@@ -1234,7 +1237,8 @@ async function loadWidget(config) {
           cursor: pointer;
           padding: 0 5px;
           border-radius: 50%;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听背景色 */
+          transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         .chat-close:hover {
@@ -1342,7 +1346,8 @@ async function loadWidget(config) {
           color: var(--chat-message-text);
           font-size: 14px;
           outline: none;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听边框和背景色 */
+          transition: border-color 0.3s ease, background-color 0.3s ease;
         }
 
         #chat-input:focus {
@@ -1366,8 +1371,10 @@ async function loadWidget(config) {
           color: white;
           font-weight: bold;
           cursor: pointer;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听背景色和位移 */
+          transition: background-color 0.3s ease, transform 0.3s ease;
           white-space: nowrap;
+          transform: translateZ(0);
         }
 
         #chat-send-btn:hover {
@@ -1405,7 +1412,8 @@ async function loadWidget(config) {
           color: #2c3e50;
           font-size: 12px;
           cursor: pointer;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听背景色 */
+          transition: background-color 0.3s ease, color 0.3s ease;
           white-space: nowrap;
           backdrop-filter: blur(5px);
         }
@@ -1746,7 +1754,8 @@ async function loadWidget(config) {
           color: white;
           font-size: 13px;
           font-weight: 500;
-          transition: all 0.3s ease;
+          /* 性能优化: 只监听颜色变化 */
+          transition: color 0.3s ease;
         }
 
         .tool-call.completed {

@@ -6,7 +6,8 @@
     background: var(--commentContent);
     border-radius: 8px;
     z-index: 100;
-    transition: all 1s;
+    /* 性能优化: 只监听位置和透明度变化 */
+    transition: opacity 1s ease, transform 1s ease;
     padding: 10px 10px 10px 5px;
     color: var(--maxGreyFont);
 }
@@ -65,7 +66,8 @@ html[lang="zh"] .toc::before {
 .toc .is-collapsible {
     max-height: 1000px;
     overflow: hidden;
-    transition: all 300ms ease-in-out;
+    /* 性能优化: 只监听高度和透明度变化 */
+    transition: max-height 300ms ease-in-out, opacity 300ms ease-in-out;
 }
 
 .toc .is-collapsed {

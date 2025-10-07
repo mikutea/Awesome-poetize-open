@@ -368,7 +368,8 @@ export default {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s;
+  /* 性能优化: 只监听背景色，不需要GPU */
+  transition: background-color 0.2s ease, color 0.2s ease;
   z-index: 10;
 }
 
@@ -527,7 +528,8 @@ export default {
   margin: 8px 0;
   padding: 8px 14px;
   border-radius: 18px;
-  transition: all 0.3s;
+  /* 性能优化: 只监听颜色和背景，不需要GPU */
+  transition: color 0.3s ease, background-color 0.3s ease;
 }
 
 .slide-message.error {

@@ -241,7 +241,8 @@ export default {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  transition: all 0.2s;
+  /* 性能优化: 只监听背景色变化，不需要GPU */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .close-btn:hover {

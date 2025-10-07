@@ -33,11 +33,11 @@
                 </div>
               </li>
 
-              <!-- 记录 -->
-              <el-dropdown v-if="item.name === '记录'" :key="'nav-'+index" :hide-timeout="500" placement="bottom">
+              <!-- 分类 -->
+              <el-dropdown v-if="item.name === '分类'" :key="'nav-'+index" :hide-timeout="500" placement="bottom">
                 <li>
                   <div class="my-menu">
-                    📒 <span>记录</span>
+                    📑 <span>分类</span>
                   </div>
                 </li>
                 <el-dropdown-menu slot="dropdown">
@@ -231,12 +231,14 @@
               </div>
             </li>
 
-            <!-- 记录 -->
-            <li v-if="item.name === '记录'" :key="'mobile-nav-'+index">
-              <div>
-                📒 <span>记录</span>
+            <!-- 分类 -->
+            <li v-if="item.name === '分类'" :key="'mobile-nav-'+index">
+              <div @click="toggleSortMenu" class="sort-menu-header">
+                📑 <span>分类</span>
+                <i class="el-icon-arrow-right sort-menu-arrow" 
+                   :class="{'expanded': sortMenuExpanded}"></i>
               </div>
-              <div>
+              <div class="sort-submenu" :class="{'collapsed': !sortMenuExpanded}">
                 <div v-for="(menu, menuIndex) in sortInfo"
                      :key="menuIndex"
                      class="sortMenu"
@@ -337,7 +339,9 @@
         mobile: false,
         visitCountInterval: null,
         // 移动端侧边栏配置
-        drawerConfig: null
+        drawerConfig: null,
+        // 移动端侧边栏"分类"菜单展开状态（智能判断）
+        sortMenuExpanded: this.getInitialSortMenuState()
       }
     },
     mounted() {
@@ -527,20 +531,22 @@
       this.getSortInfo();
 
       window.addEventListener("scroll", this.onScrollPage, true);
-      window.addEventListener("resize", this.getWindowWidth, true);
+      
+      // 性能优化: resize事件防抖优化
+      let resizeTimer = null;
+      const throttledResize = () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          this.getWindowWidth();
+          let docWidth = document.body.clientWidth;
+          this.mobile = docWidth < 810;
+        }, 150);  // 150ms防抖
+      };
+      
+      window.addEventListener("resize", throttledResize, true);
 
       this.getWindowWidth();
-
       this.mobile = document.body.clientWidth < 1100;
-
-      window.addEventListener('resize', () => {
-        let docWidth = document.body.clientWidth;
-        if (docWidth < 810) {
-          this.mobile = true;
-        } else {
-          this.mobile = false;
-        }
-      });
     },
     computed: {
       toolbar() {
@@ -594,7 +600,7 @@
         // 默认导航顺序
         return [
           { name: "首页", icon: "🏡", link: "/", type: "internal", order: 1, enabled: true },
-          { name: "记录", icon: "📒", link: "#", type: "dropdown", order: 2, enabled: true },
+          { name: "分类", icon: "📑", link: "#", type: "dropdown", order: 2, enabled: true },
           { name: "家", icon: "❤️‍🔥", link: "/love", type: "internal", order: 3, enabled: true },
           { name: "友人帐", icon: "🤝", link: "/friends", type: "internal", order: 4, enabled: true },
           { name: "曲乐", icon: "🎵", link: "/music", type: "internal", order: 5, enabled: true },
@@ -608,6 +614,28 @@
       smallMenu(data) {
         this.$router.push(data);
         this.toolbarDrawer = false;
+      },
+      
+      // 获取初始展开状态（智能判断）
+      getInitialSortMenuState() {
+        // 1. 优先使用用户之前的选择
+        const savedState = localStorage.getItem('sortMenuExpanded');
+        if (savedState !== null) {
+          return savedState === 'true';
+        }
+        
+        // 2. 首次访问，根据分类数量智能判断
+        const sortCount = this.$store.state.sortInfo?.length || 0;
+        
+        // 分类少（≤5个）默认展开，分类多（>5个）默认折叠
+        return sortCount <= 5;
+      },
+      
+      // 切换移动端侧边栏"分类"菜单的展开/折叠状态
+      toggleSortMenu() {
+        this.sortMenuExpanded = !this.sortMenuExpanded;
+        // 记住用户的选择
+        localStorage.setItem('sortMenuExpanded', this.sortMenuExpanded);
       },
 
       smallMenuLogout() {
@@ -1221,8 +1249,12 @@
   z-index: 100;
   /* 禁止选中文字 */
   user-select: none;
-  transition: all 0.3s ease-in-out;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out, background-color 0.3s ease-in-out;
   font-family: 'MyAwesomeFont', serif;
+  /* GPU硬件加速 */
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .toolbar-content.enter {
@@ -1298,7 +1330,8 @@
   position: relative;
   color: var(--menu-font-color);
   padding: 8px 15px;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .sortMenu:hover {
@@ -1374,12 +1407,16 @@
   width: 70px;
   height: 900px;
   background-size: contain;
-  transition: all 0.5s ease-in-out;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
   cursor: pointer;
+  will-change: opacity, transform;
+  transform: translateZ(0);
 }
 
 .backTop {
-  transition: all 0.3s ease-in;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: transform 0.3s ease-in, opacity 0.3s ease-in;
   position: relative;
   top: 0;
   left: -13px;
@@ -1417,10 +1454,12 @@
     backdrop-filter: blur(10px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     cursor: pointer;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
     margin-bottom: 8px;
     border: 1px solid rgba(255, 255, 255, 0.8);
     user-select: none;
+    transform: translateZ(0);
   }
 
   .simple-lang-switch:hover {
@@ -1450,8 +1489,10 @@
   cursor: pointer;
   font-size: 25px;
   width: 30px;
-  transition: all 0.3s ease;
-  margin-bottom: 4px
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: transform 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+  margin-bottom: 4px;
+  transform: translateZ(0);
 }
 
 .toc-button-icon {
@@ -1532,7 +1573,8 @@
 .small-menu li {
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: background-color 0.3s ease;
 }
 
 .small-menu li:last-child {
@@ -1544,7 +1586,8 @@
   font-size: 16px;
   font-weight: bold;
   color: var(--menu-font-color);
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听实际变化的属性 */
+  transition: color 0.3s ease;
 }
 
 .small-menu li:hover > div:first-child {
@@ -1589,6 +1632,52 @@
 
 .drawer-divider.show-snowflake::before {
   content: "❄";
+}
+
+/* 移动端侧边栏中的sortMenu去掉padding */
+.small-menu .sortMenu {
+  padding: 0;
+}
+
+/* 分类菜单标题区域 */
+.sort-menu-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  width: 100%;
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--menu-font-color);
+}
+
+/* 折叠箭头动画 */
+.sort-menu-arrow {
+  font-size: 12px;
+  color: var(--menu-font-color);
+  transition: transform 0.3s ease;
+  transform: rotate(0deg);
+  position: absolute;
+  right: 10%;
+}
+
+.sort-menu-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* 分类二级菜单折叠动画 */
+.sort-submenu {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 0.4s ease, opacity 0.4s ease;
+  opacity: 1;
+}
+
+.sort-submenu.collapsed {
+  max-height: 0;
+  opacity: 0;
 }
 
 </style>

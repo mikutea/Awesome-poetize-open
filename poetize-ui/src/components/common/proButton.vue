@@ -53,13 +53,17 @@
 
   .myButton div:nth-child(2) {
     width: 100px;
-    transition: all 0.3s ease;
-    transform: translateX(-120px) skewX(-30deg);
+    /* 性能优化: 已有transform，合并GPU加速 */
+    transition: transform 0.3s ease, background-color 0.3s ease;
+    transform: translateX(-120px) skewX(-30deg) translateZ(0);
+    will-change: transform;
   }
 
   .myButton div:nth-child(3) {
-    transition: all 0.3s ease;
-    transform: translateX(-120px);
+    /* 性能优化: 已有transform，合并GPU加速 */
+    transition: transform 0.3s ease, background-color 0.3s ease;
+    transform: translateX(-120px) translateZ(0);
+    will-change: transform;
   }
 
   .myButton:hover div:nth-child(2) {

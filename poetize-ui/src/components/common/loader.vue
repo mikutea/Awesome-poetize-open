@@ -52,7 +52,10 @@
   .loader-leave-active,
   .body-enter-active,
   .body-leave-active {
-    transition: all 0.5s;
+    /* 性能优化: Vue过渡动画，需要GPU加速 */
+    transition: transform 0.5s ease, opacity 0.5s ease;
+    will-change: transform, opacity;
+    transform: translateZ(0);
   }
 
   .loader-enter, .loader-leave-to {

@@ -211,7 +211,8 @@
     color: var(--white);
     z-index: 15;
     cursor: pointer;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
   }
 
   .scroll-down-hint:hover {

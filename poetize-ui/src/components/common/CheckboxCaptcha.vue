@@ -399,7 +399,8 @@ export default {
   background-color: #fff;
   border: 2px solid #e5e5e5;
   border-radius: 16px;
-  transition: all 0.3s;
+  /* 性能优化: 只监听边框和阴影变化，不需要GPU */
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   position: relative;
   overflow: hidden;
@@ -438,7 +439,8 @@ export default {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s;
+  /* 性能优化: 只监听背景色，不需要GPU */
+  transition: background-color 0.2s ease, color 0.2s ease;
   z-index: 10;
 }
 
@@ -521,7 +523,8 @@ export default {
   background-color: #fff;
   border: 2px solid #dcdfe6;
   border-radius: 6px;
-  transition: all 0.3s;
+  /* 性能优化: 只监听边框和背景色，不需要GPU */
+  transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
 .custom-checkbox-label:hover .checkmark {
@@ -557,7 +560,8 @@ export default {
   font-size: 16px;
   font-weight: 500;
   color: #606266;
-  transition: all 0.3s;
+  /* 性能优化: 只监听颜色变化，不需要GPU */
+  transition: color 0.3s ease;
 }
 
 .custom-checkbox-label:hover .checkbox-text {
@@ -605,7 +609,8 @@ export default {
 
 .refresh-btn {
   cursor: pointer;
-  transition: all 0.3s;
+  /* 性能优化: 只监听颜色变化，不需要GPU */
+  transition: color 0.3s ease, background-color 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;

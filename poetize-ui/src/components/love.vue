@@ -953,8 +953,10 @@
     border-radius: 20px;
     max-width: 780px;
     cursor: pointer;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
     background: var(--background);
+    transform: translateZ(0);
   }
 
   .card-content:hover,
@@ -1043,9 +1045,11 @@
     border-radius: 20px;
     max-width: 350px;
     cursor: pointer;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
     background: var(--love) center center / cover no-repeat;
     user-select: none;
+    transform: translateZ(0);
   }
 
   .family-button::before {
@@ -1088,8 +1092,10 @@
     justify-content: space-around;
     padding: 15px 25px 5px 25px;
     margin: 20px;
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
     user-select: none;
+    transform: translateZ(0);
   }
 
   .family-avatar {

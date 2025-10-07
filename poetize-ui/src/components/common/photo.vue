@@ -75,7 +75,10 @@
     padding: 1.3rem 1.3rem 1.5rem;
     background: var(--background);
     border-radius: 1.5rem;
-    transition: all 0.2s;
+    /* 性能优化: 有缩放动画，需要GPU加速 */
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .card-image {
@@ -88,7 +91,9 @@
   }
 
   .card-image >>> .el-image__inner {
-    transition: all 1s;
+    /* 性能优化: 图片有缩放动画，需要GPU加速 */
+    transition: transform 1s ease, opacity 1s ease;
+    will-change: transform;
   }
 
   .card-image >>> .el-image__inner:hover {

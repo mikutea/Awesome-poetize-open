@@ -386,7 +386,9 @@
   }
 
   .recent-post-item-image >>> .el-image__inner {
-    transition: all 1s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 1s ease, opacity 1s ease;
+    will-change: transform;
   }
 
   .recent-post-item-image >>> .el-image__inner:hover {
@@ -456,7 +458,8 @@
     border-radius: 3px;
     font-size: 14px;
     color: var(--greyFont);
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: color 0.3s ease;
     cursor: pointer;
     user-select: none;
   }
@@ -554,8 +557,10 @@
     box-shadow: 0 1px 8px 0 rgba(0, 0, 0, 0.1);
     overflow: hidden;
     background: rgba(255, 255, 255, 1);
-    transition: all 0.4s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
     position: relative;
+    transform: translateZ(0);
   }
 
   .article-card:hover {
@@ -580,7 +585,8 @@
     bottom: 20px;
     right: 20px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: color 0.3s ease;
   }
 
   .translation-match-tip .el-tag:hover {

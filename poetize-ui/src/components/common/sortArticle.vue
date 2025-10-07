@@ -192,7 +192,9 @@
   }
 
   .recent-post-item-image >>> .el-image__inner {
-    transition: all 1s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: transform 1s ease, opacity 1s ease;
+    will-change: transform;
   }
 
   .recent-post-item-image >>> .el-image__inner:hover {
@@ -240,7 +242,8 @@
     border-radius: 3px;
     font-size: 14px;
     color: var(--greyFont);
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: color 0.3s ease;
     cursor: pointer;
     user-select: none;
   }

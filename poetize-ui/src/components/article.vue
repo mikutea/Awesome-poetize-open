@@ -2004,12 +2004,33 @@
       openShareCardDialog() {
         this.shareCardDialogVisible = true;
         
+        // 性能优化：提前预加载html2canvas库，避免下载时等待
+        this.preloadHtml2Canvas();
+        
         // 延迟生成二维码，确保DOM已渲染
         this.$nextTick(() => {
           setTimeout(() => {
             this.generateQRCode();
           }, 300);
         });
+      },
+      
+      // 预加载html2canvas库
+      preloadHtml2Canvas() {
+        if (typeof html2canvas === 'undefined' && !window.html2canvasLoading) {
+          window.html2canvasLoading = true;
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+          script.onload = () => {
+            window.html2canvasLoading = false;
+            console.log('html2canvas库预加载完成');
+          };
+          script.onerror = () => {
+            window.html2canvasLoading = false;
+            console.warn('html2canvas库预加载失败');
+          };
+          document.head.appendChild(script);
+        }
       },
 
       // 格式化日期
@@ -2079,37 +2100,81 @@
           return;
         }
 
-        // 动态加载html2canvas库
+        // 性能优化：检查库是否已加载（通过预加载应该已经完成）
         if (typeof html2canvas === 'undefined') {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-          script.onload = () => {
-            this.captureAndDownloadCard(shareCard);
-          };
-          script.onerror = () => {
-            this.$message.error('html2canvas库加载失败，请检查网络连接');
-          };
-          document.head.appendChild(script);
+          if (window.html2canvasLoading) {
+            // 正在加载中，等待加载完成
+            this.$message({
+              message: '正在加载必要组件，请稍候...',
+              type: 'info',
+              duration: 1500
+            });
+            
+            const checkInterval = setInterval(() => {
+              if (typeof html2canvas !== 'undefined') {
+                clearInterval(checkInterval);
+                this.captureAndDownloadCard(shareCard);
+              }
+            }, 100);
+            
+            // 超时保护
+            setTimeout(() => {
+              clearInterval(checkInterval);
+              if (typeof html2canvas === 'undefined') {
+                this.$message.error('组件加载超时，请刷新页面重试');
+              }
+            }, 10000);
+          } else {
+            // 未加载也未在加载中，立即加载
+            this.$message({
+              message: '首次使用，正在加载组件...',
+              type: 'info',
+              duration: 2000
+            });
+            
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+            script.onload = () => {
+              this.captureAndDownloadCard(shareCard);
+            };
+            script.onerror = () => {
+              this.$message.error('组件加载失败，请检查网络连接');
+            };
+            document.head.appendChild(script);
+          }
         } else {
+          // 库已加载，直接生成
           this.captureAndDownloadCard(shareCard);
         }
       },
 
       // 捕获并下载卡片
       captureAndDownloadCard(element) {
-        this.$message({
+        // 显示加载中的消息
+        const loadingMsg = this.$message({
           message: '正在生成卡片图片...',
           type: 'info',
-          duration: 2000
+          duration: 0,  // 不自动关闭
+          showClose: false
         });
 
-        html2canvas(element, {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#F5EFE6',
-          scale: 2, // 提高清晰度
-          logging: false
-        }).then(canvas => {
+        // 性能优化：使用requestIdleCallback在空闲时渲染，避免阻塞UI
+        const renderCard = () => {
+          html2canvas(element, {
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#F5EFE6',
+            scale: 2, // 提高清晰度
+            logging: false,
+            // 性能优化：忽略不必要的元素
+            ignoreElements: (element) => {
+              return element.classList?.contains('el-loading-mask');
+            },
+            // 性能优化：使用更快的渲染选项
+            removeContainer: true,
+            imageTimeout: 5000  // 图片加载超时
+          }).then(canvas => {
+            loadingMsg.close();  // 关闭加载提示
           // 转换为图片并下载
           canvas.toBlob((blob) => {
             const url = URL.createObjectURL(blob);
@@ -2128,10 +2193,19 @@
             this.$message.success('卡片已下载');
           }, 'image/png');
         }).catch(error => {
+          loadingMsg.close();  // 关闭加载提示
           console.error('生成卡片失败:', error);
           this.$message.error('生成卡片失败，请重试');
         });
+      };
+      
+      // 使用requestIdleCallback优化，如果不支持则直接执行
+      if (window.requestIdleCallback) {
+        requestIdleCallback(renderCard, { timeout: 1000 });
+      } else {
+        setTimeout(renderCard, 0);
       }
+    }
     }
   }
 </script>
@@ -2244,10 +2318,12 @@
     border-radius: 5px;
     font-size: 14px;
     color: var(--white);
-    transition: all 0.3s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: background-color 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
     margin-right: 25px;
     cursor: pointer;
     user-select: none;
+    transform: translateZ(0);
   }
 
   .article-sort span:hover {
@@ -2262,9 +2338,11 @@
     font-size: 60px;
     cursor: pointer;
     color: var(--greyFont);
-    transition: all 0.5s;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: color 0.5s ease, transform 0.5s ease;
     border-radius: 50%;
     margin-bottom: 20px;
+    transform: translateZ(0);
   }
 
   .article-like-icon:hover {
@@ -2280,8 +2358,10 @@
     color: var(--white);
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     user-select: none;
+    transform: translateZ(0);
   }
 
   .subscribe-button i {
@@ -2313,9 +2393,11 @@
     color: var(--white);
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听实际变化的属性 */
+    transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     user-select: none;
     margin-left: 15px;
+    transform: translateZ(0);
   }
 
   .share-card-button i {
@@ -2508,7 +2590,10 @@
     content: '❄';
     font-size: 30px;
     line-height: 1;
-    transition: all 1s ease-in-out;
+    /* 性能优化: 有位移动画，需要GPU加速 */
+    transition: transform 1s ease-in-out, left 1s ease-in-out;
+    will-change: transform, left;
+    transform: translateZ(0);
   }
 
   .process-wrap hr:hover:before {
@@ -2607,7 +2692,8 @@
     padding: 8px 15px;
     font-weight: 500;
     font-size: 13px;
-    transition: all 0.3s ease;
+    /* 性能优化: 只监听背景色和边框 */
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
     background: rgba(255, 255, 255, 0.9);
     border-color: rgba(255, 255, 255, 0.9);
     color: var(--fontColor);

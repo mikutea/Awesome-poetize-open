@@ -570,9 +570,11 @@ export default {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  /* 性能优化: 只监听位移和背景色 */
+  transition: transform 0.3s ease, background-color 0.3s ease, color 0.3s ease;
   display: flex;
   align-items: center;
+  transform: translateZ(0);
   gap: 10px;
   text-decoration: none;
   min-width: 160px;

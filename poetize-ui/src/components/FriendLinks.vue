@@ -8,7 +8,7 @@
                  preload="metadata" 
                  :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
           </video>
-          <div style="position: absolute;left: 0;top: 0;padding: 5px 20px; position: absolute; left: 20px; top: 25px; margin: 10px;">
+          <div class="friend-links-header-content">
             <!-- 标题 -->
             <div style="color: var(--white);margin: 0 10px">
               <div style="font-size: 30px;font-weight: bold;line-height: 2">
@@ -86,6 +86,14 @@
       object-fit: cover;
     }
   
+    .friend-links-header-content {
+      position: absolute;
+      left: 20px;
+      top: 25px;
+      padding: 5px 20px;
+      margin: 10px;
+    }
+
     .friend-links-content {
       margin: 0 auto;
       max-width: 1200px;
@@ -95,11 +103,21 @@
       .friend-links-header {
         height: 180px;
       }
+      
+      /* 移动端去掉margin，保留padding */
+      .friend-links-header-content {
+        margin: 0;
+      }
     }
   
     @media screen and (max-width: 636px) {
       .friend-links-header {
         height: 160px;
+      }
+      
+      /* 小屏幕也只去掉margin，保留padding */
+      .friend-links-header-content {
+        margin: 0;
       }
     }
   </style>
