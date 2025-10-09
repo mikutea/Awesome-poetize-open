@@ -554,9 +554,9 @@
           // 显示欢迎消息
           const platformName = this.getPlatformName(this.tempUserData.provider);
           if (result.skipped) {
-            this.$message.success(`欢迎通过登录！您可以稍后在个人设置中添加邮箱。`);
+            this.$message.success(`欢迎通过 ${platformName} 登录！您可以稍后在个人设置中添加邮箱。`);
           } else {
-            this.$message.success(`欢迎通过登录！邮箱已保存。`);
+            this.$message.success(`欢迎通过 ${platformName} 登录！邮箱已保存。`);
           }
 
         } catch (error) {

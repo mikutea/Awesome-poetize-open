@@ -24,8 +24,8 @@
             <span>邮箱地址（可选）</span>
           </div>
           <p class="email-description">
-            我们仅使用您的邮箱发送重要通知，如安全提醒、系统更新等。
-            <br>无需验证，您也可以稍后在个人设置中添加。
+            我们仅使用您的邮箱发送重要通知，如文章订阅、评论回复、安全验证等。
+            <br>为保证账号安全，需要验证邮箱所有权。您也可以稍后在个人设置中添加。
           </p>
           
           <el-input
@@ -33,10 +33,31 @@
             placeholder="请输入您的邮箱地址（可选）"
             prefix-icon="el-icon-message"
             :class="{ 'error': emailError }"
-            @input="clearError"
+            @input="clearEmailError"
             @keyup.enter="handleConfirm"
           />
           <div class="error-message" v-if="emailError">{{ emailError }}</div>
+          
+          <div class="code-input-group" v-if="email">
+            <el-input
+              v-model="verificationCode"
+              placeholder="请输入验证码"
+              prefix-icon="el-icon-key"
+              :class="{ 'error': codeError }"
+              @input="clearCodeError"
+              @keyup.enter="handleConfirm"
+              class="code-input"
+            />
+            <el-button
+              @click="sendCode"
+              :disabled="countdown > 0 || !email || !validateEmail(email) || sendingCode"
+              :loading="sendingCode"
+              class="send-code-btn"
+            >
+              {{ countdown > 0 ? `${countdown}秒后重试` : '发送验证码' }}
+            </el-button>
+          </div>
+          <div class="error-message" v-if="codeError">{{ codeError }}</div>
         </div>
       </div>
       
@@ -72,8 +93,13 @@ export default {
   data() {
     return {
       email: '',
+      verificationCode: '',
       emailError: '',
-      submitting: false
+      codeError: '',
+      submitting: false,
+      sendingCode: false,
+      countdown: 0,
+      countdownTimer: null
     }
   },
   computed: {
@@ -97,40 +123,116 @@ export default {
       return emailRegex.test(email)
     },
     
-    clearError() {
+    clearEmailError() {
       this.emailError = ''
     },
     
-    async handleConfirm() {
-      // 验证邮箱格式（如果用户输入了邮箱）
-      if (this.email && !this.validateEmail(this.email)) {
+    clearCodeError() {
+      this.codeError = ''
+    },
+    
+    async sendCode() {
+      // 验证邮箱格式
+      if (!this.email) {
+        this.emailError = '请先输入邮箱地址'
+        return
+      }
+      
+      if (!this.validateEmail(this.email)) {
         this.emailError = '请输入有效的邮箱地址'
         return
       }
       
-      this.submitting = true
+      this.sendingCode = true
+      this.emailError = ''
       
       try {
-        // 如果用户输入了邮箱，更新用户信息
-        if (this.email) {
-          await this.updateUserEmail(this.email)
+        const response = await this.$http.get(
+          this.$constant.baseURL + '/user/getCodeForBind',
+          {
+            place: this.email,
+            flag: 2  // 2表示邮箱
+          }
+        )
+        
+        if (response.code === 200) {
+          this.$message.success('验证码已发送，请注意查收！')
+          
+          // 开始倒计时
+          this.countdown = 60
+          this.countdownTimer = setInterval(() => {
+            this.countdown--
+            if (this.countdown <= 0) {
+              clearInterval(this.countdownTimer)
+              this.countdownTimer = null
+            }
+          }, 1000)
+        } else {
+          this.$message.error(response.message || '发送验证码失败')
         }
-        
-        // 完成登录流程
-        this.$emit('complete', {
-          email: this.email,
-          skipped: !this.email
-        })
-        
       } catch (error) {
-        console.error('更新邮箱失败:', error)
-        this.$message.error('保存邮箱失败，但登录成功')
-        // 即使更新失败，也继续登录流程
-        this.$emit('complete', {
-          email: '',
-          skipped: true,
-          error: error.message
-        })
+        console.error('发送验证码失败:', error)
+        this.$message.error(error.message || '发送验证码失败，请稍后重试')
+      } finally {
+        this.sendingCode = false
+      }
+    },
+    
+    async handleConfirm() {
+      // 如果用户没有输入邮箱，直接跳过
+      if (!this.email) {
+        this.handleSkip()
+        return
+      }
+      
+      // 验证邮箱格式
+      if (!this.validateEmail(this.email)) {
+        this.emailError = '请输入有效的邮箱地址'
+        return
+      }
+      
+      // 验证验证码
+      if (!this.verificationCode || this.verificationCode.trim().length === 0) {
+        this.codeError = '请输入验证码'
+        return
+      }
+      
+      if (this.verificationCode.trim().length !== 6) {
+        this.codeError = '验证码格式错误，应为6位数字'
+        return
+      }
+      
+      this.submitting = true
+      this.emailError = ''
+      this.codeError = ''
+      
+      try {
+        // 调用 updateSecretInfo API 验证并保存邮箱
+        const response = await this.$http.post(
+          this.$constant.baseURL + '/user/updateSecretInfo',
+          null,
+          {
+            place: this.email,
+            flag: 2,  // 2表示邮箱
+            code: this.verificationCode,
+            password: ''  // 邮箱绑定不需要密码
+          }
+        )
+        
+        if (response.code === 200) {
+          this.$message.success('邮箱验证成功！')
+          
+          // 完成登录流程
+          this.$emit('complete', {
+            email: this.email,
+            skipped: false
+          })
+        } else {
+          this.codeError = response.message || '验证码错误'
+        }
+      } catch (error) {
+        console.error('邮箱验证失败:', error)
+        this.codeError = error.message || '验证失败，请检查验证码'
       } finally {
         this.submitting = false
       }
@@ -141,22 +243,6 @@ export default {
         email: '',
         skipped: true
       })
-    },
-    
-    async updateUserEmail(email) {
-      // 调用后端API更新用户邮箱
-      const response = await this.$http.post(
-        this.$constant.baseURL + '/user/updateEmail',
-        { email: email },
-        false, // 不是管理员请求
-        true   // JSON格式
-      )
-      
-      if (response.code !== 200) {
-        throw new Error(response.message || '更新邮箱失败')
-      }
-      
-      return response.data
     }
   },
   
@@ -165,9 +251,27 @@ export default {
       if (newVal) {
         // 模态框显示时重置状态
         this.email = ''
+        this.verificationCode = ''
         this.emailError = ''
+        this.codeError = ''
         this.submitting = false
+        this.sendingCode = false
+        this.countdown = 0
+      } else {
+        // 模态框关闭时清理倒计时器
+        if (this.countdownTimer) {
+          clearInterval(this.countdownTimer)
+          this.countdownTimer = null
+        }
       }
+    }
+  },
+  
+  beforeDestroy() {
+    // 组件销毁前清理倒计时器
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer)
+      this.countdownTimer = null
     }
   }
 }
@@ -312,6 +416,21 @@ export default {
   font-size: 14px;
   color: #666;
   line-height: 1.5;
+}
+
+.code-input-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.code-input {
+  flex: 1;
+}
+
+.send-code-btn {
+  min-width: 120px;
+  white-space: nowrap;
 }
 
 .el-input.error >>> .el-input__inner {

@@ -667,20 +667,34 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public PoetryResult<UserVO> updateSecretInfo(String place, Integer flag, String code, String password) {
-        // 解密前端传来的AES加密密码
-        String decryptedPassword;
-        try {
-            decryptedPassword = passwordService.decryptFromFrontend(password);
-        } catch (Exception e) {
-            log.warn("更新密码时密码解密失败");
-            return PoetryResult.fail("密码格式错误！");
-        }
-
         User user = PoetryUtil.getCurrentUser();
-        // 使用新的密码验证服务验证当前密码
-        if ((flag == 1 || flag == 2) && !passwordService.matches(decryptedPassword, user.getPassword())) {
-            return PoetryResult.fail("密码错误！");
+        
+        // 判断是否为第三方登录用户
+        boolean isThirdPartyUser = StringUtils.hasText(user.getPlatformType());
+        
+        // 解密前端传来的AES加密密码
+        String decryptedPassword = "";
+        
+        // 只有非第三方用户绑定手机号/邮箱或修改密码时才需要解密密码
+        if (!isThirdPartyUser || flag == 3) {
+            try {
+                decryptedPassword = passwordService.decryptFromFrontend(password);
+            } catch (Exception e) {
+                log.warn("更新密码时密码解密失败");
+                return PoetryResult.fail("密码格式错误！");
+            }
         }
+        
+        // 只有非第三方登录用户才需要验证密码（第三方用户没有密码）
+        if ((flag == 1 || flag == 2) && !isThirdPartyUser) {
+            if (!StringUtils.hasText(decryptedPassword)) {
+                return PoetryResult.fail("请输入密码！");
+            }
+            if (!passwordService.matches(decryptedPassword, user.getPassword())) {
+                return PoetryResult.fail("密码错误！");
+            }
+        }
+        
         if ((flag == 1 || flag == 2) && !StringUtils.hasText(code)) {
             return PoetryResult.fail("请输入验证码！");
         }
@@ -1125,22 +1139,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                         existUser.getId(), provider);
             }
 
-            // 更新其他可能变化的信息（头像、用户名等）
-            boolean needsUpdate = false;
-            User updateUser = new User();
-            updateUser.setId(existUser.getId());
-
-            // 如果第三方平台提供了新的头像，更新头像
-            if (StringUtils.hasText(avatar) && !avatar.equals(existUser.getAvatar())) {
-                updateUser.setAvatar(avatar);
-                existUser.setAvatar(avatar);
-                needsUpdate = true;
-                log.info("更新用户头像: userId={}, 新头像={}", existUser.getId(), avatar);
-            }
-
-            if (needsUpdate) {
-                updateById(updateUser);
-            }
+            // 🔧 头像处理策略：保持用户自定义头像不变
+            // 对于已存在的用户，不自动更新头像，避免覆盖用户在个人中心自定义的头像
+            log.info("第三方登录已存在用户，保持现有头像不变: userId={}, 现有头像={}, 第三方头像={}",
+                    existUser.getId(), existUser.getAvatar(), avatar);
         }
 
         // 根据用户实际权限判断是否为管理员

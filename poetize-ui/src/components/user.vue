@@ -157,16 +157,22 @@
             <el-input v-model="phoneNumber"></el-input>
             <div style="margin-top: 10px;margin-bottom: 5px">验证码：</div>
             <el-input v-model="code"></el-input>
-            <div style="margin-top: 10px;margin-bottom: 5px">密码：</div>
-            <el-input v-model="password"></el-input>
+            <!-- 只有普通注册用户才需要输入密码，第三方登录用户没有密码 -->
+            <div v-if="!isThirdPartyUser">
+              <div style="margin-top: 10px;margin-bottom: 5px">密码：</div>
+              <el-input type="password" v-model="password" show-password></el-input>
+            </div>
           </div>
           <div v-else-if="dialogTitle === '修改邮箱' || dialogTitle === '绑定邮箱'">
             <div style="margin-bottom: 5px">邮箱：</div>
             <el-input v-model="email"></el-input>
             <div style="margin-top: 10px;margin-bottom: 5px">验证码：</div>
             <el-input v-model="code"></el-input>
-            <div style="margin-top: 10px;margin-bottom: 5px">密码：</div>
-            <el-input v-model="password"></el-input>
+            <!-- 只有普通注册用户才需要输入密码，第三方登录用户没有密码 -->
+            <div v-if="!isThirdPartyUser">
+              <div style="margin-top: 10px;margin-bottom: 5px">密码：</div>
+              <el-input type="password" v-model="password" show-password></el-input>
+            </div>
           </div>
           <div v-else-if="dialogTitle === '修改头像'">
             <uploadPicture :prefix="'userAvatar'" @addPicture="addPicture" :maxSize="1"
@@ -272,7 +278,12 @@
         enabledThirdPartyProviders: []
       }
     },
-    computed: {},
+    computed: {
+      // 判断当前用户是否为第三方登录用户
+      isThirdPartyUser() {
+        return this.currentUser && this.currentUser.platformType
+      }
+    },
     created() {
       // 动态设置页面SEO信息
       this.updatePageSEO();
@@ -815,7 +826,8 @@
           });
           return;
         }
-        if (this.$common.isEmpty(this.password)) {
+        // 只有普通注册用户才需要验证密码，第三方登录用户没有密码
+        if (!this.isThirdPartyUser && this.$common.isEmpty(this.password)) {
           this.$message({
             message: "请输入密码！",
             type: "error"
@@ -824,7 +836,8 @@
         }
         let params = {
           code: this.code.trim(),
-          password: this.$common.encrypt(this.password.trim())
+          // 第三方用户没有密码，传空字符串
+          password: this.isThirdPartyUser ? '' : this.$common.encrypt(this.password.trim())
         };
         if (!this.checkParams(params)) {
           return;

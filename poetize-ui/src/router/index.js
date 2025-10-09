@@ -304,7 +304,7 @@ router.beforeEach((to, from, next) => {
 
             // 存储临时的用户信息和token
             // 尝试从用户数据中获取provider，如果没有则从URL参数获取
-            const provider = result.data.provider || to.query.provider || 'unknown';
+            const provider = result.data.platformType || to.query.provider || 'unknown';
             const tempUserData = {
               ...result.data,
               needsEmailCollection: true,
