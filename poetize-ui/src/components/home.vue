@@ -108,22 +108,52 @@
                 登录
               </div>
               
-              <!-- 已登录时显示头像下拉菜单 -->
-              <el-dropdown placement="bottom" v-else>
-                <el-avatar class="user-avatar" :size="36"
+              <!-- 已登录时显示头像和自定义下拉菜单 -->
+              <div v-else 
+                   class="avatar-dropdown-container"
+                   @mouseenter="showUserMenu = true"
+                   @mouseleave="showUserMenu = false">
+                <el-avatar class="user-avatar" 
+                          :class="{ 'avatar-hover': showUserMenu }"
+                          :size="36"
                           style="margin-top: 12px"
                           :src="$store.state.currentUser.avatar">
                 </el-avatar>
 
-                <el-dropdown-menu slot="dropdown">
-                  <el-dropdown-item @click.native="$router.push({path: '/user'})">
-                    <i class="fa fa-user-circle" aria-hidden="true"></i> <span>个人中心</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item @click.native="logout()">
-                    <i class="fa fa-sign-out" aria-hidden="true"></i> <span>退出</span>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </el-dropdown>
+                <!-- 自定义下拉菜单 -->
+                <transition name="menu-fade">
+                  <div v-show="showUserMenu" class="custom-user-menu">
+                    <!-- 用户名 -->
+                    <div class="user-menu-header">
+                      <span class="user-menu-name">{{$store.state.currentUser.username}}</span>
+                      <span v-if="$store.state.currentUser"
+                            class="user-role-badge"
+                            :class="{
+                              'owner': $store.state.currentUser.userType === 0,
+                              'admin': $store.state.currentUser.userType === 1
+                            }">
+                        {{$store.state.currentUser.userType === 0 ? '站长' : ($store.state.currentUser.userType === 1 ? '管理员' : '用户')}}
+                      </span>
+                    </div>
+                    
+                    <!-- 个人中心 -->
+                    <div class="user-menu-item" @click="$router.push({path: '/user'})">
+                      <i class="fa fa-user-circle" aria-hidden="true"></i>
+                      <span>个人中心</span>
+                      <i class="fa fa-angle-right menu-arrow" aria-hidden="true"></i>
+                    </div>
+                    
+                    <!-- 分割线 -->
+                    <div class="user-menu-divider"></div>
+                    
+                    <!-- 退出 -->
+                    <div class="user-menu-item" @click="logout()">
+                      <i class="fa fa-sign-out" aria-hidden="true"></i>
+                      <span>退出</span>
+                    </div>
+                  </div>
+                </transition>
+              </div>
             </li>
           </ul>
         </div>
@@ -341,7 +371,9 @@
         // 移动端侧边栏配置
         drawerConfig: null,
         // 移动端侧边栏"分类"菜单展开状态（智能判断）
-        sortMenuExpanded: this.getInitialSortMenuState()
+        sortMenuExpanded: this.getInitialSortMenuState(),
+        // 用户菜单显示状态
+        showUserMenu: false
       }
     },
     mounted() {
@@ -653,14 +685,41 @@
         }
 
         try {
+          console.log('[博客前端] 开始获取聊天室token...');
+          console.log('[博客前端] 请求URL:', this.$constant.baseURL + "/im/getWsToken");
+          
           // 获取WebSocket临时token
           const response = await this.$http.get(this.$constant.baseURL + "/im/getWsToken", {}, true);
+          console.log('[博客前端] 后端响应:', response);
           
           if (response.code === 200 && response.data) {
             const wsToken = response.data;
+            let imUrl = this.$constant.imBaseURL + 
+              "?token=" + wsToken + 
+              "&defaultStoreType=" + (this.$store.state.sysConfig['store.type'] || 'local');
+            
+            // 仅在开发环境下（不同端口导致localStorage不共享）才通过URL传递用户信息
+            // 生产环境下同域名会共享localStorage，无需传递
+            const isDevelopment = this.$constant.imBaseURL.includes('localhost') || 
+                                 this.$constant.imBaseURL.includes('127.0.0.1');
+            
+            if (isDevelopment) {
+              console.log('[博客前端] 检测到开发环境，通过URL传递用户信息');
+              const userInfo = encodeURIComponent(JSON.stringify(this.$store.state.currentUser));
+              const sysConfig = encodeURIComponent(JSON.stringify(this.$store.state.sysConfig));
+              imUrl += "&userInfo=" + userInfo + "&sysConfig=" + sysConfig;
+            } else {
+              console.log('[博客前端] 生产环境，不通过URL传递敏感信息');
+            }
+            
+            console.log('[博客前端] 获取到token:', wsToken);
+            console.log('[博客前端] imBaseURL配置:', this.$constant.imBaseURL);
+            console.log('[博客前端] URL长度:', imUrl.length);
+            
             // 使用临时token打开聊天室
-            window.open(this.$constant.imBaseURL + "?token=" + wsToken + "&defaultStoreType=" + (this.$store.state.sysConfig['store.type'] || 'local'));
+            window.open(imUrl);
           } else {
+            console.error('[博客前端] 获取token失败:', response);
             this.$message({
               message: response.message || "获取聊天室访问凭证失败",
               type: "error"
@@ -1680,4 +1739,163 @@
   opacity: 0;
 }
 
+</style>
+
+<!-- 非scoped样式：确保头像旋转动画能够正常工作 -->
+<style>
+/* 头像下拉容器 */
+.avatar-dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+/* 导航栏头像样式 */
+.toolbar-content .el-avatar.user-avatar {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  will-change: transform;
+  transform: translateZ(0);
+  position: relative;
+  z-index: 102;
+  box-shadow: 0 0 0 1px #ffffff;
+  border-radius: 50%;
+}
+
+/* 头像悬停时的偏移和放大效果 */
+.toolbar-content .el-avatar.user-avatar.avatar-hover {
+  /* 计算说明：
+     - 菜单 right: -10px，width: 300px，padding: 0 24px
+     - 菜单盒子中心 = -10px - 150px = -160px
+     - 内容区域中心需要向右偏移（因为padding相等，不影响中心）
+     - 头像放大后半径 = 36px * 1.6 / 2 = 28.8px
+     - 微调：向右偏移一点，让视觉更居中
+  */
+  transform: translate(calc(-10px - 260px / 2 + 36px * 1.7 / 2 + 15px), 43px) scale(1.7);
+}
+
+/* 自定义用户下拉菜单 */
+.custom-user-menu {
+  position: absolute;
+  top: 70px;
+  right: -10px;
+  width: 260px;
+  background: #fff;
+  backdrop-filter: blur(20px);
+  border-radius: 8px;
+  z-index: 101;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0 24px 18px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, .1);
+  border: 1px solid #e3e5e7;
+}
+
+/* 用户名头部 */
+.user-menu-header {
+  color: rgb(24, 25, 28);
+  font-weight: bold;
+  font-size: 18px;
+  margin-top: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.user-menu-name {
+  font-size: 20px;
+  font-weight: 700;
+  display: inline-block;
+  letter-spacing: 0.5px;
+}
+
+/* 角色徽章（用户名右侧的小标签） */
+.user-role-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  color: #606266;
+  background: #f0f2f5;
+  border: 1px solid #e5e7eb;
+}
+
+/* 管理员样式 */
+.user-role-badge.admin {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.1);
+  border-color: #ff4d4f;
+}
+
+/* 站长样式 */
+.user-role-badge.owner {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.10);
+  border-color: #2563eb;
+}
+
+/* 菜单项 */
+.user-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: 38px;
+  border-radius: 8px;
+  color: #61666d;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color .3s;
+  margin-bottom: 2px;
+  box-sizing: border-box;
+}
+
+.user-menu-item i.fa-user-circle,
+.user-menu-item i.fa-sign-out {
+  margin-right: 5px;
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+  color: #718096;
+  flex-shrink: 0;
+}
+
+.user-menu-item span {
+  flex: 1;
+  font-weight: 500;
+}
+
+.user-menu-item i.menu-arrow {
+  margin-left: auto;
+  font-size: 16px;
+  opacity: 0.6;
+  color: #8e9299;
+  flex-shrink: 0;
+}
+
+.user-menu-item:hover {
+  background-color: #f7fafc;
+}
+
+/* 分割线 */
+.user-menu-divider {
+  margin: 6px 0 12px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+/* 菜单淡入淡出动画 */
+.menu-fade-enter-active,
+.menu-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.menu-fade-enter,
+.menu-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
 </style>
