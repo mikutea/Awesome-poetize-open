@@ -718,7 +718,21 @@
         im = new Im();
         im.initWs();
         im.tio.ws.onmessage = function (event) {
-          let message = JSON.parse(event.data);
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch (error) {
+            console.error('JSON解析失败:', error);
+            console.error('原始消息内容:', event.data);
+            // 尝试清理并重新解析
+            try {
+              const cleanedData = event.data.trim();
+              message = JSON.parse(cleanedData);
+            } catch (e) {
+              console.error('清理后仍然无法解析，忽略此消息');
+              return;
+            }
+          }
           
           // 更新心跳响应时间（重要：每次收到消息都要调用）
           if (im.onMessageReceived) {
@@ -805,7 +819,7 @@
               store.commit('updateImChats', currentChats);
 
               if (data.subType !== 2 || data.currentChatFriendId !== message.fromId) {
-                // 更新未读消息数
+                // 不是当前聊天对象，更新未读消息数
                 const currentBadge = imMessageBadge.value[message.fromId] || 0;
                 store.commit('updateImMessageBadge', {friendId: message.fromId, count: currentBadge + 1});
                 
@@ -815,6 +829,12 @@
                   mobileRight(true); // 跳过动画
                   saveShowBodyLeftState();
                 }
+              } else {
+                // 是当前聊天对象，自动标记为已读
+                $http.post($constant.baseURL + "/imChatGroup/markFriendAsRead", {friendId: message.fromId}, false)
+                  .catch(error => {
+                    console.warn('收到消息后自动标记好友消息已读失败:', error);
+                  });
               }
             }
 
@@ -849,16 +869,24 @@
               store.commit('updateGroupChats', currentChats);
             }
 
-            if ((data.subType !== 2 || data.currentChatGroupId !== message.groupId) && message.fromId !== store.state.currentUser.id) {
-              // 更新未读消息数
-              const currentBadge = groupMessageBadge.value[message.groupId] || 0;
-              store.commit('updateGroupMessageBadge', {groupId: message.groupId, count: currentBadge + 1});
-              
-              // 移动端收到新群消息时，如果当前不在聊天界面，显示左侧面板
-              if ($common.mobile() && data.subType !== 2) {
-                imUtilData.showBodyLeft = true;
-                mobileRight(true); // 跳过动画
-                saveShowBodyLeftState();
+            if (message.fromId !== store.state.currentUser.id) {
+              if (data.subType !== 2 || data.currentChatGroupId !== message.groupId) {
+                // 不是当前聊天对象，更新未读消息数
+                const currentBadge = groupMessageBadge.value[message.groupId] || 0;
+                store.commit('updateGroupMessageBadge', {groupId: message.groupId, count: currentBadge + 1});
+                
+                // 移动端收到新群消息时，如果当前不在聊天界面，显示左侧面板
+                if ($common.mobile() && data.subType !== 2) {
+                  imUtilData.showBodyLeft = true;
+                  mobileRight(true); // 跳过动画
+                  saveShowBodyLeftState();
+                }
+              } else {
+                // 是当前聊天群组，自动标记为已读
+                $http.post($constant.baseURL + "/imChatGroup/markGroupAsRead", {groupId: message.groupId}, false)
+                  .catch(error => {
+                    console.warn('收到消息后自动标记群消息已读失败:', error);
+                  });
               }
             }
 
@@ -904,6 +932,29 @@
           });
         }
         
+        // 发送成功后，如果是群聊消息，自动标记该群为已读（更新last_read_time）
+        if (success) {
+          try {
+            const parsedMsg = JSON.parse(msg);
+            // messageType: 2 = 群聊消息
+            if (parsedMsg.messageType === 2 && parsedMsg.groupId) {
+              $http.post($constant.baseURL + "/imChatGroup/markGroupAsRead", {groupId: parsedMsg.groupId}, false)
+                .catch(error => {
+                  console.warn('发送消息后自动标记群消息已读失败:', error);
+                });
+            }
+            // messageType: 1 = 私聊消息
+            else if (parsedMsg.messageType === 1 && parsedMsg.toId) {
+              $http.post($constant.baseURL + "/imChatGroup/markFriendAsRead", {friendId: parsedMsg.toId}, false)
+                .catch(error => {
+                  console.warn('发送消息后自动标记好友消息已读失败:', error);
+                });
+            }
+          } catch (e) {
+            console.warn('解析消息类型失败，跳过自动标记已读:', e);
+          }
+        }
+        
         callback(success);
       }
 
@@ -945,15 +996,17 @@
               // 清零群聊未读消息数
               store.commit('updateGroupMessageBadge', {groupId: current, count: 0});
               // 调用后端接口标记群消息为已读
-              $http.post($constant.baseURL + "/imChatGroup/markGroupAsRead", {groupId: current})
+              $http.post($constant.baseURL + "/imChatGroup/markGroupAsRead", {groupId: current}, false)
                 .catch(error => {
                   console.warn('标记群消息已读失败:', error);
                 });
               console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 设置当前群聊ID: ${current}`);
-              // 获取群组消息和在线人数
+              // 获取群组消息
               getGroupMessages(current);
-              // 直接调用在线人数统计，因为这是用户主动切换群聊
-              getGroupOnlineCountWithDebounce(current);
+              // 延迟获取在线人数，避免时序问题（等待旧连接完全关闭）
+              setTimeout(() => {
+                getGroupOnlineCountWithDebounce(current);
+              }, 500);
               if (groupData.groups[current] && groupData.groups[current].groupType === 2) {
                 addGroupTopic();
               }
@@ -963,7 +1016,7 @@
               // 清零私聊未读消息数
               store.commit('updateImMessageBadge', {friendId: current, count: 0});
               // 调用后端接口标记好友消息为已读
-              $http.post($constant.baseURL + "/imChatGroup/markFriendAsRead", {friendId: current})
+              $http.post($constant.baseURL + "/imChatGroup/markFriendAsRead", {friendId: current}, false)
                 .catch(error => {
                   console.warn('标记好友消息已读失败:', error);
                 });
@@ -1205,6 +1258,8 @@
           return;
         }
         
+        // 注意：主动请求在线人数可能存在时序问题（重连时可能统计到多个连接）
+        // 建议优先使用后端推送的在线人数更新（messageType=3）
         console.log(`[${$common.mobile() ? '移动端' : 'PC端'}] 开始获取群组 ${groupId} 的在线人数`);
         
         $http.get($constant.baseURL + "/imChatGroup/getOnlineCount", {

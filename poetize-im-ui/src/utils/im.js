@@ -2,10 +2,45 @@ import Tiows from "./tiows";
 import constant from "./constant";
 import {ElMessage} from "element-plus";
 
+// 全局清理旧实例的引用
+let currentImInstance = null;
+
 export default function () {
+  // 清理旧实例（开发环境热更新时）
+  if (currentImInstance) {
+    console.log('检测到旧的IM实例，执行清理...');
+    
+    // 立即关闭旧实例的WebSocket连接
+    if (currentImInstance.tio) {
+      try {
+        console.log('立即关闭旧实例的WebSocket连接');
+        currentImInstance.tio.close();
+        currentImInstance.tio = null;
+      } catch (e) {
+        console.warn('关闭旧WebSocket失败:', e);
+      }
+    }
+    
+    // 执行完整清理
+    if (currentImInstance.destroy) {
+      currentImInstance.destroy();
+    }
+  }
+  
+  // 保存当前实例
+  currentImInstance = this;
+  
   this.ws_protocol = constant.wsProtocol;
   this.ip = constant.imBaseURL;
   this.port = constant.wsPort;
+  
+  // 保存事件监听器引用，用于清理
+  this.eventListeners = {
+    visibilityChange: null,
+    windowFocus: null,
+    windowOnline: null,
+    windowOffline: null
+  };
   
   // 从URL参数中获取WebSocket token
   const urlParams = new URLSearchParams(window.location.search);
@@ -15,10 +50,14 @@ export default function () {
     this.paramStr = 'token=' + this.currentToken;
   } else {
     // 如果URL中没有token，尝试使用localStorage中的token（向后兼容）
+    const wsToken = localStorage.getItem("wsToken");
     const userToken = localStorage.getItem("userToken");
-    if (userToken) {
-      this.currentToken = userToken;
-      this.paramStr = 'token=' + userToken;
+    const fallbackToken = wsToken || userToken;
+    
+    if (fallbackToken) {
+      this.currentToken = fallbackToken;
+      this.paramStr = 'token=' + fallbackToken;
+      console.log('从localStorage获取token:', fallbackToken.substring(0, 20) + '...');
     } else {
       console.error('未找到WebSocket token');
       this.paramStr = '';
@@ -38,6 +77,7 @@ export default function () {
   this.visibilityListenerAdded = false; // 页面可见性监听器是否已添加
   this.connectionStableTimer = null; // 连接稳定性检查定时器
   this.lastConnectionTime = 0; // 最后连接成功时间
+  this.isKickedByDuplicate = false; // 是否被重复登录踢掉
 
   // 更新参数字符串，确保使用最新的token
   this.updateParamStr = () => {
@@ -52,10 +92,13 @@ export default function () {
     
     // 如果URL中没有token，尝试从localStorage获取
     if (!this.currentToken) {
+      const wsToken = localStorage.getItem("wsToken");
       const userToken = localStorage.getItem("userToken");
-      if (userToken) {
+      const fallbackToken = wsToken || userToken;
+      
+      if (fallbackToken) {
         console.log('从localStorage获取token');
-        this.currentToken = userToken;
+        this.currentToken = fallbackToken;
       }
     }
     
@@ -69,6 +112,17 @@ export default function () {
   }
 
   this.initWs = () => {
+    // 如果已有连接，先关闭旧连接
+    if (this.tio) {
+      console.log('检测到已有WebSocket连接，先关闭旧连接');
+      try {
+        this.tio.close();
+      } catch (e) {
+        console.warn('关闭旧WebSocket连接失败:', e);
+      }
+      this.tio = null;
+    }
+    
     // 每次初始化WebSocket时都使用最新的token
     this.updateParamStr();
     console.log('初始化WebSocket，使用token:', this.currentToken ? this.currentToken.substring(0, 20) + '...' : 'null');
@@ -79,7 +133,14 @@ export default function () {
     this.tio.onopen = () => {
       console.log('WebSocket连接成功');
       this.isReconnecting = false; // 重连完成
+      this.isKickedByDuplicate = false; // 重置被踢标志
       this.lastConnectionTime = Date.now(); // 记录连接成功时间
+      
+      // 清除重连定时器（防止定时器在连接成功后还触发）
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
       
       // 清除之前的稳定性检查定时器
       if (this.connectionStableTimer) {
@@ -132,30 +193,30 @@ export default function () {
       // 如果页面不可见，不进行重连
       if (!this.isPageVisible) {
         console.log('页面不可见，暂停重连');
-        return;
-      }
-      
-      // 如果正在重连中，避免重复重连
-      if (this.isReconnecting) {
-        console.log('已在重连中，跳过此次重连');
+        this.isReconnecting = false; // 确保重置状态
         return;
       }
       
       // 如果不是正常关闭且重连次数未超限，尝试重连
       if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++;
-        this.isReconnecting = true;
         
-        // 检查是否可能是服务器端问题（连续快速断开重连）
+        // 检查是否可能是被其他连接踢掉（连续快速断开重连）
         const connectionDuration = Date.now() - this.lastConnectionTime;
         if (connectionDuration < 5000 && this.reconnectAttempts >= 3) {
-          console.error('检测到连续快速断开重连，可能是服务器端问题，停止自动重连');
+          console.warn('检测到连续快速断开重连，可能是在其他地方登录了聊天室');
           this.isReconnecting = false;
+          this.isKickedByDuplicate = true; // 标记为被踢掉
+          
+          // 显示友好提示，告知用户可能的原因
           ElMessage({
-            message: "检测到服务器端问题，请检查token有效性或联系管理员",
-            type: 'error',
-            duration: 8000
+            message: "检测到您可能在其他标签页或浏览器登录了聊天室，当前页面已断开连接。如需继续使用，请关闭其他页面或刷新此页面。",
+            type: 'warning',
+            duration: 0, // 不自动关闭
+            showClose: true,
+            customClass: 'duplicate-connection-warning'
           });
+          
           return;
         }
         
@@ -179,25 +240,34 @@ export default function () {
         }
         
         this.reconnectTimer = setTimeout(() => {
-          if (this.reconnectAttempts <= this.maxReconnectAttempts && this.isPageVisible) {
+          // 检查是否需要重连：连接未就绪、页面可见、未超过重连次数
+          if ((!this.tio || !this.tio.isReady()) && 
+              this.isPageVisible && 
+              this.reconnectAttempts <= this.maxReconnectAttempts) {
+            // 在调用 reconnect() 之前不要设置 isReconnecting，让 reconnect() 自己管理
             this.reconnect();
-          } else {
+          } else if (this.tio && this.tio.isReady()) {
+            console.log('定时器触发时发现连接已恢复，取消重连');
             this.isReconnecting = false;
           }
         }, delay);
       } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        this.isReconnecting = false;
+        this.isReconnecting = false; // 重置状态
         ElMessage({
           message: "连接失败次数过多，请检查网络后刷新页面重试",
           type: 'error',
           duration: 5000
         });
+      } else {
+        // 正常关闭（code 1000）时重置状态
+        this.isReconnecting = false;
       }
     };
     
     // WebSocket连接错误处理
     this.tio.onerror = (event) => {
       console.error('WebSocket连接错误:', event);
+      // 不在这里重置 isReconnecting，让 onclose 处理
       ElMessage({
         message: "连接出现错误，请检查网络！",
         type: 'error',
@@ -208,6 +278,17 @@ export default function () {
 
   this.sendMsg = (value) => {
     console.log('准备发送消息:', value);
+    
+    // 检查是否被重复登录踢掉
+    if (this.isKickedByDuplicate) {
+      ElMessage({
+        message: "您在其他地方登录了聊天室，当前页面已断开连接。请关闭其他页面或刷新此页面。",
+        type: 'warning',
+        duration: 0,
+        showClose: true
+      });
+      return false;
+    }
     
     if (!this.tio) {
       console.error('WebSocket未初始化');
@@ -297,15 +378,23 @@ export default function () {
   this.reconnect = () => {
     console.log('尝试重新连接WebSocket...');
     
-    // 如果页面不可见，不进行重连
-    if (!this.isPageVisible) {
-      console.log('页面不可见，取消重连');
+    // 如果连接已经正常，不需要重连
+    if (this.tio && this.tio.isReady()) {
+      console.log('连接已正常，无需重连');
       this.isReconnecting = false;
       return;
     }
     
-    if (this.tio) {
-      this.tio.close();
+    // 如果已经在重连中，避免重复重连
+    if (this.isReconnecting) {
+      console.log('已有重连任务在进行中，跳过本次重连');
+      return;
+    }
+    
+    // 如果页面不可见，不进行重连
+    if (!this.isPageVisible) {
+      console.log('页面不可见，取消重连');
+      return;
     }
     
     // 检查网络状态
@@ -315,9 +404,25 @@ export default function () {
       return;
     }
     
-    // 重连时使用最新的token（在initWs中会调用updateParamStr）
+    // 标记为正在重连（必须在所有检查通过后再设置）
+    this.isReconnecting = true;
+    
+    // 清除之前的重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    
+    // 重连时使用最新的token（在initWs中会调用updateParamStr，并会关闭旧连接）
     console.log('开始重连，将使用最新token');
-    this.initWs();
+    
+    // 添加错误处理，确保即使 initWs 失败也能重置状态
+    try {
+      this.initWs();
+    } catch (error) {
+      console.error('重连失败:', error);
+      this.isReconnecting = false;
+    }
   }
 
   // 等待网络恢复后重连
@@ -418,6 +523,7 @@ export default function () {
 
   /**
    * 续签token
+   * 优先使用旧token续签，如果失败则尝试用userToken重新生成
    */
   this.renewToken = async () => {
     if (!this.currentToken) {
@@ -460,13 +566,10 @@ export default function () {
       } else {
         console.error('Token续签失败:', result.message || '未知错误');
         
-        // 只有在确实需要用户重新登录时才显示警告
-        if (result.message && (result.message.includes('登录') || result.message.includes('认证') || result.message.includes('过期'))) {
-          ElMessage({
-            message: "会话已过期，请刷新页面重新登录",
-            type: 'warning',
-            duration: 5000
-          });
+        // 如果ws_token已经完全失效且无法续签，尝试用userToken重新生成
+        if (result.message && (result.message.includes('失效') || result.message.includes('过期') || result.message.includes('无效'))) {
+          console.log('ws_token已失效，尝试用userToken重新生成...');
+          return await this.regenerateTokenWithUserToken();
         } else {
           console.log('Token续签失败，但可能是临时问题，不提示用户');
         }
@@ -476,6 +579,85 @@ export default function () {
     } catch (error) {
       console.error('续签token时发生网络错误:', error);
       // 网络错误时不提示用户，避免误导
+      return false;
+    }
+  }
+
+  /**
+   * 使用userToken重新生成ws_token
+   * 当ws_token完全失效且无法续签时调用此方法
+   */
+  this.regenerateTokenWithUserToken = async () => {
+    try {
+      const userToken = localStorage.getItem("userToken");
+      if (!userToken) {
+        console.error('没有可用的userToken，无法重新生成ws_token');
+        ElMessage({
+          message: "会话已过期，请刷新页面重新登录",
+          type: 'warning',
+          duration: 5000
+        });
+        return false;
+      }
+
+      console.log('使用userToken重新生成ws_token...');
+      
+      // 调用 /im/getWsToken 接口，需要在请求头中带上 userToken
+      const response = await fetch(`${constant.baseURL}/im/getWsToken`, {
+        method: 'GET',
+        headers: {
+          'Authorization': userToken
+        }
+      });
+      const result = await response.json();
+      
+      console.log('重新生成ws_token响应:', result);
+      
+      if (result.code === 200 && result.data) {
+        const newToken = result.data;
+        console.log('ws_token重新生成成功，新token:', newToken.substring(0, 20) + '...');
+        
+        // 更新当前token
+        this.currentToken = newToken;
+        this.updateParamStr();
+        
+        // 更新URL参数
+        try {
+          const url = new URL(window.location);
+          url.searchParams.set('token', newToken);
+          window.history.replaceState({}, '', url);
+          console.log('URL参数已更新为新token');
+        } catch (urlError) {
+          console.warn('更新URL参数失败:', urlError);
+        }
+        
+        ElMessage({
+          message: "会话已自动续期",
+          type: 'success',
+          duration: 2000
+        });
+        
+        // 重新生成token后，需要重新建立WebSocket连接
+        console.log('ws_token已更新，需要重新连接WebSocket');
+        this.reconnect();
+        
+        return true;
+      } else {
+        console.error('重新生成ws_token失败:', result.message || '未知错误');
+        ElMessage({
+          message: "会话已过期，请刷新页面重新登录",
+          type: 'warning',
+          duration: 5000
+        });
+        return false;
+      }
+    } catch (error) {
+      console.error('重新生成ws_token时发生网络错误:', error);
+      ElMessage({
+        message: "网络错误，请检查网络连接后重试",
+        type: 'error',
+        duration: 3000
+      });
       return false;
     }
   }
@@ -736,28 +918,26 @@ export default function () {
       }
     };
     
-    // 监听页面可见性变化
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // 保存事件监听器引用以便清理
+    this.eventListeners.visibilityChange = handleVisibilityChange;
     
-    // 监听窗口焦点变化（作为备用）
-    window.addEventListener('focus', () => {
+    this.eventListeners.windowFocus = () => {
       if (this.isPageVisible && (!this.tio || !this.tio.isReady()) && !this.isReconnecting) {
         console.log('窗口获得焦点时发现连接异常，尝试重连');
         this.reconnectAttempts = 0; // 重置重连计数
         this.reconnect();
       }
-    });
+    };
     
-    // 监听网络状态变化
-    window.addEventListener('online', () => {
+    this.eventListeners.windowOnline = () => {
       console.log('网络已恢复，检查WebSocket连接');
       if (this.isPageVisible && (!this.tio || !this.tio.isReady()) && !this.isReconnecting) {
         this.reconnectAttempts = 0; // 重置重连计数
         this.reconnect();
       }
-    });
+    };
     
-    window.addEventListener('offline', () => {
+    this.eventListeners.windowOffline = () => {
       console.log('网络已断开');
       // 清理重连定时器
       if (this.reconnectTimer) {
@@ -770,7 +950,15 @@ export default function () {
         type: 'warning',
         duration: 3000
       });
-    });
+    };
+    
+    // 监听页面可见性变化
+    document.addEventListener('visibilitychange', this.eventListeners.visibilityChange);
+    // 监听窗口焦点变化（作为备用）
+    window.addEventListener('focus', this.eventListeners.windowFocus);
+    // 监听网络状态变化
+    window.addEventListener('online', this.eventListeners.windowOnline);
+    window.addEventListener('offline', this.eventListeners.windowOffline);
   }
 
   // ==================== 清理方法 ====================
@@ -779,6 +967,7 @@ export default function () {
    * 清理所有定时器和连接
    */
   this.cleanup = () => {
+    console.log('执行cleanup清理...');
     this.stopTokenRenewalCheck();
     this.stopHeartbeat();
     
@@ -796,11 +985,36 @@ export default function () {
     
     this.isReconnecting = false;
     
-    // 移除事件监听器（注意：这里的函数引用可能不正确，需要保存引用）
-    // 由于事件监听器是匿名函数，实际上很难正确移除，但这不会造成严重问题
+    // 移除事件监听器
+    if (this.eventListeners.visibilityChange) {
+      document.removeEventListener('visibilitychange', this.eventListeners.visibilityChange);
+      console.log('已移除页面可见性监听器');
+    }
+    if (this.eventListeners.windowFocus) {
+      window.removeEventListener('focus', this.eventListeners.windowFocus);
+    }
+    if (this.eventListeners.windowOnline) {
+      window.removeEventListener('online', this.eventListeners.windowOnline);
+    }
+    if (this.eventListeners.windowOffline) {
+      window.removeEventListener('offline', this.eventListeners.windowOffline);
+    }
     
     if (this.tio) {
       this.tio.close();
+      this.tio = null;
+    }
+  }
+  
+  /**
+   * 销毁实例（用于热更新时清理旧实例）
+   */
+  this.destroy = () => {
+    console.log('销毁IM实例...');
+    this.cleanup();
+    // 清空全局引用
+    if (currentImInstance === this) {
+      currentImInstance = null;
     }
   }
 

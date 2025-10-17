@@ -193,8 +193,8 @@
           </div>
         </n-popover>
 
-        <!-- 舔狗日记 -->
-        <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(3)" negative-text="取消">
+        <!-- 舔狗日记（已隐藏） -->
+        <!-- <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(3)" negative-text="取消">
           <template #trigger>
             <div class="myEmoji">
               <svg viewBox="0 0 1024 1024" width="25" height="25">
@@ -248,10 +248,10 @@
             </div>
           </template>
           💕&nbsp;投递舔狗日记？
-        </n-popconfirm>
+        </n-popconfirm> -->
 
-        <!-- 鸡汤来咯 -->
-        <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(4)" negative-text="取消">
+        <!-- 鸡汤来咯（已隐藏） -->
+        <!-- <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(4)" negative-text="取消">
           <template #trigger>
             <div class="myEmoji">
               <svg viewBox="0 0 1024 1024" width="25" height="25">
@@ -298,10 +298,10 @@
             </div>
           </template>
           💕&nbsp;鸡汤来咯！
-        </n-popconfirm>
+        </n-popconfirm> -->
 
-        <!-- 社会语录 -->
-        <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(5)" negative-text="取消">
+        <!-- 社会语录（已隐藏） -->
+        <!-- <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(5)" negative-text="取消">
           <template #trigger>
             <div class="myEmoji">
               <svg viewBox="0 0 1024 1024" width="25" height="25">
@@ -318,10 +318,10 @@
             </div>
           </template>
           💕&nbsp;传教社会语录？
-        </n-popconfirm>
+        </n-popconfirm> -->
 
-        <!-- 诗词炮弹 -->
-        <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(1)" negative-text="取消">
+        <!-- 诗词炮弹（已隐藏） -->
+        <!-- <n-popconfirm :show-icon="false" positive-text="确认" @positive-click="sendPoetry(1)" negative-text="取消">
           <template #trigger>
             <div class="myEmoji">
               <svg viewBox="0 0 1024 1024" width="25" height="25">
@@ -335,7 +335,7 @@
             </div>
           </template>
           💕&nbsp;发射诗词炮弹？
-        </n-popconfirm>
+        </n-popconfirm> -->
       </div>
 
       <!-- 输入框 -->

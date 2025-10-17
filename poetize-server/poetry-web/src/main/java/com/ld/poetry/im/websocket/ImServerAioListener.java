@@ -32,8 +32,8 @@ public class ImServerAioListener extends WsServerAioListener {
             log.info("onAfterConnected\r\n{}", channelContext);
         }
         
-        // 用户连接后，推送在线用户数更新
-        broadcastOnlineCountUpdate(channelContext);
+        // 注意：不在这里广播在线用户数，因为此时还没有绑定群组
+        // 在线用户数会在 onAfterHandshaked 完成后延迟广播（等待旧连接关闭）
     }
 
     /**

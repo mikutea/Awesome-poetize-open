@@ -1,7 +1,9 @@
 package com.ld.poetry.im.websocket;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
+import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.im.http.entity.ImChatGroupUser;
 import com.ld.poetry.im.http.entity.ImChatLastRead;
@@ -174,7 +176,13 @@ public class ImWsMsgHandler implements IWsMsgHandler {
                     if (friend != null) {
                         imMessage.setAvatar(friend.getAvatar());
                     }
-                    WsResponse wsResponse = WsResponse.fromText(JSON.toJSONString(imMessage), ImConfigConst.CHARSET);
+                    // 使用更安全的序列化配置
+                    String jsonString = JSON.toJSONString(imMessage, 
+                        SerializerFeature.WriteMapNullValue,
+                        SerializerFeature.WriteNullStringAsEmpty,
+                        SerializerFeature.WriteNonStringKeyAsString,
+                        SerializerFeature.DisableCircularReferenceDetect);
+                    WsResponse wsResponse = WsResponse.fromText(jsonString, ImConfigConst.CHARSET);
                     Tio.sendToUser(channelContext.tioConfig, userMessage.getToId().toString(), wsResponse);
                 });
                 
@@ -208,6 +216,20 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             Map<Integer, Integer> friendUnreadCounts = imChatLastReadService.getFriendUnreadCounts(user.getId());
             Map<Integer, Integer> groupUnreadCounts = imChatLastReadService.getGroupUnreadCounts(user.getId());
             
+            // 确保集合不为null
+            if (friendChatList == null) {
+                friendChatList = new ArrayList<>();
+            }
+            if (groupChatList == null) {
+                groupChatList = new ArrayList<>();
+            }
+            if (friendUnreadCounts == null) {
+                friendUnreadCounts = new HashMap<>();
+            }
+            if (groupUnreadCounts == null) {
+                groupUnreadCounts = new HashMap<>();
+            }
+            
             // 构造未读数和聊天列表消息
             Map<String, Object> syncMessage = new HashMap<>();
             syncMessage.put("messageType", 5); // 5表示同步消息（未读数+聊天列表）
@@ -216,13 +238,52 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             syncMessage.put("friendUnreadCounts", friendUnreadCounts);
             syncMessage.put("groupUnreadCounts", groupUnreadCounts);
             
-            WsResponse wsResponse = WsResponse.fromText(JSON.toJSONString(syncMessage), ImConfigConst.CHARSET);
+            // 使用更安全的序列化配置，确保正确处理特殊字符和空值
+            String jsonString = JSON.toJSONString(syncMessage, 
+                SerializerFeature.WriteMapNullValue,  // 写入null值
+                SerializerFeature.WriteNullListAsEmpty,  // null列表输出为[]
+                SerializerFeature.WriteNonStringKeyAsString,  // 非字符串key转为字符串（修复-1等数字key的问题）
+                SerializerFeature.DisableCircularReferenceDetect);  // 禁用循环引用检测
+            
+            WsResponse wsResponse = WsResponse.fromText(jsonString, ImConfigConst.CHARSET);
             Tio.sendToUser(channelContext.tioConfig, user.getId().toString(), wsResponse);
             log.debug("推送聊天数据成功 - userId: {}, 好友列表: {}, 群聊列表: {}, 好友未读: {}, 群聊未读: {}", 
                 user.getId(), friendChatList, groupChatList, friendUnreadCounts, groupUnreadCounts);
         } catch (Exception e) {
-            log.error("推送聊天数据失败 - userId: {}", user.getId(), e);
+            log.error("推送聊天数据失败 - userId: {}, 错误信息: {}", user.getId(), e.getMessage(), e);
         }
+        
+        // 延迟广播在线用户数（等待旧连接完全关闭）
+        final User finalUser = user;
+        new Thread(() -> {
+            try {
+                // 延迟200ms，确保 closeUser 执行完成
+                Thread.sleep(200);
+                
+                // 获取用户所在的群组并广播在线人数
+                SetWithLock<String> groups = channelContext.getGroups();
+                if (groups != null && groups.size() > 0) {
+                    TioWebsocketStarter tioWebsocketStarter = TioUtil.getTio();
+                    if (tioWebsocketStarter != null) {
+                        for (String groupId : groups.getObj()) {
+                            int onlineCount = Tio.getByGroup(tioWebsocketStarter.getServerTioConfig(), groupId).size();
+                            
+                            ImMessage imMessage = new ImMessage();
+                            imMessage.setMessageType(CommonConst.ONLINE_COUNT_MESSAGE_TYPE);
+                            imMessage.setOnlineCount(onlineCount);
+                            imMessage.setGroupId(Integer.valueOf(groupId));
+                            
+                            WsResponse onlineWs = WsResponse.fromText(imMessage.toJsonString(), CommonConst.CHARSET_NAME);
+                            Tio.sendToGroup(tioWebsocketStarter.getServerTioConfig(), groupId, onlineWs);
+                            
+                            log.debug("延迟广播群组{}在线用户数: {}", groupId, onlineCount);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("延迟广播在线用户数失败 - userId: {}", finalUser.getId(), e);
+            }
+        }).start();
     }
 
     @Override
@@ -250,7 +311,13 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             }
             imMessage.setContent(content);
 
-            WsResponse wsResponse = WsResponse.fromText(JSON.toJSONString(imMessage), ImConfigConst.CHARSET);
+            // 使用更安全的序列化配置
+            String jsonString = JSON.toJSONString(imMessage, 
+                SerializerFeature.WriteMapNullValue,
+                SerializerFeature.WriteNullStringAsEmpty,
+                SerializerFeature.WriteNonStringKeyAsString,
+                SerializerFeature.DisableCircularReferenceDetect);
+            WsResponse wsResponse = WsResponse.fromText(jsonString, ImConfigConst.CHARSET);
             if (imMessage.getMessageType().intValue() == ImEnum.MESSAGE_TYPE_MSG_SINGLE.getCode()) {
                 //单聊
                 ImChatUserMessage userMessage = new ImChatUserMessage();

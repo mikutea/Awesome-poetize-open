@@ -1,9 +1,9 @@
 export default {
   // 测试环境
   // baseURL: "http://localhost:8081",
-  // webBaseURL: "http://localhost",
-  // imURL: "http://localhost:81/im",
-  // imBaseURL: "localhost",
+  // webBaseURL: "http://localhost:80",
+  // imURL: "http://localhost:81/im/",
+  // imBaseURL: "localhost",  // WebSocket 主机名，不包含端口
   // wsProtocol: "ws",
   // wsPort: "9324",
 

@@ -344,6 +344,11 @@ export default function () {
   }
 
   function parseMessage(content) {
+    // 检查 content 是否存在，如果不存在返回空字符串
+    if (!content || typeof content !== 'string') {
+      console.warn('parseMessage: content is undefined or not a string', content);
+      return '';
+    }
     content = content.replace(/\n{2,}/g, '<div style="height: 12px"></div>');
     content = content.replace(/\n/g, '<br/>');
     content = $common.faceReg(content);
