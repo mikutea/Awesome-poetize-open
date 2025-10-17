@@ -517,7 +517,7 @@ def secure_validate_oauth_state(state: str, provider: str, action_type: str = "l
             # 绑定操作：只验证不消费（让Java后端处理）
             state_data = oauth_state_manager.get_state_info(state)
             if state_data and state_data.get('provider') != provider:
-                logger.warning(f"🚨 检测到潜在的CSRF攻击：OAuth provider不匹配！")
+                logger.warning(f"   检测到潜在的CSRF攻击：OAuth provider不匹配！")
                 logger.warning(f"   期望provider: {provider}")
                 logger.warning(f"   状态中的provider: {state_data.get('provider')}")
                 logger.warning(f"   state token: {state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
@@ -557,11 +557,11 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
     优化版本：减少超时时间，快速失败
     """
     try:
-        print(f"🔗 直接调用Java绑定接口: provider={provider}, code={code[:10]}..., state={state[:10]}...")
+        print(f"直接调用Java绑定接口: provider={provider}, code={code[:10]}..., state={state[:10]}...")
 
         # 从状态信息中获取用户ID用于日志记录
         user_id = state_info.get("userId") if state_info else None
-        print(f"📋 状态信息: userId={user_id}, action={state_info.get('action') if state_info else 'unknown'}")
+        print(f"状态信息: userId={user_id}, action={state_info.get('action') if state_info else 'unknown'}")
 
         # 优化的请求头和超时配置
         headers = {
@@ -571,7 +571,7 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
             'User-Agent': 'poetize-python/1.0.0'
         }
 
-        print(f"🚀 发送绑定请求到Java后端")
+        print(f"发送绑定请求到Java后端")
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -684,13 +684,13 @@ def add_new_provider_example():
     }
 
     oauth_factory.register_provider("linkedin", LinkedInProvider, linkedin_config_template)
-    print("✅ 成功添加LinkedIn OAuth提供商")
+    print("成功添加LinkedIn OAuth提供商")
 
 
 if __name__ == '__main__':
     import uvicorn
 
-    # 第三方登录服务独立运行（架构优化后）
+    # 第三方登录服务独立运行
     logger.info("启动独立的第三方登录OAuth服务")
 
     # 演示扩展性
@@ -699,5 +699,5 @@ if __name__ == '__main__':
     # 启动服务
     port = int(os.environ.get("PORT", 5001))  # 使用不同端口避免冲突
     debug = os.environ.get("ENV") == "development"
-    print(f"启动第三方登录服务（重构版），端口: {port}，调试模式: {debug}")
-    uvicorn.run(app, host="0.0.0.0", port=port, debug=debug)
+    print(f"启动第三方登录服务，端口: {port}，调试模式: {debug}")
+    uvicorn.run(app, host="0.0.0.0", port=port, debug=debug, access_log=False)

@@ -1,14 +1,11 @@
 """
 Redis OAuth状态管理器
-使用Redis替代内存存储，提供分布式OAuth状态管理
 
 主要功能：
 - OAuth状态生成和验证
 - 基于Redis的分布式存储
 - 自动过期清理
 - 与原有接口兼容
-
-版本: 1.0.0
 """
 
 import time
@@ -18,8 +15,7 @@ import httpx
 import logging
 from typing import Optional, Dict, Any
 from config import JAVA_BACKEND_URL
-from cache_service import get_cache_service
-from cache_constants import CacheConstants
+from redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +24,7 @@ class RedisOAuthStateManager:
     
     def __init__(self):
         """初始化Redis OAuth状态管理器"""
-        self.cache_service = get_cache_service()
+        self.redis_client = get_redis_client()
         logger.info("Redis OAuth状态管理器初始化完成")
     
     def generate_state(self, provider: str, session_id: str = None) -> str:
@@ -46,12 +42,10 @@ class RedisOAuthStateManager:
                 'created_at': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
             }
             
-            # 存储到Redis
-            success = self.cache_service.cache_oauth_state(
-                state_token, 
-                provider, 
-                session_id or ""
-            )
+            # 存储到Redis（10分钟过期）
+            key = f"poetize:python:oauth:state:{state_token}"
+            value = json.dumps(state_data, ensure_ascii=False)
+            success = self.redis_client.set(key, value, ex=600)
             
             if success:
                 logger.info(f"生成OAuth状态: provider={provider}, state={state_token}, session_id={session_id}")
@@ -79,7 +73,9 @@ class RedisOAuthStateManager:
                 return None
 
             # 从Redis获取状态数据
-            state_data = self.cache_service.get_oauth_state(state_token)
+            key = f"poetize:python:oauth:state:{state_token}"
+            value = self.redis_client.get(key)
+            state_data = json.loads(value) if value else None
 
             if not state_data:
                 logger.warning(f"OAuth状态不存在或已过期: {state_token}")
@@ -91,7 +87,8 @@ class RedisOAuthStateManager:
                 return None
 
             # 删除已使用的状态（一次性使用）
-            self.cache_service.delete_oauth_state(state_token)
+            delete_key = f"poetize:python:oauth:state:{state_token}"
+            self.redis_client.delete(delete_key)
 
             logger.info(f"OAuth状态验证成功: provider={provider}, state={state_token}")
             return state_data
@@ -115,7 +112,9 @@ class RedisOAuthStateManager:
             if not state_token:
                 return None
             
-            state_data = self.cache_service.get_oauth_state(state_token)
+            key = f"poetize:python:oauth:state:{state_token}"
+            value = self.redis_client.get(key)
+            state_data = json.loads(value) if value else None
             if state_data:
                 logger.debug(f"获取OAuth状态信息: {state_token}")
             
@@ -176,7 +175,11 @@ class RedisOAuthStateManager:
         """获取状态管理器统计信息"""
         try:
             # Redis健康检查
-            health = self.cache_service.health_check()
+            health = {'status': 'ok', 'redis': 'connected'}
+            try:
+                self.redis_client.ping()
+            except:
+                health = {'status': 'error', 'redis': 'disconnected'}
             
             return {
                 "type": "redis",
