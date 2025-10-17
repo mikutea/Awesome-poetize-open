@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.ld.poetry.entity.dto.MailConfigDTO;
 import com.ld.poetry.service.MailService;
 import com.ld.poetry.service.SysConfigService;
+import com.ld.poetry.service.SysMailConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,16 +32,13 @@ public class MailServiceImpl implements MailService {
     @Autowired
     private ApplicationContext applicationContext;
     
-    @Value("${PYTHON_SERVICE_URL:http://localhost:5000}")
-    private String pythonServiceUrl;
-    
-    @Autowired
-    private RestTemplate restTemplate;
-    
     @Autowired
     private SysConfigService sysConfigService;
     
-    // 邮箱配置现在只从Python服务获取
+    @Autowired
+    private SysMailConfigService sysMailConfigService;
+    
+    // 邮箱配置现在从数据库获取
     
     /**
      * 获取所有邮箱配置
@@ -48,21 +46,15 @@ public class MailServiceImpl implements MailService {
     @Override
     public List<MailConfigDTO> getMailConfigs() {
         try {
-            // 从Python API获取配置
-            List<MailConfigDTO> configs = getMailConfigsFromPython();
-            if (configs != null) {
-                return configs;
-            }
-            
-            log.warn("从Python API获取邮箱配置失败，返回空配置列表");
-            return new ArrayList<>();
+            // 从数据库获取配置
+            List<MailConfigDTO> configs = sysMailConfigService.getAllConfigs();
+            log.info("从数据库获取到{}个邮箱配置", configs.size());
+            return configs;
         } catch (Exception e) {
             log.error("获取邮箱配置失败", e);
             return new ArrayList<>();
         }
     }
-    
-
     
     /**
      * 获取默认邮箱配置索引
@@ -70,13 +62,14 @@ public class MailServiceImpl implements MailService {
     @Override
     public int getDefaultMailConfigIndex() {
         try {
-            // 从Python API获取默认索引
-            Integer defaultIndex = getDefaultMailConfigIndexFromPython();
+            // 从数据库获取默认索引
+            Integer defaultIndex = sysMailConfigService.getDefaultConfigIndex();
             if (defaultIndex != null) {
+                log.info("获取默认邮箱配置索引: {}", defaultIndex);
                 return defaultIndex;
             }
             
-            log.warn("从Python API获取默认邮箱索引失败，返回默认索引-1");
+            log.warn("没有默认邮箱配置，返回-1");
             return -1;
         } catch (Exception e) {
             log.error("获取默认邮箱索引失败", e);
@@ -435,68 +428,5 @@ public class MailServiceImpl implements MailService {
         
         sender.setJavaMailProperties(props);
         return sender;
-    }
-    
-    /**
-     * 从Python API获取邮箱配置
-     */
-    private List<MailConfigDTO> getMailConfigsFromPython() {
-        try {
-            String url = pythonServiceUrl + "/webInfo/getEmailConfigs";
-            log.info("从Python API获取邮箱配置: {}", url);
-            
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
-            
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> responseBody = response.getBody();
-                Integer code = (Integer) responseBody.get("code");
-                
-                if (code != null && code == 200) {
-                    Object data = responseBody.get("data");
-                    
-                    if (data != null) {
-                        // 将data转换为JSON字符串，然后反序列化为MailConfigDTO列表
-                        String jsonData = JSON.toJSONString(data);
-                        return JSON.parseArray(jsonData, MailConfigDTO.class);
-                    }
-                }
-            }
-            
-            log.warn("Python API返回的邮箱配置格式不正确");
-            return null;
-        } catch (Exception e) {
-            log.error("从Python API获取邮箱配置失败", e);
-            return null;
-        }
-    }
-    
-    /**
-     * 从Python API获取默认邮箱配置索引
-     */
-    private Integer getDefaultMailConfigIndexFromPython() {
-        try {
-            String url = pythonServiceUrl + "/webInfo/getDefaultMailConfig";
-            log.info("从Python API获取默认邮箱配置索引: {}", url);
-            
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(url, org.springframework.http.HttpMethod.GET, null, new ParameterizedTypeReference<Map<String, Object>>() {});
-            
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> responseBody = response.getBody();
-                Integer code = (Integer) responseBody.get("code");
-                
-                if (code != null && code == 200) {
-                    Object data = responseBody.get("data");
-                    if (data instanceof Integer) {
-                        return (Integer) data;
-                    }
-                }
-            }
-            
-            log.warn("Python API返回的默认邮箱配置索引格式不正确");
-            return null;
-        } catch (Exception e) {
-            log.error("从Python API获取默认邮箱配置索引失败", e);
-            return null;
-        }
     }
 }

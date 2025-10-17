@@ -2689,7 +2689,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 优化：将getEmailConfigs改为异步方法
       async getEmailConfigs() {
         try {
-          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getEmailConfigs", {}, true);
+          const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getEmailConfigs", {}, true);
             this.emailConfigs = res.data || [];
             // 修正属性名
             this.emailConfigs.forEach(config => {
@@ -2715,7 +2715,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 优化：将getDefaultMailConfigIndex改为异步方法
       async getDefaultMailConfigIndex() {
         try {
-          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getDefaultMailConfig", {}, true);
+          const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getDefaultMailConfig", {}, true);
             this.defaultMailIndex = res.data || -1;
         } catch (error) {
             this.$message.error("获取默认邮箱索引失败: " + error.message);
@@ -2913,7 +2913,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         this.loading = true;
         
         // 保存配置
-        this.$http.post(this.$constant.pythonBaseURL + "/webInfo/saveEmailConfigs?defaultIndex=" + this.defaultMailIndex, 
+        this.$http.post(this.$constant.baseURL + "/webInfo/saveEmailConfigs?defaultIndex=" + this.defaultMailIndex, 
           validConfigs, true)
           .then((res) => {
             this.$message.success("邮箱配置保存成功");
@@ -2952,7 +2952,7 @@ X-API-KEY: {{apiConfig.apiKey}}
         };
         
         // 发送测试请求
-        this.$http.post(this.$constant.pythonBaseURL + "/webInfo/testEmailConfig", testData, true)
+        this.$http.post(this.$constant.baseURL + "/webInfo/testEmailConfig", testData, true)
           .then(res => {
             this.$message.success("测试邮件发送成功，请查收");
             this.emailTestDialogVisible = false;
@@ -3741,7 +3741,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 优化：将getCaptchaConfig改为异步方法
       async getCaptchaConfig() {
         try {
-          const res = await this.$http.get(this.$constant.pythonBaseURL + "/webInfo/getCaptchaConfig", {}, true);
+          const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getCaptchaConfig", {}, true);
             if (res.data) {
               this.captchaConfig = res.data;
             }
@@ -3778,7 +3778,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 保存智能验证码配置
       saveCaptchaConfig() {
         this.captchaLoading = true;
-        this.$http.post(this.$constant.pythonBaseURL + "/webInfo/updateCaptchaConfig", this.captchaConfig, true)
+        this.$http.post(this.$constant.baseURL + "/webInfo/updateCaptchaConfig", this.captchaConfig, true)
           .then((res) => {
             this.$message.success("智能验证码配置保存成功");
             this.captchaLoading = false;
