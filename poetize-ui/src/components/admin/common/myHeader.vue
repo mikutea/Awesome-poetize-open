@@ -106,3 +106,18 @@
   }
 
 </style>
+
+<!-- 非scoped样式：确保管理后台头像旋转动画能够正常工作 -->
+<style>
+/* 管理后台头像旋转动画 */
+.header-user-con .el-avatar.user-avatar {
+  cursor: pointer;
+  transition: transform 0.6s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.header-user-con .el-avatar.user-avatar:hover {
+  transform: rotate(360deg);
+}
+</style>

@@ -1865,3 +1865,18 @@
     }
   }
 </style>
+
+<!-- 非scoped样式：确保个人中心页面头像旋转动画能够正常工作 -->
+<style>
+/* 个人中心页面头像旋转动画 */
+.user-info .el-avatar.user-avatar {
+  cursor: pointer;
+  transition: transform 0.6s ease;
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.user-info .el-avatar.user-avatar:hover {
+  transform: rotate(360deg);
+}
+</style>
