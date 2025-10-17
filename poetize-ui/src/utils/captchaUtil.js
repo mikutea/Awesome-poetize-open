@@ -12,7 +12,7 @@ import constant from '@/utils/constant'
 export function checkCaptchaRequired(action) {
   return new Promise((resolve, reject) => {
     // 使用Python服务器URL并直接在URL中传递action参数
-    axios.get(`${constant.pythonBaseURL}/captcha/validate?action=${action}`)
+    axios.get(`${constant.baseURL}/captcha/validate?action=${action}`)
       .then(res => {
         if (res && res.data && res.data.code === 200) {
           // 正确解析API返回的{required: true/false}格式

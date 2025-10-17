@@ -94,10 +94,24 @@ export default {
       startLeft: 0,
       isDragging: false,
       maxSlideDistance: 0,
-      buttonWidth: 44
+      buttonWidth: 44,
+      slideTrack: [],  // 滑动轨迹记录
+      slideStartTime: 0,  // 滑动开始时间
+      browserFingerprint: null  // 浏览器指纹
     }
   },
-  mounted() {
+  async mounted() {
+    // 获取浏览器指纹
+    try {
+      const { getBrowserFingerprint } = await import('@/utils/fingerprintUtil')
+      this.browserFingerprint = await getBrowserFingerprint()
+      console.log('滑动验证码 - 浏览器指纹已加载:', this.browserFingerprint)
+    } catch (error) {
+      console.warn('浏览器指纹加载失败:', error)
+    }
+    
+    
+    // 原有的mounted逻辑
     // 监听窗口大小变化
     window.addEventListener('resize', this.updateScreenWidth);
     
@@ -170,6 +184,16 @@ export default {
       // 记录初始位置
       this.startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
       this.startLeft = this.slidePosition;
+      
+      // 初始化轨迹记录
+      this.slideTrack = [];
+      this.slideStartTime = Date.now();
+      
+      // 记录起始点
+      this.slideTrack.push({
+        x: this.slidePosition,
+        timestamp: this.slideStartTime
+      });
     },
     
     // 拖动中
@@ -197,6 +221,14 @@ export default {
       
       // 更新位置
       this.slidePosition = newLeft;
+      
+      // 记录轨迹（限制记录点数）
+      if (this.slideTrack.length < 100) {
+        this.slideTrack.push({
+          x: newLeft,
+          timestamp: Date.now()
+        });
+      }
     },
     
     // 拖动结束
@@ -205,12 +237,47 @@ export default {
       
       this.isDragging = false;
       
-      // 判断是否验证成功
+      // 判断是否验证成功（距离检测）
       if (this.slidePosition >= this.maxSlideDistance * this.successThreshold) {
-        this.verifySuccess();
+        // 发送轨迹到后端验证
+        this.verifyWithServer();
       } else {
         this.verifyFail();
       }
+    },
+    
+    // 后端验证（新增）
+    verifyWithServer() {
+      const totalTime = Date.now() - this.slideStartTime;
+      
+      // 准备验证数据
+      const verifyData = {
+        slideTrack: this.slideTrack,
+        totalTime: totalTime,
+        maxDistance: this.maxSlideDistance,
+        finalPosition: this.slidePosition,
+        browserFingerprint: this.browserFingerprint
+      };
+      
+      console.log('滑动验证数据:', verifyData);
+      
+      // 调用后端验证接口
+      this.$http.post(this.$constant.baseURL + "/captcha/verify-slide", verifyData)
+        .then(res => {
+          console.log("滑动验证响应:", res);
+          
+          if (res.data && res.data.success) {
+            this.verifySuccess();
+          } else {
+            this.errorMsg = res.data?.message || '验证失败，请重试';
+            this.verifyFail();
+          }
+        })
+        .catch(error => {
+          console.error("滑动验证失败:", error);
+          this.errorMsg = '验证失败，请重试';
+          this.verifyFail();
+        });
     },
     
     // 验证成功

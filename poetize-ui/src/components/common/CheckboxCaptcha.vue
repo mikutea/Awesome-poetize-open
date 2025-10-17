@@ -93,7 +93,18 @@ export default {
       verificationToken: '',
       verifying: false,
       isTrackingMouse: false,  // 添加鼠标轨迹跟踪状态
-      retryCount: 0  // 添加重试计数
+      retryCount: 0,  // 添加重试计数
+      browserFingerprint: null  // 浏览器指纹
+    }
+  },
+  async mounted() {
+    // 组件加载时获取浏览器指纹
+    try {
+      const { getBrowserFingerprint } = await import('@/utils/fingerprintUtil')
+      this.browserFingerprint = await getBrowserFingerprint()
+      console.log('浏览器指纹已加载:', this.browserFingerprint)
+    } catch (error) {
+      console.warn('浏览器指纹加载失败，将使用降级方案:', error)
     }
   },
   methods: {
@@ -122,7 +133,7 @@ export default {
         this.mouseTrack.push({
           x: e.clientX,
           y: e.clientY,
-          time: Date.now()
+          timestamp: Date.now()  // 使用timestamp字段（后端需要）
         });
       }
     },
@@ -158,10 +169,15 @@ export default {
       // 计算直线率
       const straightRatio = this.calculateStraightRatio();
       
+      // 计算点击延迟（从组件加载到点击的时间）
+      const clickDelay = this.checkTime - this.startTime;
+      
       // 准备发送到服务器的数据
       const verifyData = {
         mouseTrack: this.mouseTrack,
         straightRatio: straightRatio,
+        clickDelay: clickDelay,  // 点击延迟（毫秒）
+        browserFingerprint: this.browserFingerprint,  // 浏览器指纹
         timestamp: Date.now(),
         action: this.action,  // 添加操作类型
         isReplyComment: this.isReplyComment,  // 是否为回复评论场景
@@ -171,7 +187,7 @@ export default {
       };
       
       // 调用验证接口
-      this.$http.post(this.$constant.pythonBaseURL + "/captcha/verify-checkbox", verifyData)
+      this.$http.post(this.$constant.baseURL + "/captcha/verify-checkbox", verifyData)
         .then(res => {
           this.verifying = false;
           console.log("验证响应:", res.data);

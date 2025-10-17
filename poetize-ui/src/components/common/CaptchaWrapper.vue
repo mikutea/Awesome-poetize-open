@@ -208,7 +208,7 @@ export default {
      * 加载验证码配置
      */
     loadCaptchaConfig() {
-      this.$http.get(this.$constant.pythonBaseURL + "/captcha/getConfig", {}, false)
+      this.$http.get(this.$constant.baseURL + "/captcha/getConfig", {}, false)
         .then(res => {
           if (res.data) {
             this.captchaConfig = res.data;
