@@ -75,22 +75,8 @@ def detect_frontend_url():
             print(f"从后端URL推断前端URL: http://{host}")
             return f"http://{host}"
     
-    # 3. 尝试读取SEO配置文件获取站点地址
-    try:
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-        config_path = os.path.join(data_dir, 'seo_config.json')
-        
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                seo_config = json.load(f)
-                if seo_config.get('site_address'):
-                    print(f"从SEO配置获取前端URL: {seo_config['site_address']}")
-                    return seo_config['site_address']
-    except Exception as e:
-        print(f"读取SEO配置获取前端URL失败: {str(e)}")
-    
-    # 4. 默认前端URL - 不再假设8080
-    default_url = "http://localhost"  # 不指定端口，依赖站点的默认配置
+    # 3. 默认前端URL
+    default_url = "http://localhost"
     print(f"无法检测到前端URL，使用默认值: {default_url}")
     return default_url
 

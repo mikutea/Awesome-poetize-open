@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """
 JSON配置文件统一缓存管理器
 提供纯永久缓存模式，实现零文件系统访问的高效读取
@@ -10,8 +7,7 @@ import os
 import json
 import logging
 from typing import Dict, Any, Optional, List, Tuple
-from cache_service import get_cache_service
-from cache_constants import CacheConstants
+from redis_client import get_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -34,33 +30,24 @@ class JsonConfigCache:
     """
     
     def __init__(self):
-        self.cache_service = get_cache_service()
-        self._stats = {
-            'cache_hits': 0,
-            'cache_misses': 0,
-            'file_reads': 0
-        }
+        self.redis_client = get_redis_client()
+        self.cache_prefix = "poetize:python:json_config:"
         
-        # 已知的JSON配置文件映射（相对于py/目录的路径）
+        # JSON配置文件映射
         self.config_files = {
-            'mail_configs': 'data/mail_configs.json',
-            'captcha_config': 'data/captcha_config.json',
-            'seo_config': 'data/seo_config.json',
             'ai_chat_config': 'data/ai_chat_config.json',
             'ai_api_config': 'data/ai_api_config.json',
             'translation_config': 'data/translation_config.json'
         }
     
-
-    
     def _get_cache_key(self, config_name: str) -> str:
         """获取配置的缓存键"""
-        return f"{CacheConstants.CACHE_PREFIX}json_config:{config_name}"
+        return f"{self.cache_prefix}{config_name}"
     
 
     
     def get_json_config(self, config_name: str, file_path: str = None) -> Optional[Dict[str, Any]]:
-        """获取JSON配置（纯永久缓存模式）
+        """获取JSON配置（永久缓存）
 
         缓存策略：
         - 优先从永久缓存获取配置数据
@@ -80,15 +67,26 @@ class JsonConfigCache:
             cache_key = self._get_cache_key(config_name)
 
             # 优先从缓存获取
-            cached_config = self.cache_service.get(cache_key)
-            if cached_config:
-                self._stats['cache_hits'] += 1
-                logger.debug(f"从永久缓存获取JSON配置: {config_name}")
-                return cached_config
+            cached_value = self.redis_client.get(cache_key)
+            if cached_value:
+                # 处理可能的数据类型（字符串或已反序列化的字典）
+                if isinstance(cached_value, dict):
+                    cached_config = cached_value
+                elif isinstance(cached_value, (str, bytes)):
+                    try:
+                        cached_config = json.loads(cached_value)
+                    except:
+                        # 缓存损坏，删除并重新加载
+                        self.redis_client.delete(cache_key)
+                        cached_config = None
+                else:
+                    cached_config = None
+                
+                if cached_config:
+                    logger.debug(f"从缓存获取JSON配置: {config_name}")
+                    return cached_config
 
-            # 缓存不存在，需要从文件读取
-            self._stats['cache_misses'] += 1
-            self._stats['file_reads'] += 1
+            # 缓存不存在，从文件读取
 
             # 确定文件路径
             if not file_path:
@@ -107,9 +105,9 @@ class JsonConfigCache:
                 config = json.load(f)
 
             # 建立永久缓存
-            self.cache_service.set(cache_key, config)
+            self.redis_client.set(cache_key, json.dumps(config, ensure_ascii=False))
 
-            logger.debug(f"读取文件并建立永久缓存: {config_name}")
+            logger.debug(f"读取文件并建立缓存: {config_name}")
             return config
 
         except Exception as e:
@@ -132,7 +130,7 @@ class JsonConfigCache:
             cache_key = self._get_cache_key(config_name)
 
             # 删除旧缓存
-            self.cache_service.delete(cache_key)
+            self.redis_client.delete(cache_key)
 
             # 立即重建缓存
             new_config = self.get_json_config(config_name)
@@ -203,7 +201,7 @@ class JsonConfigCache:
                 
                 # 删除现有缓存
                 cache_key = self._get_cache_key(config_name)
-                self.cache_service.delete(cache_key)
+                self.redis_client.delete(cache_key)
                 
                 # 执行预热
                 logger.info(f"预热配置: {config_name} (路径: {file_path})")

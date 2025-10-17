@@ -26,8 +26,7 @@ class RateLimiter:
         
         # 清理过期记录
         if ip in self.request_logs:
-            self.request_logs[ip] = [t for t in self.request_logs[ip] 
-                                    if current_time - t < self.window_seconds]
+            self.request_logs[ip] = [t for t in self.request_logs[ip] if current_time - t < self.window_seconds]
         else:
             self.request_logs[ip] = []
             
@@ -40,7 +39,7 @@ class RateLimiter:
         self.request_logs[ip].append(current_time)
         return True
 
-# 初始化限流器 - 管理员API限制更严格
+# 初始化限流器
 admin_rate_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
 # Docker内部网络配置
@@ -73,7 +72,7 @@ def is_internal_network_ip(client_ip):
         try:
             current_network = ipaddress.ip_network(current_subnet, strict=False)
             if client_addr in current_network:
-                logger.info(f"✅ IP {client_ip} 在当前Docker网段 {current_subnet} 内，识别为内部服务")
+                logger.info(f"IP {client_ip} 在当前Docker网段 {current_subnet} 内，识别为内部服务")
                 return True
         except Exception as e:
             logger.warning(f"解析当前Docker网段失败: {e}")
@@ -83,12 +82,12 @@ def is_internal_network_ip(client_ip):
             try:
                 network = ipaddress.ip_network(network_str, strict=False)
                 if client_addr in network:
-                    logger.info(f"✅ IP {client_ip} 在内部网段 {network_str} 内，识别为内部服务")
+                    logger.info(f"IP {client_ip} 在内部网段 {network_str} 内，识别为内部服务")
                     return True
             except Exception as e:
                 logger.warning(f"解析网段 {network_str} 失败: {e}")
         
-        logger.info(f"❌ IP {client_ip} 不在任何内部网段内，识别为外部请求")
+        logger.info(f"IP {client_ip} 不在任何内部网段内，识别为外部请求")
         return False
         
     except Exception as e:
@@ -193,18 +192,18 @@ async def _fallback_ip_verification(client_ip: str, endpoint: str):
     """
     # 检查是否在内部网络（向后兼容）
     if is_internal_network_ip(client_ip):
-        logger.warning(f"⚠️ Token验证失败但IP在内部网段，允许访问（向后兼容）: {client_ip}, 请求: {endpoint}")
+        logger.warning(f"Token验证失败但IP在内部网段，允许访问（向后兼容）: {client_ip}, 请求: {endpoint}")
         logger.warning(f"建议为内部服务请求添加正确的认证token以增强安全性")
         return True
 
     # 检查是否在受信任IP列表中（向后兼容）
     current_trusted_ips = get_current_trusted_ips()
     if client_ip in current_trusted_ips:
-        logger.warning(f"⚠️ Token验证失败但IP在受信任列表，允许访问（向后兼容）: {client_ip}, 请求: {endpoint}")
+        logger.warning(f"Token验证失败但IP在受信任列表，允许访问: {client_ip}, 请求: {endpoint}")
         return True
 
     # 都不满足，拒绝访问
-    logger.error(f"❌ Token验证失败且IP不在信任范围内，拒绝访问: {client_ip}, 请求: {endpoint}")
+    logger.error(f"Token验证失败且IP不在信任范围内，拒绝访问: {client_ip}, 请求: {endpoint}")
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={
@@ -251,7 +250,7 @@ async def admin_required(
     # 如果是内部网络请求且带有正确的标识头，直接通过（与Java端逻辑一致）
     if (is_internal_network_ip(client_ip) and admin_flag == 'true' and
         internal_service in ['poetize-java', 'poetize-prerender', 'poetize-nginx', 'poetize-python']):
-        logger.info(f"✅ 内部服务请求通过认证检查 - 服务: {internal_service}, IP: {client_ip}")
+        logger.info(f"内部服务请求通过认证检查 - 服务: {internal_service}, IP: {client_ip}")
         return True
 
     # 主要验证：token验证（优先进行，与Java端逻辑一致）
@@ -334,7 +333,7 @@ async def admin_required(
 
                 # 权限验证通过
                 elapsed = time.time() - start_time
-                logger.info(f"✅ 管理员API权限验证通过: {endpoint}, IP: {client_ip}, 耗时: {elapsed:.3f}秒")
+                logger.info(f"管理员API权限验证通过: {endpoint}, IP: {client_ip}, 耗时: {elapsed:.3f}秒")
                 return True
             else:
                 logger.warning(f"Java后端权限验证失败: {data.get('message', '未知错误')}")

@@ -1,13 +1,11 @@
 """
-POETIZE博客系统 - AI聊天配置模块 (FastAPI版本)
+AI聊天配置模块
 
 主要功能：
 - AI聊天模型配置管理
 - API密钥安全存储
 - 聊天参数设置
 - 外观和高级配置
-
-版本: 1.0.0 (FastAPI)
 """
 
 import os
@@ -1048,10 +1046,10 @@ async def get_web_tools() -> List[dict]:
 async def get_ai_response(config, user_message, chat_history=[]):
     """获取AI响应 - 使用MCP协议获取工具（带缓存）"""
     try:
-        from cache_service import get_cache_service
+        from cache_helper import get_cache_helper
         import hashlib
 
-        cache_service = get_cache_service()
+        cache_service = get_cache_helper()
 
         # 生成缓存键（基于消息内容和配置）
         config_for_hash = {k: v for k, v in config.items() if k != 'api_key'}  # 排除敏感信息

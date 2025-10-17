@@ -19,7 +19,7 @@ import time
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 from config import JAVA_BACKEND_URL
-from cache_service import get_cache_service
+from cache_helper import get_cache_helper
 logger = logging.getLogger(__name__)
 
 # 翻译配置存储文件
@@ -133,7 +133,7 @@ class TranslationManager:
         self.config_file = TRANSLATION_CONFIG_FILE
         self.ensure_data_dir()
         # 集成Redis缓存服务
-        self.cache_service = get_cache_service()
+        self.cache_service = get_cache_helper()
         # 保留文件修改时间检测机制
         self._file_mtime = 0
         # 缓存键定义
