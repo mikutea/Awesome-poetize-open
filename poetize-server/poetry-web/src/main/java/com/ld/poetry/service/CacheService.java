@@ -18,15 +18,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.springframework.util.CollectionUtils;
 
 /**
  * 缓存服务类
@@ -68,7 +63,6 @@ public class CacheService {
         String key = CacheConstants.buildUserKey(userId);
         Object cached = redisUtil.get(key);
         if (cached instanceof User) {
-            log.debug("从缓存获取用户信息: {}", userId);
             return (User) cached;
         }
         return null;
@@ -81,7 +75,6 @@ public class CacheService {
         if (userId != null) {
             String key = CacheConstants.buildUserKey(userId);
             redisUtil.del(key);
-            log.debug("删除用户缓存: {}", userId);
         }
     }
 
@@ -94,7 +87,6 @@ public class CacheService {
         if (article != null && article.getId() != null) {
             String key = CacheConstants.buildArticleKey(article.getId());
             redisUtil.set(key, article, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存文章信息: {}", article.getId());
         }
     }
 
@@ -107,7 +99,6 @@ public class CacheService {
         String key = CacheConstants.buildArticleKey(articleId);
         Object cached = redisUtil.get(key);
         if (cached instanceof Article) {
-            log.debug("从缓存获取文章信息: {}", articleId);
             return (Article) cached;
         }
         return null;
@@ -120,7 +111,6 @@ public class CacheService {
         if (articleId != null) {
             String key = CacheConstants.buildArticleKey(articleId);
             redisUtil.del(key);
-            log.debug("删除文章缓存: {}", articleId);
         }
     }
 
@@ -130,7 +120,6 @@ public class CacheService {
     public void cacheArticleList(Integer sortId, Integer page, Integer size, List<Article> articles) {
         String key = CacheConstants.buildArticleListKey(sortId, page, size);
         redisUtil.set(key, articles, CacheConstants.DEFAULT_EXPIRE_TIME);
-        log.debug("缓存文章列表: sortId={}, page={}, size={}", sortId, page, size);
     }
 
     /**
@@ -141,7 +130,6 @@ public class CacheService {
         String key = CacheConstants.buildArticleListKey(sortId, page, size);
         Object cached = redisUtil.get(key);
         if (cached instanceof List) {
-            log.debug("从缓存获取文章列表: sortId={}, page={}, size={}", sortId, page, size);
             return (List<Article>) cached;
         }
         return null;
@@ -177,7 +165,6 @@ public class CacheService {
     public void cacheSortArticleList(Map<Integer, List<Article>> sortArticleMap) {
         if (sortArticleMap != null) {
             redisUtil.set(CacheConstants.SORT_ARTICLE_LIST_KEY, sortArticleMap, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存分类文章列表");
         }
     }
 
@@ -189,7 +176,6 @@ public class CacheService {
     public Map<Integer, List<Article>> getCachedSortArticleList() {
         Object cached = redisUtil.get(CacheConstants.SORT_ARTICLE_LIST_KEY);
         if (cached instanceof Map) {
-            log.debug("从缓存获取分类文章列表");
             Map<?, ?> rawMap = (Map<?, ?>) cached;
             Map<Integer, List<Article>> result = new HashMap<>();
 
@@ -247,7 +233,6 @@ public class CacheService {
      */
     public void evictSortArticleList() {
         redisUtil.del(CacheConstants.SORT_ARTICLE_LIST_KEY);
-        log.debug("删除分类文章列表缓存");
     }
 
 
@@ -262,7 +247,6 @@ public class CacheService {
             // 删除文章列表缓存（模糊删除）
             // 注意：这里简化处理，实际可以使用Redis的SCAN命令
             evictSortArticleList();
-            log.debug("删除文章相关缓存: articleId={}", articleId);
         }
     }
 
@@ -278,7 +262,6 @@ public class CacheService {
         if (articleId != null && qrCodeData != null && qrCodeData.length > 0) {
             String key = CacheConstants.buildArticleQRCodeKey(articleId);
             redisUtil.set(key, qrCodeData, CacheConstants.QRCODE_EXPIRE_TIME);
-            log.debug("缓存文章二维码: articleId={}, 大小={}bytes", articleId, qrCodeData.length);
         }
     }
 
@@ -294,7 +277,6 @@ public class CacheService {
         String key = CacheConstants.buildArticleQRCodeKey(articleId);
         Object cached = redisUtil.get(key);
         if (cached instanceof byte[]) {
-            log.debug("从缓存获取文章二维码: articleId={}", articleId);
             return (byte[]) cached;
         }
         return null;
@@ -309,7 +291,6 @@ public class CacheService {
         if (articleId != null) {
             String key = CacheConstants.buildArticleQRCodeKey(articleId);
             redisUtil.del(key);
-            log.debug("删除文章二维码缓存: articleId={}", articleId);
         }
     }
 
@@ -337,8 +318,6 @@ public class CacheService {
             Object cached = redisUtil.get(CacheConstants.WEB_INFO_KEY);
             if (cached instanceof WebInfo) {
                 WebInfo webInfo = (WebInfo) cached;
-                log.debug("从缓存获取网站信息成功 - Key: {}, webName: {}, webTitle: {}",
-                        CacheConstants.WEB_INFO_KEY, webInfo.getWebName(), webInfo.getWebTitle());
                 return webInfo;
             } else {
                 log.info("缓存中未找到网站信息 - Key: {}, 缓存值类型: {}",
@@ -437,7 +416,6 @@ public class CacheService {
         String key = CacheConstants.buildSysConfigKey(configKey);
         Object cached = redisUtil.get(key);
         if (cached instanceof String) {
-            log.debug("从缓存获取系统配置: {}", configKey);
             return (String) cached;
         }
         return null;
@@ -450,7 +428,6 @@ public class CacheService {
         if (configKey != null) {
             String key = CacheConstants.buildSysConfigKey(configKey);
             redisUtil.del(key);
-            log.debug("删除系统配置缓存: {}", configKey);
         }
     }
 
@@ -465,7 +442,6 @@ public class CacheService {
         String key = CacheConstants.LABEL_LIST_PREFIX + sortId;
         Object cached = redisUtil.get(key);
         if (cached instanceof List) {
-            log.debug("从缓存获取标签信息列表: sortId={}", sortId);
             return (List<?>) cached;
         }
         
@@ -509,7 +485,6 @@ public class CacheService {
         if (sortId != null) {
             String key = CacheConstants.LABEL_LIST_PREFIX + sortId;
             redisUtil.del(key);
-            log.debug("删除标签信息列表缓存: sortId={}", sortId);
         }
     }
 
@@ -521,7 +496,6 @@ public class CacheService {
     public void cacheIpHistory(Object ipHistorySet) {
         if (ipHistorySet != null) {
             redisUtil.set(CacheConstants.IP_HISTORY_KEY, ipHistorySet, CacheConstants.DEFAULT_EXPIRE_TIME);
-            log.debug("缓存IP历史记录集合");
         }
     }
 
@@ -531,7 +505,6 @@ public class CacheService {
     public Object getCachedIpHistory() {
         Object cached = redisUtil.get(CacheConstants.IP_HISTORY_KEY);
         if (cached != null) {
-            log.debug("从缓存获取IP历史记录集合");
             return cached;
         }
         return null;
@@ -542,16 +515,16 @@ public class CacheService {
      */
     public void evictIpHistory() {
         redisUtil.del(CacheConstants.IP_HISTORY_KEY);
-        log.debug("删除IP历史记录缓存");
     }
 
     /**
      * 缓存IP历史统计信息
+     * 注意：统计数据每天0点更新，过期时间设置为2天以确保缓存不会在定时任务执行前过期
      */
     public void cacheIpHistoryStatistics(Object statistics) {
         if (statistics != null) {
-            redisUtil.set(CacheConstants.IP_HISTORY_STATS_KEY, statistics, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存IP历史统计信息");
+            // 使用2天过期时间（172800秒），确保在下次定时任务刷新前缓存不会过期
+            redisUtil.set(CacheConstants.IP_HISTORY_STATS_KEY, statistics, 172800L);
         }
     }
 
@@ -562,10 +535,10 @@ public class CacheService {
         try {
             Object cached = redisUtil.get(CacheConstants.IP_HISTORY_STATS_KEY);
             if (cached != null) {
-                log.debug("从缓存获取IP历史统计信息");
                 return cached;
             } else {
-                log.warn("IP历史统计信息缓存为空");
+                // 使用debug级别，因为缓存为空是正常情况（如系统刚启动）
+                log.debug("IP历史统计信息缓存为空，可能是系统刚启动或缓存已过期");
             }
         } catch (Exception e) {
             log.error("获取IP历史统计信息缓存时出错", e);
@@ -593,7 +566,8 @@ public class CacheService {
             log.error("安全获取IP历史统计信息时出错", e);
         }
 
-        log.warn("IP历史统计缓存为空或异常，返回带刷新标记的默认值");
+        // 使用debug级别，因为返回默认值是正常的容错机制
+        log.debug("IP历史统计缓存为空或异常，返回带刷新标记的默认值");
         // 返回默认值，但标记需要刷新
         Map<String, Object> defaultStats = new HashMap<>();
         defaultStats.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
@@ -610,7 +584,6 @@ public class CacheService {
      */
     public void evictIpHistoryStatistics() {
         redisUtil.del(CacheConstants.IP_HISTORY_STATS_KEY);
-        log.debug("删除IP历史统计信息缓存");
     }
 
     /**
@@ -631,7 +604,6 @@ public class CacheService {
         String key = CacheConstants.CACHE_PREFIX + "admin:family";
         Object cached = redisUtil.get(key);
         if (cached != null) {
-            log.debug("从缓存获取管理员家庭信息");
             return cached;
         }
         return null;
@@ -659,7 +631,6 @@ public class CacheService {
         String key = CacheConstants.buildAdminTokenKey(userId);
         Object cached = redisUtil.get(key);
         if (cached instanceof String) {
-            log.debug("获取管理员token: userId={}", userId);
             return (String) cached;
         }
         return null;
@@ -672,7 +643,6 @@ public class CacheService {
         if (userId != null) {
             String key = CacheConstants.buildAdminTokenKey(userId);
             redisUtil.del(key);
-            log.debug("删除管理员token: userId={}", userId);
         }
     }
 
@@ -694,7 +664,6 @@ public class CacheService {
         if (userId != null) {
             String key = CacheConstants.buildUserTokenKey(userId);
             redisUtil.del(key);
-            log.debug("删除用户token: userId={}", userId);
         }
     }
 
@@ -707,7 +676,6 @@ public class CacheService {
                 CacheConstants.buildAdminTokenIntervalKey(userId) :
                 CacheConstants.buildUserTokenIntervalKey(userId);
             redisUtil.set(key, System.currentTimeMillis(), CommonConst.TOKEN_EXPIRE);
-            log.debug("缓存token间隔检查: userId={}, isAdmin={}, 过期时间: {}秒", userId, isAdmin, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -720,7 +688,6 @@ public class CacheService {
                 CacheConstants.buildAdminTokenIntervalKey(userId) :
                 CacheConstants.buildUserTokenIntervalKey(userId);
             redisUtil.del(key);
-            log.debug("删除token间隔检查: userId={}, isAdmin={}", userId, isAdmin);
         }
     }
 
@@ -741,7 +708,6 @@ public class CacheService {
             // 注意：这里需要根据token清理会话，但我们没有反向映射
             // 建议在实际使用中维护userId到token的映射
 
-            log.debug("清理用户所有token相关缓存: userId={}", userId);
         }
     }
 
@@ -782,7 +748,6 @@ public class CacheService {
         if (token != null && userId != null) {
             String key = CacheConstants.buildSessionKey(token);
             redisUtil.set(key, userId, CommonConst.TOKEN_EXPIRE);
-            log.debug("缓存用户会话: token={}, userId={}, 过期时间: {}秒", token, userId, CommonConst.TOKEN_EXPIRE);
         }
     }
 
@@ -807,7 +772,6 @@ public class CacheService {
         String key = CacheConstants.buildUserTokenKey(userId);
         Object cached = redisUtil.get(key);
         if (cached instanceof String) {
-            log.debug("从缓存获取用户Token: userId={}", userId);
             return (String) cached;
         }
         return null;
@@ -822,7 +786,6 @@ public class CacheService {
         String key = CacheConstants.buildSessionKey(token);
         Object cached = redisUtil.get(key);
         if (cached instanceof Integer) {
-            log.debug("从会话缓存获取用户ID: {}", cached);
             return (Integer) cached;
         }
         return null;
@@ -835,7 +798,6 @@ public class CacheService {
         if (token != null) {
             String key = CacheConstants.buildSessionKey(token);
             redisUtil.del(key);
-            log.debug("删除用户会话: {}", token);
         }
     }
 
@@ -846,7 +808,6 @@ public class CacheService {
         if (userId != null) {
             String key = CacheConstants.CACHE_PREFIX + "user:token:" + userId;
             redisUtil.del(key);
-            log.debug("删除用户Token映射: userId={}", userId);
         }
     }
 
@@ -866,7 +827,6 @@ public class CacheService {
     public User getCachedAdminUser() {
         Object cached = redisUtil.get(CacheConstants.CACHE_PREFIX + "admin");
         if (cached instanceof User) {
-            log.debug("从缓存获取管理员用户信息");
             return (User) cached;
         }
         return null;
@@ -881,7 +841,6 @@ public class CacheService {
         if (source != null && type != null && comments != null) {
             String key = CacheConstants.buildCommentListKey(source, type);
             redisUtil.set(key, comments, CacheConstants.DEFAULT_EXPIRE_TIME);
-            log.debug("缓存评论列表: source={}, type={}", source, type);
         }
     }
 
@@ -895,7 +854,6 @@ public class CacheService {
         String key = CacheConstants.buildCommentListKey(source, type);
         Object cached = redisUtil.get(key);
         if (cached instanceof List) {
-            log.debug("从缓存获取评论列表: source={}, type={}", source, type);
             return (List<?>) cached;
         }
         return null;
@@ -908,7 +866,6 @@ public class CacheService {
         if (source != null && type != null) {
             String key = CacheConstants.buildCommentListKey(source, type);
             redisUtil.del(key);
-            log.debug("删除评论列表缓存: source={}, type={}", source, type);
         }
     }
 
@@ -919,7 +876,6 @@ public class CacheService {
         if (source != null && type != null && count != null) {
             String key = CacheConstants.buildCommentListKey(source, type) + ":count";
             redisUtil.set(key, count, CacheConstants.LONG_EXPIRE_TIME);
-            log.debug("缓存评论数量: source={}, type={}, count={}", source, type, count);
         }
     }
 
@@ -932,7 +888,6 @@ public class CacheService {
         String key = CacheConstants.buildCommentListKey(source, type) + ":count";
         Object cached = redisUtil.get(key);
         if (cached instanceof Number) {
-            log.debug("从缓存获取评论数量: source={}, type={}", source, type);
             return ((Number) cached).longValue();
         }
         return null;
@@ -966,7 +921,6 @@ public class CacheService {
             evictCommentList(source, type);
             String countKey = CacheConstants.buildCommentListKey(source, type) + ":count";
             redisUtil.del(countKey);
-            log.debug("删除评论相关缓存: source={}, type={}", source, type);
         }
     }
 
@@ -984,7 +938,6 @@ public class CacheService {
      */
     public void set(String key, Object value) {
         redisUtil.set(key, value);
-        log.debug("设置永久缓存: key={}", key);
     }
 
     /**
@@ -993,7 +946,6 @@ public class CacheService {
     public Object get(String key) {
         Object value = redisUtil.get(key);
         if (value != null) {
-            log.debug("从缓存获取数据: key={}", key);
         }
         return value;
     }
@@ -1304,7 +1256,6 @@ public class CacheService {
         
         try {
             statistics.put(CommonConst.IP_HISTORY_PROVINCE, historyInfoMapper.getHistoryByProvince());
-            log.debug("数据库省份统计查询完成");
         } catch (Exception e) {
             log.error("数据库省份统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_PROVINCE, new ArrayList<>());
@@ -1312,7 +1263,6 @@ public class CacheService {
         
         try {
             statistics.put(CommonConst.IP_HISTORY_IP, historyInfoMapper.getHistoryByIp());
-            log.debug("数据库IP统计查询完成");
         } catch (Exception e) {
             log.error("数据库IP统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_IP, new ArrayList<>());
@@ -1320,7 +1270,6 @@ public class CacheService {
         
         try {
             statistics.put(CommonConst.IP_HISTORY_HOUR, historyInfoMapper.getHistoryByYesterday());
-            log.debug("数据库昨日访问统计查询完成");
         } catch (Exception e) {
             log.error("数据库昨日访问统计查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_HOUR, new ArrayList<>());
@@ -1329,7 +1278,6 @@ public class CacheService {
         try {
             Long totalCount = historyInfoMapper.getHistoryCount();
             statistics.put(CommonConst.IP_HISTORY_COUNT, totalCount != null ? totalCount : 0L);
-            log.debug("数据库总访问量查询完成");
         } catch (Exception e) {
             log.error("数据库总访问量查询失败", e);
             statistics.put(CommonConst.IP_HISTORY_COUNT, 0L);
@@ -1344,7 +1292,6 @@ public class CacheService {
     private List<Map<String, Object>> getYesterdayStatisticsFromDatabase() {
         try {
             List<Map<String, Object>> yesterdayRecords = historyInfoMapper.getHistoryByYesterday();
-            log.debug("成功获取昨日访问记录: {} 条", yesterdayRecords != null ? yesterdayRecords.size() : 0);
             return yesterdayRecords != null ? yesterdayRecords : new ArrayList<>();
         } catch (Exception e) {
             log.error("获取昨日访问统计失败", e);
@@ -1516,7 +1463,6 @@ public class CacheService {
             
             // 缓存24小时
             redisUtil.set(key, uiState, 24 * 60 * 60);
-            log.debug("缓存用户界面状态: userId={}, showBodyLeft={}", userId, showBodyLeft);
         }
     }
     
@@ -1534,7 +1480,6 @@ public class CacheService {
         Object cached = redisUtil.get(key);
         
         if (cached instanceof Map) {
-            log.debug("从缓存获取用户界面状态: userId={}", userId);
             return (Map<String, Object>) cached;
         }
         
@@ -1550,7 +1495,6 @@ public class CacheService {
         if (userId != null) {
             String key = USER_UI_STATE_PREFIX + userId;
             redisUtil.del(key);
-            log.debug("删除用户界面状态缓存: userId={}", userId);
         }
     }
 
@@ -1588,7 +1532,6 @@ public class CacheService {
         String key = WS_SESSION_PREFIX + wsToken;
         Object cached = redisUtil.get(key);
         if (cached instanceof Integer) {
-            log.debug("从WebSocket会话缓存获取用户ID: {}", cached);
             return (Integer) cached;
         }
         return null;
@@ -1603,7 +1546,6 @@ public class CacheService {
         if (wsToken != null) {
             String key = WS_SESSION_PREFIX + wsToken;
             redisUtil.del(key);
-            log.debug("删除WebSocket会话缓存: {}", wsToken);
         }
     }
 
@@ -1617,7 +1559,6 @@ public class CacheService {
         if (wsToken != null) {
             String key = WS_SESSION_PREFIX + wsToken;
             redisUtil.expire(key, expireSeconds);
-            log.debug("延长WebSocket会话有效期: wsToken={}, 新过期时间: {}秒", wsToken, expireSeconds);
         }
     }
 }

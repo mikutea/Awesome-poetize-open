@@ -7,7 +7,7 @@
     <div class="privacy-content">
       <section>
         <h2>1. 引言</h2>
-        <p>欢迎访问{{ $store.state.webInfo.webTitle }}网站。我们非常重视您的隐私和个人信息保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。</p>
+        <p>欢迎访问{{ mainStore.webInfo.webTitle }}网站。我们非常重视您的隐私和个人信息保护。本隐私政策旨在向您说明我们如何收集、使用、存储和保护您的个人信息。</p>
       </section>
       
       <section>
@@ -65,18 +65,25 @@
       <section>
         <h2>8. 联系我们</h2>
         <p>如果您对本隐私政策有任何疑问或建议，请通过以下方式联系我们：</p>
-        <p>邮箱：{{ $store.state.webInfo.email || 'admin@poetize.cn' }}</p>
+        <p>邮箱：{{ mainStore.webInfo.email || 'admin@poetize.cn' }}</p>
       </section>
     </div>
   </div>
 </template>
 
 <script>
+  import { useMainStore } from '@/stores/main';
+
 export default {
-  name: 'Privacy',
+      computed: {
+      mainStore() {
+        return useMainStore();
+      }
+    },
+    name: 'Privacy',
   metaInfo() {
     return {
-      title: '隐私政策 - ' + this.$store.state.webInfo.webTitle
+      title: '隐私政策 - ' + this.mainStore.webInfo.webTitle
     }
   },
   created() {
@@ -99,7 +106,7 @@ export default {
   },
   methods: {
     setPageBackground() {
-      const webInfo = this.$store.state.webInfo;
+      const webInfo = this.mainStore.webInfo;
       if (webInfo && webInfo.backgroundImage) {
         // 设置整个页面的背景
         document.body.style.backgroundImage = `url(${webInfo.backgroundImage})`;

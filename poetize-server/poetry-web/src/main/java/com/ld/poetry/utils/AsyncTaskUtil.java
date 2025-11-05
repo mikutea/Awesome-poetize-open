@@ -136,10 +136,8 @@ public class AsyncTaskUtil {
                         if (user != null) {
                             username = user.getUsername();
                             userId = user.getId();
-                            log.debug("异步任务从请求中恢复用户上下文: userId={}, username={}", userId, username);
                         }
                     } catch (Exception e) {
-                        log.debug("从请求恢复用户上下文失败: {}", e.getMessage());
                     }
                 }
             }

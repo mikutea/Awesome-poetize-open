@@ -30,7 +30,6 @@ public class AsyncImageCompressService {
     public CompletableFuture<ImageCompressUtil.CompressResult> compressImageAsync(MultipartFile file) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                log.debug("开始异步压缩图片: {}", file.getOriginalFilename());
                 
                 ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
                 
@@ -38,9 +37,6 @@ public class AsyncImageCompressService {
                 totalProcessed.incrementAndGet();
                 totalSaved.addAndGet(result.getOriginalSize() - result.getCompressedSize());
                 
-                log.debug("图片压缩完成: {}, 节省空间: {}KB", 
-                         file.getOriginalFilename(), 
-                         (result.getOriginalSize() - result.getCompressedSize()) / 1024);
                 
                 return result;
                 
@@ -60,8 +56,6 @@ public class AsyncImageCompressService {
             MultipartFile file, int maxWidth, int maxHeight, float quality, long targetSize) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                log.debug("开始异步压缩图片（自定义参数）: {}, 目标尺寸: {}x{}, 质量: {}, 目标大小: {}KB", 
-                         file.getOriginalFilename(), maxWidth, maxHeight, quality, targetSize / 1024);
                 
                 ImageCompressUtil.CompressResult result = 
                         ImageCompressUtil.smartCompress(file, maxWidth, maxHeight, quality, targetSize);
@@ -70,8 +64,6 @@ public class AsyncImageCompressService {
                 totalProcessed.incrementAndGet();
                 totalSaved.addAndGet(result.getOriginalSize() - result.getCompressedSize());
                 
-                log.debug("图片压缩完成: {}, 压缩率: {:.1f}%", 
-                         file.getOriginalFilename(), result.getCompressionRatio());
                 
                 return result;
                 
@@ -100,10 +92,8 @@ public class AsyncImageCompressService {
                         ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
                         batchResult.addSuccess(result);
                         
-                        log.debug("批量压缩成功: {}", file.getOriginalFilename());
                     } else {
                         batchResult.addSkipped(file.getOriginalFilename(), "非图片文件");
-                        log.debug("跳过非图片文件: {}", file.getOriginalFilename());
                     }
                 } catch (Exception e) {
                     batchResult.addError(file.getOriginalFilename(), e.getMessage());

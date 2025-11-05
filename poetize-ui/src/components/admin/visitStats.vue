@@ -1,5 +1,5 @@
 <template>
-    <div class="stats-container">
+    <div class="stats-container" :class="{ 'stats-dark-mode': isDarkMode }">
       <!-- 统计卡片区域 -->
       <div class="stat-cards">
         <div class="stat-card">
@@ -55,7 +55,8 @@
         timeRange: '30',
         loading: false,
         visitStats: [],
-        chart: null
+        chart: null,
+        isDarkMode: false
       }
     },
   
@@ -76,6 +77,8 @@
     },
   
     mounted() {
+      this.updateTheme();
+      this.setupThemeListener();
       this.initChart();
       this.fetchVisitStats();
       
@@ -89,6 +92,14 @@
         this.chart = null;
       }
       window.removeEventListener('resize', this.resizeChart);
+      
+      // 清理全局事件监听
+      this.$root.$off('theme-changed');
+      
+      // 清理 storage 事件监听
+      if (this.themeListener) {
+        window.removeEventListener('storage', this.themeListener);
+      }
     },
   
     methods: {
@@ -105,7 +116,7 @@
   
       updateChart() {
         if (!this.chart) return;
-  
+
         // 生成完整的日期范围
         const now = new Date();
         const days = parseInt(this.timeRange);
@@ -146,6 +157,14 @@
         // 计算平均值
         const avgVisits = this.calculateAverage(uniqueVisits);
         const avgLine = Array(dates.length).fill(avgVisits);
+        
+        // 深色模式颜色适配
+        const isDark = this.isDarkMode;
+        const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : '#86868b';
+        const splitLineColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+        const tooltipBgColor = isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.9)';
+        const tooltipTextColor = isDark ? '#f5f5f7' : '#1d1d1f';
+        const tooltipLabelColor = isDark ? 'rgba(255, 255, 255, 0.6)' : '#86868b';
   
         const option = {
           backgroundColor: 'transparent',
@@ -158,18 +177,18 @@
           },
           tooltip: {
             trigger: 'axis',
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            backgroundColor: tooltipBgColor,
             borderRadius: 8,
             borderWidth: 0,
             padding: [8, 12],
             textStyle: {
-              color: '#1d1d1f',
+              color: tooltipTextColor,
               fontSize: 12
             },
             axisPointer: {
-              type: 'line', // 改为直线指示器
+              type: 'line',
               lineStyle: {
-                color: 'rgba(0, 0, 0, 0.1)',
+                color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
                 width: 1
               }
             },
@@ -184,7 +203,7 @@
                 else color = '#ff9500';
                 
                 result += `<div style="display: flex; align-items: center; justify-content: space-between; margin: 4px 0; font-size: 12px;">
-                  <span style="color: #86868b;">${item.seriesName}:</span>
+                  <span style="color: ${tooltipLabelColor};">${item.seriesName}:</span>
                   <span style="color: ${color}; font-weight: 600; margin-left: 12px;">${item.value}</span>
                 </div>`;
               });
@@ -206,7 +225,7 @@
               show: false
             },
             axisLabel: {
-              color: '#86868b',
+              color: textColor,
               fontSize: 10,
               margin: 12,
               formatter: function (value) {
@@ -227,13 +246,13 @@
               show: false
             },
             axisLabel: {
-              color: '#86868b',
+              color: textColor,
               fontSize: 10,
               margin: 12
             },
             splitLine: {
               lineStyle: {
-                color: 'rgba(0, 0, 0, 0.05)',
+                color: splitLineColor,
                 type: 'dashed'
               }
             }
@@ -355,6 +374,45 @@
           .finally(() => {
             this.loading = false;
           });
+      },
+      
+      // 更新主题状态
+      updateTheme() {
+        const theme = localStorage.getItem('theme');
+        if (theme) {
+          // 用户手动设置了主题
+          this.isDarkMode = theme === 'dark';
+        } else {
+          // 用户未设置，检查 DOM 或系统偏好
+          const hasDarkClass = document.body.classList.contains('dark-mode') || 
+                              document.documentElement.classList.contains('dark-mode');
+          if (hasDarkClass) {
+            this.isDarkMode = true;
+          } else {
+            // 最后检查系统偏好
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            this.isDarkMode = prefersDark;
+          }
+        }
+      },
+      
+      // 监听主题变化
+      setupThemeListener() {
+        // 监听全局主题变化事件（由父组件 admin.vue 触发）
+        this.$root.$on('theme-changed', (isDark) => {
+          this.isDarkMode = isDark;
+          // 主题变化时重新渲染图表
+          this.updateChart();
+        });
+        
+        // 监听 storage 事件（跨标签页）
+        this.themeListener = (e) => {
+          if (e.key === 'theme') {
+            this.updateTheme();
+            this.updateChart();
+          }
+        };
+        window.addEventListener('storage', this.themeListener);
       }
     }
   }
@@ -534,5 +592,56 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 12px;
     }
+  }
+  
+  /* ========== 深色模式适配 ========== */
+  .stats-dark-mode .stat-card {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+  }
+  
+  .stats-dark-mode .stat-value {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+  
+  .stats-dark-mode .stat-label {
+    color: rgba(255, 255, 255, 0.6) !important;
+  }
+  
+  .stats-dark-mode .chart-wrapper {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+  }
+  
+  .stats-dark-mode .chart-title {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+  
+  .stats-dark-mode .time-btn {
+    color: rgba(255, 255, 255, 0.6) !important;
+  }
+  
+  .stats-dark-mode .time-btn.active {
+    background-color: #0071e3 !important;
+    color: #fff !important;
+  }
+  
+  .stats-dark-mode .time-btn:hover:not(.active) {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+  }
+  
+  .stats-dark-mode .refresh-btn {
+    color: rgba(255, 255, 255, 0.6) !important;
+  }
+  
+  .stats-dark-mode .refresh-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: #0071e3 !important;
+  }
+  
+  .stats-dark-mode .loading-overlay {
+    background-color: rgba(30, 30, 30, 0.8) !important;
+  }
+  
+  .stats-dark-mode .loading-spinner {
+    border-top-color: #0071e3 !important;
   }
   </style> 

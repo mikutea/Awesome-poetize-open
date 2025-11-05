@@ -48,26 +48,22 @@ public class IpLocationProviderFactory {
             tencentLbsProvider.setApiKey(tencentLbsKey);
             if (tencentLbsProvider.isAvailable() && tencentLbsProvider.supportsIpType(ipAddress)) {
                 providers.add(tencentLbsProvider);
-                log.debug("腾讯位置服务已添加到提供者列表");
             }
         }
         
         // 检查淘宝IP服务
         if (taobaoIpProvider.isAvailable() && taobaoIpProvider.supportsIpType(ipAddress)) {
             providers.add(taobaoIpProvider);
-            log.debug("淘宝IP服务已添加到提供者列表");
         }
         
         // 检查IP2Region离线库
         if (ip2RegionProvider.isAvailable() && ip2RegionProvider.supportsIpType(ipAddress)) {
             providers.add(ip2RegionProvider);
-            log.debug("IP2Region离线库已添加到提供者列表");
         }
         
         // 按优先级排序（数字越小优先级越高）
         providers.sort(Comparator.comparingInt(IpLocationProvider::getPriority));
         
-        log.debug("IP地址 {} 的可用提供者数量: {}", ipAddress, providers.size());
         return providers;
     }
     
@@ -85,7 +81,6 @@ public class IpLocationProviderFactory {
         }
         
         IpLocationProvider bestProvider = providers.get(0);
-        log.debug("为IP地址 {} 选择的最佳提供者: {}", ipAddress, bestProvider.getProviderName());
         return bestProvider;
     }
     
@@ -111,7 +106,6 @@ public class IpLocationProviderFactory {
         // 按优先级尝试各个提供者
         for (IpLocationProvider provider : providers) {
             try {
-                log.debug("使用 {} 解析IP: {}", provider.getProviderName(), ipAddress);
                 String result = provider.resolveLocation(ipAddress);
                 
                 if (!"未知".equals(result)) {
@@ -145,7 +139,6 @@ public class IpLocationProviderFactory {
             tencentLbsProvider.setApiKey(tencentLbsKey);
             if (tencentLbsProvider.isAvailable()) {
                 try {
-                    log.debug("使用腾讯位置服务解析IPv6地址: {}", ipv6Address);
                     String result = tencentLbsProvider.resolveLocation(ipv6Address);
                     
                     if (!"未知".equals(result)) {
@@ -160,7 +153,6 @@ public class IpLocationProviderFactory {
         }
         
         // IPv6简化处理策略
-        log.debug("IPv6地址使用简化处理策略: {}", ipv6Address);
         return "IPv6地址";
     }
     

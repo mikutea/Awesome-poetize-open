@@ -88,7 +88,6 @@ public class AdminSeoController {
             HttpEntity<?> request = new HttpEntity<>(headers);
             
             restTemplate.exchange(clearCacheUrl, HttpMethod.GET, request, String.class);
-            log.info("SEO配置更新后nginx缓存清除成功");
         } catch (Exception e) {
             log.warn("清除nginx SEO缓存失败: {}", e.getMessage());
             // 不抛出异常，避免影响主流程
@@ -136,15 +135,13 @@ public class AdminSeoController {
     @LoginCheck(1)
     public PoetryResult<Boolean> updateSeoConfig(@RequestBody Map<String, Object> configData) {
         try {
-            log.info("开始更新SEO配置");
             boolean success = seoConfigService.updateSeoConfigFromJson(configData);
             if (success) {
-                // SEO配置更新时，清除缓存并重新渲染页面
+                // SEO配置更新时，清除缓存、重新生成sitemap并推送、重新渲染页面
                 try {
-                    // 1. 清除sitemap缓存
+                    // 1. 重新生成sitemap并推送到搜索引擎（SEO配置变更影响所有URL）
                     if (sitemapService != null) {
-                        sitemapService.clearSitemapCache();
-                        log.info("SEO配置更新后已清除sitemap缓存");
+                        sitemapService.updateSitemapAndPush("SEO配置更新");
                     }
                     
                     // 2. 清除nginx SEO缓存
@@ -156,19 +153,16 @@ public class AdminSeoController {
                             // 等待2秒确保缓存完全生效并可被预渲染服务读取
                             Thread.sleep(2000);
                             poetryApplicationRunner.executeFullPrerender();
-                            log.info("SEO配置更新后成功触发页面预渲染");
                         } catch (Exception e) {
                             log.warn("异步预渲染失败", e);
                         }
                     });
                     
-                    log.debug("SEO配置更新后已清除相关缓存并异步触发预渲染");
                 } catch (Exception e) {
                     // 预渲染失败不影响主流程，只记录日志
-                    log.warn("SEO配置更新后缓存清除和页面预渲染失败", e);
+                    log.warn("缓存清除或预渲染失败", e);
                 }
                 
-                log.info("SEO配置更新成功，缓存已清理，预渲染已异步触发");
                 return PoetryResult.success(true);
             } else {
                 return PoetryResult.fail("SEO配置更新失败");
@@ -197,7 +191,6 @@ public class AdminSeoController {
             if (success) {
                 // 自动清理相关缓存
                 clearSeoCache();
-                log.info("SEO启用状态更新成功: {}, 缓存已自动清理", enable);
                 return PoetryResult.success(true);
             } else {
                 return PoetryResult.fail("SEO状态更新失败");
@@ -237,7 +230,6 @@ public class AdminSeoController {
             if (articleIdObj != null) {
                 String cacheKey = "seo:article:" + articleIdObj;
                 cacheService.deleteKey(cacheKey);
-                log.info("清理文章SEO缓存成功: articleId={}", articleIdObj);
             }
             return PoetryResult.success(true);
         } catch (Exception e) {
@@ -259,7 +251,6 @@ public class AdminSeoController {
                     String cacheKey = "seo:article:" + articleId;
                     cacheService.deleteKey(cacheKey);
                 }
-                log.info("批量清理文章SEO缓存成功");
             }
             return PoetryResult.success(true);
         } catch (Exception e) {
@@ -374,7 +365,6 @@ public class AdminSeoController {
         // 清理sitemap缓存
         sitemapService.clearSitemapCache();
         
-        log.info("SEO相关缓存已完全清理");
     }
 
     private Map<String, Object> performSeoAnalysis(Map<String, Object> seoConfig) {

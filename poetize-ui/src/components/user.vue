@@ -8,8 +8,8 @@
                 style="position: absolute"
                 v-once
                 lazy
-                :src="$store.state.webInfo.randomCover && $store.state.webInfo.randomCover.length > 0 
-                      ? $store.state.webInfo.randomCover[Math.floor(Math.random() * $store.state.webInfo.randomCover.length)]
+                :src="mainStore.webInfo.randomCover && mainStore.webInfo.randomCover.length > 0 
+                      ? mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)]
                       : '/assets/backgroundPicture.jpg'"
                 fit="cover">
         <div slot="error" class="image-slot"></div>
@@ -21,16 +21,16 @@
             <input v-model="username" type="text" maxlength="30" placeholder="用户名">
             <input v-model="password" type="password" maxlength="30" placeholder="密码">
             <input v-model="email" type="email" placeholder="邮箱">
-            <input v-model="code" type="text" placeholder="验证码" disabled>
+            <input v-model="code" type="text" placeholder="验证码" disabled @keyup.enter="showRegistVerify()">
             <a style="margin: 0" href="#" @click="changeDialog('邮箱验证码')">获取验证码</a>
-            <button @click="showRegistVerify()" style="width: 100%; border-radius: 3px; background: var(--gradualRed); box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); border: none; color: var(--white);">注册</button>
+            <el-button type="primary" round @click="showRegistVerify()" style="border-radius:8px; width:90%; background: var(--gradualRed); border: none; box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); transition: transform 0.3s ease, box-shadow 0.3s ease; padding: 12px 30px; font-weight: 600; letter-spacing: 1px; transform: translateZ(0);">注册</el-button>
           </div>
         </div>
         <div class="form-container sign-in-container">
           <div class="myCenter">
             <h1>登录</h1>
             <input v-model="account" type="text" placeholder="用户名/邮箱/手机号">
-            <input v-model="password" type="password" placeholder="密码">
+            <input v-model="password" type="password" placeholder="密码" @keyup.enter="showLoginVerify()">
             <a href="#" @click="changeDialog('找回密码')">忘记密码？</a>
             <el-button type="primary" round @click="showLoginVerify()" style="border-radius:8px; width:90%; background: var(--gradualRed); border: none; box-shadow: 3px 3px 6px var(--miniMask), -1px -1px 4px var(--miniWhiteMask); transition: transform 0.3s ease, box-shadow 0.3s ease; padding: 12px 30px; font-weight: 600; letter-spacing: 1px; transform: translateZ(0);">登 录</el-button>
             
@@ -78,8 +78,8 @@
                 style="position: absolute"
                 v-once
                 lazy
-                :src="$store.state.webInfo.randomCover && $store.state.webInfo.randomCover.length > 0 
-                      ? $store.state.webInfo.randomCover[Math.floor(Math.random() * $store.state.webInfo.randomCover.length)]
+                :src="mainStore.webInfo.randomCover && mainStore.webInfo.randomCover.length > 0 
+                      ? mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)]
                       : '/assets/backgroundPicture.jpg'"
                 fit="cover">
         <div slot="error" class="image-slot"></div>
@@ -88,7 +88,9 @@
         <div class="user-left">
           <div>
             <el-avatar class="user-avatar" @click.native="changeDialog('修改头像')" :size="60"
-                       :src="currentUser.avatar"></el-avatar>
+                       :src="$common.getAvatarUrl(currentUser.avatar)">
+              <img :src="$getDefaultAvatar()" />
+            </el-avatar>
           </div>
           <div class="myCenter" style="margin-top: 12px">
             <div class="user-title">
@@ -148,6 +150,7 @@
                width="30%"
                :before-close="clearDialog"
                :append-to-body="true"
+               custom-class="centered-dialog"
                :close-on-click-modal="false"
                center>
       <div class="myCenter" style="flex-direction: column">
@@ -242,7 +245,9 @@
 </template>
 
 <script>
-  const proButton = () => import( "./common/proButton");
+    import { useMainStore } from '@/stores/main';
+
+const proButton = () => import( "./common/proButton");
   const uploadPicture = () => import( "./common/uploadPicture");
   const CaptchaWrapper = () => import("./common/CaptchaWrapper");
   import { checkCaptchaWithCache } from '@/utils/captchaUtil';
@@ -256,7 +261,7 @@
     },
     data() {
       return {
-        currentUser: this.$store.state.currentUser,
+        currentUser: {},
         username: "",
         account: "",
         password: "",
@@ -279,12 +284,18 @@
       }
     },
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       // 判断当前用户是否为第三方登录用户
       isThirdPartyUser() {
         return this.currentUser && this.currentUser.platformType
       }
     },
     created() {
+      // 初始化当前用户
+      this.currentUser = this.mainStore.currentUser;
+      
       // 动态设置页面SEO信息
       this.updatePageSEO();
     },
@@ -296,7 +307,7 @@
       this.$bus.$on('thirdPartyLoginConfigChanged', this.handleThirdPartyConfigChange);
       
       // 监听登录状态变化，动态更新SEO
-      this.$watch('$store.state.currentUser', () => {
+      this.$watch('mainStore.currentUser', () => {
         this.updatePageSEO();
       });
     },
@@ -308,16 +319,16 @@
       // 根据登录状态动态更新页面SEO信息
       updatePageSEO() {
         // 优先使用webTitle，fallback到webName，最后使用默认值
-        const webTitle = this.$store.state.webInfo?.webTitle || 
-                        this.$store.state.webInfo?.webName || 
+        const webTitle = this.mainStore.webInfo?.webTitle || 
+                        this.mainStore.webInfo?.webName || 
                         'Poetize';
-        const isLoggedIn = !this.$common.isEmpty(this.$store.state.currentUser);
+        const isLoggedIn = !this.$common.isEmpty(this.mainStore.currentUser);
         
         let title, description, keywords;
         
         if (isLoggedIn) {
           // 已登录：个人中心
-          const userName = this.$store.state.currentUser?.username || '用户';
+          const userName = this.mainStore.currentUser?.username || '用户';
           title = `个人中心 - ${webTitle}`;
           description = `${userName}的个人中心，管理个人资料和账户设置`;
           keywords = `个人中心,用户资料,账户设置,${webTitle}`;
@@ -388,15 +399,11 @@
           return;
         }
         
-        console.log("开始检查是否需要验证码...");
         // 检查是否需要验证码
         checkCaptchaWithCache('login').then(required => {
-          console.log("验证码检查结果:", required);
           if (required) {
-            console.log("需要验证码，设置状态...");
             this.verifyAction = 'login';
             this.showCaptchaWrapper = true;
-            console.log("验证码状态已设置:", this.showCaptchaWrapper);
           } else {
             // 不需要验证码，直接登录
             this.login();
@@ -468,7 +475,6 @@
       },
       
       onVerifySuccess(token) {
-        console.log("验证码验证成功，令牌:", token);
         this.showCaptchaWrapper = false;
         
         // 根据当前操作类型继续相应流程
@@ -480,7 +486,6 @@
           this.thirdPartyLogin(this.verifyParams, token);
         } else if (this.verifyAction === 'reset_password' || this.verifyAction === 'register') {
           // 滑动验证成功后发送验证码
-          console.log("验证码验证成功，准备发送验证码，参数:", this.verifyParams);
           this.sendVerificationCode({
             ...this.verifyParams,
             verificationToken: token
@@ -525,18 +530,16 @@
         // 添加验证令牌
         if (verificationToken) {
           user.verificationToken = verificationToken;
-          console.log("添加验证令牌到登录请求:", verificationToken);
         }
         
         this.$http.post(this.$constant.baseURL + "/user/login", user, true, false)
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
-              console.log('登录返回的用户信息:', res.data);
               // 同时存储用户token和管理员token
               localStorage.setItem("userToken", res.data.accessToken);
               localStorage.setItem("adminToken", res.data.accessToken);
-              this.$store.commit("loadCurrentUser", res.data);
-              this.$store.commit("loadCurrentAdmin", res.data);
+              this.mainStore.loadCurrentUser( res.data);
+              this.mainStore.loadCurrentAdmin( res.data);
               this.account = "";
               this.password = "";
               
@@ -547,12 +550,6 @@
                 this.$message.success('登录成功');
               }
 
-              // 使用统一的重定向处理逻辑
-              console.log('🔍 登录成功，准备重定向，当前路由信息:', {
-                path: this.$route.path,
-                fullPath: this.$route.fullPath,
-                query: this.$route.query
-              });
               handleLoginRedirect(this.$route, this.$router, {
                 defaultPath: '/'
               });
@@ -617,7 +614,7 @@
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
               localStorage.setItem("userToken", res.data.accessToken);
-              this.$store.commit("loadCurrentUser", res.data);
+              this.mainStore.loadCurrentUser( res.data);
               this.username = "";
               this.password = "";
               this.email = "";
@@ -638,7 +635,19 @@
                 // 如果没有重定向，则跳转首页并打开IM聊天室
                 this.$router.push({path: '/'});
                 let userToken = this.$common.encrypt(localStorage.getItem("userToken"));
-                window.open(this.$constant.imBaseURL + "?userToken=" + userToken);
+                let imUrl = this.$constant.imBaseURL + "?userToken=" + userToken;
+                
+                // 仅在开发环境下传递主题状态（生产环境localStorage共享）
+                const isDevelopment = this.$constant.imBaseURL.includes('localhost') || 
+                                     this.$constant.imBaseURL.includes('127.0.0.1');
+                if (isDevelopment) {
+                  const currentTheme = localStorage.getItem('theme');
+                  if (currentTheme) {
+                    imUrl += "&theme=" + currentTheme;
+                  }
+                }
+                
+                window.open(imUrl);
               }
             }
           })
@@ -672,8 +681,8 @@
           this.$http.post(this.$constant.baseURL + "/user/updateUserInfo", user)
             .then((res) => {
               if (!this.$common.isEmpty(res.data)) {
-                this.$store.commit("loadCurrentUser", res.data);
-                this.currentUser = this.$store.state.currentUser;
+                this.mainStore.loadCurrentUser( res.data);
+                this.currentUser = this.mainStore.currentUser;
                 this.$message({
                   message: "修改成功！",
                   type: "success"
@@ -787,8 +796,8 @@
             this.$http.post(this.$constant.baseURL + "/user/updateUserInfo", user)
               .then((res) => {
                 if (!this.$common.isEmpty(res.data)) {
-                  this.$store.commit("loadCurrentUser", res.data);
-                  this.currentUser = this.$store.state.currentUser;
+                  this.mainStore.loadCurrentUser( res.data);
+                  this.currentUser = this.mainStore.currentUser;
                   this.clearDialog();
                   this.$message({
                     message: "修改成功！",
@@ -862,8 +871,8 @@
           this.$http.post(this.$constant.baseURL + "/user/updateSecretInfo", params, false, false)
             .then((res) => {
               if (!this.$common.isEmpty(res.data)) {
-                this.$store.commit("loadCurrentUser", res.data);
-                this.currentUser = this.$store.state.currentUser;
+                this.mainStore.loadCurrentUser( res.data);
+                this.currentUser = this.mainStore.currentUser;
                 this.clearDialog();
                 this.$message({
                   message: "修改成功！",
@@ -893,16 +902,13 @@
             action = 'register';  // 或其他适当的操作类型
           }
           
-          console.log("准备检查验证码，操作类型:", action, "对话框标题:", this.dialogTitle);
           
           // 检查是否需要验证码
           checkCaptchaWithCache(action).then(required => {
-            console.log("验证码检查结果:", required);
             if (required) {
               // 保存当前对话框状态
               const currentDialogTitle = this.dialogTitle;
               
-              console.log("需要验证码，保存对话框状态:", currentDialogTitle);
               
               // 先关闭对话框，避免遮挡验证组件
               this.showDialog = false;
@@ -914,7 +920,6 @@
                 dialogTitle: currentDialogTitle
               };
               
-              console.log("设置验证参数:", this.verifyAction, this.verifyParams);
               
               // 显示滑块验证
               this.$nextTick(() => {
@@ -922,7 +927,6 @@
               });
             } else {
               // 不需要验证码，直接发送验证码
-              console.log("不需要验证码，直接发送");
               this.sendVerificationCode({
                 ...params,
                 dialogTitle: this.dialogTitle
@@ -940,18 +944,15 @@
        * 发送验证码
        */
       sendVerificationCode(params) {
-        console.log("开始发送验证码，参数:", params);
         
         // 提取出保存的对话框标题
         const savedDialogTitle = params.dialogTitle;
-        console.log("保存的对话框标题:", savedDialogTitle);
         
         // 从params中移除我们添加的dialogTitle属性，避免发送到后端API
         delete params.dialogTitle;
         
         // 如果有验证令牌，添加到参数中
         if (params.verificationToken) {
-          console.log("添加验证令牌到请求:", params.verificationToken);
         }
         
         let url;
@@ -961,11 +962,9 @@
           url = "/user/getCodeForBind";
         }
         
-        console.log("发送验证码请求到:", url, "参数:", params);
         
         this.$http.get(this.$constant.baseURL + url, params)
           .then((res) => {
-            console.log("验证码发送成功，响应:", res);
             this.$message({
               message: "验证码已发送，请注意查收！",
               type: "success"
@@ -973,7 +972,6 @@
             
             // 重新打开之前的对话框
             this.dialogTitle = savedDialogTitle;
-            console.log("重新打开对话框:", this.dialogTitle);
             this.$nextTick(() => {
               this.showDialog = true;
             });
@@ -1068,7 +1066,6 @@
       
       // 处理第三方登录配置变更事件
       handleThirdPartyConfigChange() {
-        console.log('收到第三方登录配置变更通知，重新加载配置...');
         this.loadThirdPartyLoginConfig();
       },
 
@@ -1100,8 +1097,6 @@
             });
           }
 
-          console.log('第三方登录配置已加载:', this.thirdPartyLoginConfig);
-          console.log('启用的第三方登录提供商:', this.enabledThirdPartyProviders);
         });
       },
 
@@ -1113,7 +1108,6 @@
               if (res.code === 200 && res.data) {
                 resolve(res.data);
               } else {
-                console.warn("获取第三方登录配置失败:", res.message);
                 resolve({ enable: false });
               }
             })
@@ -1579,11 +1573,6 @@
 
   /* 移动端对话框优化 */
   @media screen and (max-width: 768px) {
-    .el-dialog {
-      width: 90% !important;
-      margin: 0 auto !important;
-    }
-
     .el-dialog__body {
       padding: 15px 20px;
     }

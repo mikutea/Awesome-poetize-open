@@ -172,8 +172,9 @@ public class QiniuUtil implements StoreService {
 
         if (!CollectionUtils.isEmpty(resources)) {
             resourceService.saveBatch(resources);
-            System.out.println("保存数量：" + resources.size());
+            log.info("七牛云资源同步完成，保存数量：{}", resources.size());
+        } else {
+            log.info("七牛云资源同步完成，无新资源");
         }
-        System.out.println("同步完成");
     }
 }

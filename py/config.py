@@ -4,6 +4,9 @@ import socket
 import httpx
 from urllib.parse import urlparse
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # FastAPI应用密钥（用于中间件加密）
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(16))
@@ -16,7 +19,6 @@ REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '123456')
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 REDIS_MAX_CONNECTIONS = int(os.environ.get('REDIS_MAX_CONNECTIONS', 20))
 
-print(f"Redis配置: {REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
 
 # 自动检测后端地址
 def detect_backend_url():
@@ -25,12 +27,10 @@ def detect_backend_url():
         host = os.environ.get('JAVA_BACKEND_HOST')
         port = os.environ.get('JAVA_BACKEND_PORT', '8081')
         url = f"http://{host}:{port}"
-        print(f"从环境变量检测到Java后端: {url}")
         return url
     
     # 2. 使用默认地址
     default_url = "http://localhost:8081"
-    print(f"无法检测到Java后端，使用默认地址: {default_url}")
     return default_url
 
 # 自动获取基础URL
@@ -63,7 +63,6 @@ def detect_frontend_url():
         # 只有当端口不是标准端口(80/443)时才添加
         if (protocol == 'http' and port != '80') or (protocol == 'https' and port != '443'):
             url += f":{port}"
-        print(f"从环境变量获取前端URL: {url}")
         return url
     
     # 2. 从后端URL推断（假设前端和后端在同一域名不同端口或路径）
@@ -72,12 +71,10 @@ def detect_frontend_url():
         host = parsed.netloc.split(':')[0]
         # 如果不是本地地址，假设前端使用标准HTTP端口
         if host not in ('localhost', '127.0.0.1'):
-            print(f"从后端URL推断前端URL: http://{host}")
             return f"http://{host}"
     
     # 3. 默认前端URL
     default_url = "http://localhost"
-    print(f"无法检测到前端URL，使用默认值: {default_url}")
     return default_url
 
 # 从HTTP请求中检测前端URL
@@ -126,11 +123,10 @@ def detect_frontend_url_from_request(request=None):
             else:
                 detected_url = f"{scheme}://{host}"
             
-            print(f"从请求头检测到前端URL: {detected_url}")
             return detected_url
             
     except Exception as e:
-        print(f"从请求头检测前端URL失败: {str(e)}")
+        logger.warning(f"检测前端URL失败: {e}")
     
     # 如果检测失败，返回默认值
     return FRONTEND_URL
@@ -142,9 +138,6 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', detect_frontend_url())
 PYTHON_SERVICE_PORT = int(os.environ.get('PORT', 5000))
 
 # 输出检测到的配置
-print(f"检测到Java后端URL: {BASE_BACKEND_URL}")
-print(f"第三方登录API: {JAVA_BACKEND_URL}")
-print(f"配置获取API: {JAVA_CONFIG_URL}")
-print(f"验证API: {JAVA_AUTH_URL}")
-print(f"前端URL: {FRONTEND_URL}")
-print(f"Python服务端口: {PYTHON_SERVICE_PORT}")
+logger.info(f"后端URL: {BASE_BACKEND_URL}")
+logger.info(f"前端URL: {FRONTEND_URL}")
+logger.info(f"服务端口: {PYTHON_SERVICE_PORT}")

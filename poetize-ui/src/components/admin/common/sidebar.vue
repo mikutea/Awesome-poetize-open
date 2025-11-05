@@ -1,12 +1,12 @@
 <template>
-  <div class="sidebar">
-    <div @click="collapse()" style="color: rgb(96, 98, 102);cursor: pointer;background-color: #ebf1f6;display: flex">
+  <div class="sidebar" :class="{ 'sidebar-dark': isAdminDark }">
+    <div @click="collapse()" class="collapse-btn" :class="{ 'collapse-dark': isAdminDark }">
       <i class="el-icon-menu" style="margin: 14px;font-size: 17px"></i>
       <div style="font-size: 15px;margin-top: 13px">折叠</div>
     </div>
     <el-menu class="sidebar-el-menu"
-             background-color="#ebf1f6"
-             text-color="#606266"
+             :background-color="isAdminDark ? '#2d2d2d' : '#ebf1f6'"
+             :text-color="isAdminDark ? '#b0b0b0' : '#606266'"
              active-text-color="#20a0ff"
              unique-opened
              :default-active="$router.currentRoute.path"
@@ -47,7 +47,16 @@
 </template>
 
 <script>
-  export default {
+    import { useMainStore } from '@/stores/main';
+
+export default {
+    props: {
+      isAdminDark: {
+        type: Boolean,
+        default: false
+      }
+    },
+    
     data() {
       return {
         isCollapse: true,
@@ -117,7 +126,6 @@
           title: "SEO优化",
           requiredUserType: 0,  // 仅站长可访问
           click: function() {
-            console.log('SEO配置点击，通过click属性');
             this.goToSeoConfig();
           }
         }]
@@ -125,9 +133,12 @@
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       // 响应式获取当前管理员信息
       currentAdmin() {
-        return this.$store.state.currentAdmin;
+        return this.mainStore.currentAdmin;
       },
 
       // 响应式获取isBoss状态
@@ -145,7 +156,6 @@
       // 监听管理员信息变化，确保权限实时更新
       currentAdmin: {
         handler(newAdmin) {
-          console.log('侧边栏检测到管理员信息变化:', newAdmin);
         },
         deep: true
       }
@@ -171,7 +181,6 @@
         // userType越小权限越高：0(站长) > 1(管理员) > 2(普通用户)
         const hasUserTypePermission = this.userType <= item.requiredUserType;
 
-        console.log(`权限检查 - 菜单: ${item.title}, 要求userType: ${item.requiredUserType}, 当前userType: ${this.userType}, 结果: ${hasUserTypePermission}`);
 
         return hasUserTypePermission;
       },
@@ -199,9 +208,7 @@
       },
       
       goToSeoConfig() {
-        console.log('点击SEO配置菜单项');
         this.$router.push('/seoConfig').catch(err => {
-          console.log('路由跳转错误:', err);
           this.$router.push({path: '/admin/seoConfig'}).catch(e => {
             console.error('嵌套路由也失败:', e);
           });
@@ -234,5 +241,24 @@
 
   .sidebar-el-menu .el-menu-item {
     padding: 0 10px !important;
+  }
+  
+  /* 折叠按钮样式 */
+  .collapse-btn {
+    color: rgb(96, 98, 102);
+    cursor: pointer;
+    background-color: #ebf1f6;
+    display: flex;
+    transition: all 0.3s ease;
+  }
+  
+  /* ========== 深色模式下的sidebar样式 ========== */
+  .sidebar-dark {
+    background-color: #2d2d2d;
+  }
+  
+  .collapse-dark {
+    background-color: #2d2d2d !important;
+    color: #b0b0b0 !important;
   }
 </style>

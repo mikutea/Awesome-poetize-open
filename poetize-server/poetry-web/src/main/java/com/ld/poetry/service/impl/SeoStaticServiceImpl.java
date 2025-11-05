@@ -18,8 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * SEO静态文件服务实现类
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-25
  */
 @Service
 @Slf4j
@@ -123,7 +123,6 @@ public class SeoStaticServiceImpl implements SeoStaticService {
             staticCache.put(cacheKey, manifest);
             cacheTimestamps.put(cacheKey, LocalDateTime.now());
 
-            log.info("成功生成PWA manifest.json，包含{}个图标", icons.size());
             return manifest;
 
         } catch (Exception e) {
@@ -157,7 +156,6 @@ public class SeoStaticServiceImpl implements SeoStaticService {
             staticCache.put(cacheKey, robotsTxt);
             cacheTimestamps.put(cacheKey, LocalDateTime.now());
 
-            log.debug("成功生成robots.txt");
             return robotsTxt;
 
         } catch (Exception e) {

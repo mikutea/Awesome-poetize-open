@@ -1,3 +1,13 @@
+"""
+权限验证装饰器
+提供基于IP和Token的权限验证功能
+
+主要功能：
+- 基于IP的限流
+- 基于Token的权限验证
+- 支持内部网络和外部网络的访问控制
+- 支持备用IP验证机制
+"""
 import functools
 import httpx
 import logging
@@ -72,7 +82,6 @@ def is_internal_network_ip(client_ip):
         try:
             current_network = ipaddress.ip_network(current_subnet, strict=False)
             if client_addr in current_network:
-                logger.info(f"IP {client_ip} 在当前Docker网段 {current_subnet} 内，识别为内部服务")
                 return True
         except Exception as e:
             logger.warning(f"解析当前Docker网段失败: {e}")
@@ -82,12 +91,10 @@ def is_internal_network_ip(client_ip):
             try:
                 network = ipaddress.ip_network(network_str, strict=False)
                 if client_addr in network:
-                    logger.info(f"IP {client_ip} 在内部网段 {network_str} 内，识别为内部服务")
                     return True
             except Exception as e:
                 logger.warning(f"解析网段 {network_str} 失败: {e}")
         
-        logger.info(f"IP {client_ip} 不在任何内部网段内，识别为外部请求")
         return False
         
     except Exception as e:
@@ -130,13 +137,11 @@ def get_trusted_internal_ips():
             try:
                 ip = socket.gethostbyname(container_name)
                 trusted_ips.append(ip)
-                logger.info(f"解析容器 {container_name} 到 IP: {ip}")
             except socket.gaierror:
                 logger.warning(f"无法解析容器名 {container_name}")
     except Exception as e:
         logger.warning(f"动态解析容器IP时出错: {e}")
     
-    logger.info(f"初始化受信任的内部IP列表（辅助验证）: {trusted_ips}")
     return trusted_ips
 
 # 实时获取受信任的内部服务IP列表
@@ -235,13 +240,10 @@ async def admin_required(
     if x_forwarded_for and is_internal_network_ip(request.client.host):
         original_ip = client_ip
         client_ip = x_forwarded_for.split(',')[0].strip()
-        logger.info(f"使用X-Forwarded-For获取真实IP: {client_ip} (来源于内部代理: {original_ip})")
     elif x_forwarded_for:
-        logger.info(f"忽略不可信来源的X-Forwarded-For: {x_forwarded_for} (请求来源: {client_ip})")
-    
+        logger.warning(f"X-Forwarded-For: {x_forwarded_for}")
     # 记录API访问信息
     endpoint = request.url.path
-    logger.info(f"管理员API请求: {endpoint}, IP: {client_ip}")
 
     # 优先验证：检查是否来自Docker内部网络且带有正确标识（与Java端逻辑一致）
     internal_service = request.headers.get('X-Internal-Service')
@@ -250,7 +252,6 @@ async def admin_required(
     # 如果是内部网络请求且带有正确的标识头，直接通过（与Java端逻辑一致）
     if (is_internal_network_ip(client_ip) and admin_flag == 'true' and
         internal_service in ['poetize-java', 'poetize-prerender', 'poetize-nginx', 'poetize-python']):
-        logger.info(f"内部服务请求通过认证检查 - 服务: {internal_service}, IP: {client_ip}")
         return True
 
     # 主要验证：token验证（优先进行，与Java端逻辑一致）
@@ -262,21 +263,18 @@ async def admin_required(
         token = credentials.credentials
         # 适配新的HMAC签名token格式，显示更多字符用于调试
         token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
-        logger.info(f"从请求头获取到token: {token_preview} (长度: {len(token)})")
 
     # 也从请求参数中检查token
     if not token:
         token = request.query_params.get('token')
         if token:
             token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
-            logger.info(f"从请求参数获取到token: {token_preview} (长度: {len(token)})")
 
     # 从cookie中检查token
     if not token:
         token = request.cookies.get('Admin-Token') or request.cookies.get('User-Token')
         if token:
             token_preview = f"{token[:20]}...{token[-8:]}" if len(token) > 30 else token
-            logger.info(f"从cookie获取到token: {token_preview} (长度: {len(token)})")
     
     # 没有token时尝试备用验证
     if not token:
@@ -299,21 +297,12 @@ async def admin_required(
             'X-Admin-Request': 'true',  # 标识为内部管理员请求，跳过额外的权限检查
             'User-Agent': 'poetize-python/1.0.0'
         }
-        logger.info(f"正在调用Java后端验证API: {JAVA_AUTH_URL}")
-        # 安全地记录请求头，避免暴露完整token
-        safe_headers = {k: v for k, v in headers.items() if k != 'Authorization'}
-        safe_headers['Authorization'] = f"Bearer {token[:20]}...{token[-8:]}" if len(token) > 30 else f"Bearer {token}"
-        logger.info(f"请求头: {safe_headers}")
-        
         async with httpx.AsyncClient() as client:
             response = await client.get(JAVA_AUTH_URL, headers=headers, timeout=5)
-        logger.info(f"Java后端响应状态码: {response.status_code}")
-        logger.info(f"Java后端响应头: {dict(response.headers)}")
         
         # 解析响应
         if response.status_code == 200:
             data = response.json()
-            logger.info(f"Java后端验证API响应: {data}")
             # 检查Java后端返回的权限验证结果
             if data.get('code') == 200 and data.get('data') is True:
                 # Token验证通过，进行辅助安全检查
@@ -332,21 +321,19 @@ async def admin_required(
                         )
 
                 # 权限验证通过
-                elapsed = time.time() - start_time
-                logger.info(f"管理员API权限验证通过: {endpoint}, IP: {client_ip}, 耗时: {elapsed:.3f}秒")
                 return True
             else:
-                logger.warning(f"Java后端权限验证失败: {data.get('message', '未知错误')}")
+                logger.warning(f"权限验证失败: {data.get('message', '未知错误')}")
                 # Token验证失败，尝试备用验证方式
                 return await _fallback_ip_verification(client_ip, endpoint)
         elif response.status_code == 401:
             # 处理未授权情况
-            logger.warning(f"Java后端返回401未授权, IP: {client_ip}, API: {endpoint}")
+            logger.warning(f"返回401未授权, IP: {client_ip}, API: {endpoint}")
             # Token无效，尝试备用验证方式
             return await _fallback_ip_verification(client_ip, endpoint)
         else:
             data = response.json() if response.content else {}
-            logger.warning(f"Java后端权限验证失败: {data.get('message', '未知错误')}")
+            logger.warning(f"权限验证失败: {data.get('message', '未知错误')}")
             # 其他错误，尝试备用验证方式
             return await _fallback_ip_verification(client_ip, endpoint)
             
@@ -356,5 +343,4 @@ async def admin_required(
     except Exception as e:
         # 记录异常并尝试备用验证
         logger.error(f"验证权限时发生错误: {str(e)}, IP: {client_ip}, API: {endpoint}")
-        logger.info(f"尝试使用备用IP验证方式")
         return await _fallback_ip_verification(client_ip, endpoint)

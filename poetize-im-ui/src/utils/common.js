@@ -2,8 +2,19 @@ import constant from "./constant";
 import CryptoJS from 'crypto-js';
 import store from '../store';
 import {ElMessage} from "element-plus";
+import { getDefaultAvatar, getAvatarUrl } from './default-avatar';
 
 export default {
+  /**
+   * 获取默认头像
+   */
+  getDefaultAvatar,
+  
+  /**
+   * 获取头像URL（带默认头像回退）
+   */
+  getAvatarUrl,
+  
   /**
    * 判断设备
    */
@@ -142,6 +153,65 @@ export default {
     } else if (d_days >= 30) {
       return Y + '-' + M + '-' + D + ' ' + H + ':' + m;
     }
+  },
+
+  /**
+   * 格式化聊天消息时间
+   * 当天的消息：只显示时间（22:37）
+   * 昨天或往后（今年）：显示月日（10月28日）
+   * 前年的消息：显示年月日（2024年10月28日）
+   */
+  formatChatTime(dateInput) {
+    if (!dateInput) return '';
+    
+    // 处理不同类型的输入
+    let messageDate;
+    if (dateInput instanceof Date) {
+      // 已经是 Date 对象
+      messageDate = dateInput;
+    } else if (typeof dateInput === 'number') {
+      // 时间戳
+      messageDate = new Date(dateInput);
+    } else if (typeof dateInput === 'string') {
+      // 字符串，替换 - 为 / 以兼容 iOS
+      messageDate = new Date(dateInput.replace(/-/gi, "/"));
+    } else {
+      // 其他类型，尝试直接转换
+      messageDate = new Date(dateInput);
+    }
+    
+    // 检查日期是否有效
+    if (isNaN(messageDate.getTime())) {
+      console.warn('formatChatTime: 无效的日期格式', dateInput);
+      return '';
+    }
+    
+    const now = new Date();
+    
+    // 获取今天的开始时间（00:00:00）
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // 获取消息日期的年月日
+    const messageYear = messageDate.getFullYear();
+    const messageMonth = messageDate.getMonth() + 1;
+    const messageDay = messageDate.getDate();
+    const messageHours = String(messageDate.getHours()).padStart(2, '0');
+    const messageMinutes = String(messageDate.getMinutes()).padStart(2, '0');
+    
+    const currentYear = now.getFullYear();
+    
+    // 如果是今天的消息，只显示时:分
+    if (messageDate >= todayStart) {
+      return `${messageHours}:${messageMinutes}`;
+    }
+    
+    // 如果是今年的消息，显示月日
+    if (messageYear === currentYear) {
+      return `${messageMonth}月${messageDay}日`;
+    }
+    
+    // 如果是往年的消息，显示年月日
+    return `${messageYear}年${messageMonth}月${messageDay}日`;
   },
 
   /**

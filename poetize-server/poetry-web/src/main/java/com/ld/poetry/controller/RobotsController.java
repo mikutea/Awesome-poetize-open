@@ -28,7 +28,6 @@ public class RobotsController {
     @GetMapping(value = "/robots.txt", produces = MediaType.TEXT_PLAIN_VALUE)
     public ResponseEntity<String> getRobots() {
         try {
-            log.debug("收到robots.txt请求");
             
             String robots = robotsService.getRobots();
             if (robots == null) {
@@ -42,7 +41,6 @@ public class RobotsController {
             headers.setCacheControl("public, max-age=3600"); // 缓存1小时
             headers.add("X-Robots-Tag", "noindex"); // 防止搜索引擎索引robots.txt本身
 
-            log.debug("成功返回robots.txt，长度: {}", robots.length());
             return ResponseEntity.ok()
                     .headers(headers)
                     .body(robots);

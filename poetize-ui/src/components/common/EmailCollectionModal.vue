@@ -10,7 +10,7 @@
       <div class="modal-body">
         <div class="welcome-info">
           <div class="avatar">
-            <img :src="userInfo.avatar" :alt="userInfo.username" />
+            <img :src="$common.getAvatarUrl(userInfo.avatar)" :alt="userInfo.username" />
           </div>
           <div class="user-info">
             <h4>欢迎，{{ userInfo.username }}！</h4>

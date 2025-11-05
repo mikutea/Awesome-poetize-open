@@ -77,7 +77,9 @@
 </template>
 
 <script>
-  const proButton = () => import( "../common/proButton");
+    import { useMainStore } from '@/stores/main';
+
+const proButton = () => import( "../common/proButton");
 
   export default {
     components: {
@@ -114,6 +116,9 @@
       };
     },
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       controls() {
         return [{
           title: "上一步",
@@ -245,7 +250,7 @@
         this.$emit("showComment");
       },
       getImage() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
@@ -272,10 +277,10 @@
           u8arr[n] = str.charCodeAt(n);
         }
         let obj = new Blob([u8arr], {type: mine});
-        let key = "graffiti" + "/" + this.$store.state.currentUser.username.replace(/[^a-zA-Z]/g, '') + this.$store.state.currentUser.id + new Date().getTime() + Math.floor(Math.random() * 1000) + ".png";
+        let key = "graffiti" + "/" + this.mainStore.currentUser.username.replace(/[^a-zA-Z]/g, '') + this.mainStore.currentUser.id + new Date().getTime() + Math.floor(Math.random() * 1000) + ".png";
 
         // 获取当前存储类型，优先使用更新后的配置
-        let storeType = this.currentStoreType || this.$store.state.sysConfig['store.type'] || "local";
+        let storeType = this.currentStoreType || this.mainStore.sysConfig['store.type'] || "local";
 
         let fd = new FormData();
         fd.append("file", obj);
@@ -317,11 +322,11 @@
             if (!this.$common.isEmpty(res.data)) {
               fd.append("token", res.data);
 
-              this.$http.uploadQiniu(this.$store.state.sysConfig.qiniuUrl, fd)
+              this.$http.uploadQiniu(this.mainStore.sysConfig.qiniuUrl, fd)
                 .then((res) => {
                   if (!this.$common.isEmpty(res.key)) {
                     this.clearContext();
-                    let url = this.$store.state.sysConfig['qiniu.downloadUrl'] + res.key;
+                    let url = this.mainStore.sysConfig['qiniu.downloadUrl'] + res.key;
                     let file = fd.get("file");
                     this.$common.saveResource(this, "graffiti", url, file.size, file.type, null, "qiniu");
                     let img = "[你画我猜," + url + "]";
@@ -371,7 +376,6 @@
       handleSysConfigUpdate(config) {
         if (config && config['store.type']) {
           this.currentStoreType = config['store.type'];
-          console.log("涂鸦组件收到系统配置更新，存储类型更新为:", this.currentStoreType);
         }
       }
     }

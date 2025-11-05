@@ -34,23 +34,17 @@
 
       <el-form-item label="数据导出">
         <el-button @click="exportConfig">导出配置</el-button>
-        <el-button @click="showImportDialog">导入配置</el-button>
+        <el-button @click="triggerImport">导入配置</el-button>
       </el-form-item>
     </el-form>
 
-    <!-- 导入配置对话框 -->
-    <el-dialog title="导入配置" :visible.sync="importDialogVisible" width="500px">
-      <el-upload
-        drag
-        :action="uploadUrl"
-        :before-upload="beforeConfigUpload"
-        :on-success="handleConfigImport"
-        accept=".json">
-        <i class="el-icon-upload"></i>
-        <div class="el-upload__text">将配置文件拖到此处，或<em>点击上传</em></div>
-        <div class="el-upload__tip" slot="tip">只能上传json格式的配置文件</div>
-      </el-upload>
-    </el-dialog>
+    <!-- 隐藏的文件选择器 -->
+    <input 
+      ref="fileInput" 
+      type="file" 
+      accept=".json" 
+      style="display: none;" 
+      @change="handleFileImport" />
   </div>
 </template>
 
@@ -73,28 +67,25 @@ export default {
   
   data() {
     return {
-      advancedConfig: { ...this.value },
-      importDialogVisible: false
-    }
-  },
-  
-  computed: {
-    uploadUrl() {
-      return this.$constant.baseURL + "/admin/upload";
+      advancedConfig: { ...this.value }
     }
   },
   
   watch: {
     value: {
       handler(newVal) {
-        this.advancedConfig = { ...newVal };
+        if (JSON.stringify(newVal) !== JSON.stringify(this.advancedConfig)) {
+          this.advancedConfig = { ...newVal };
+        }
       },
       deep: true
     },
     
     advancedConfig: {
       handler(newVal) {
-        this.$emit('input', newVal);
+        if (JSON.stringify(newVal) !== JSON.stringify(this.value)) {
+          this.$emit('input', newVal);
+        }
       },
       deep: true
     }
@@ -117,41 +108,61 @@ export default {
       this.$emit('export-config');
     },
     
-    // 显示导入对话框
-    showImportDialog() {
-      this.importDialogVisible = true;
+    // 触发文件选择
+    triggerImport() {
+      this.$refs.fileInput.click();
     },
     
-    // 配置文件上传前验证
-    beforeConfigUpload(file) {
-      const isJson = file.type === 'application/json' || file.name.endsWith('.json');
-      if (!isJson) {
-        this.$message.error('只能上传JSON格式的配置文件!');
-        return false;
+    // 处理文件导入
+    handleFileImport(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      
+      // 验证文件类型
+      if (!file.name.endsWith('.json')) {
+        this.$message.error('只能导入JSON格式的配置文件！');
+        return;
       }
-      return true;
-    },
-    
-    // 处理配置导入
-    handleConfigImport(res) {
-      if (res.flag) {
+      
+      // 读取文件内容
+      const reader = new FileReader();
+      reader.onload = (e) => {
         try {
-          const config = JSON.parse(res.data);
+          const config = JSON.parse(e.target.result);
           this.$emit('import-config', config);
           this.$message.success('配置导入成功');
-          this.importDialogVisible = false;
         } catch (error) {
           this.$message.error('配置文件格式错误');
         }
-      } else {
-        this.$message.error('配置导入失败');
-      }
+      };
+      reader.onerror = () => {
+        this.$message.error('文件读取失败');
+      };
+      reader.readAsText(file);
+      
+      // 清空input，允许重复选择同一文件
+      event.target.value = '';
     }
   }
 }
 </script>
 
 <style scoped>
+.ai-advanced-config {
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 10px;
+}
+
+/* 移动端对话框中不限制高度 */
+@media screen and (max-width: 768px) {
+  .ai-advanced-config {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 .header-item {
   display: flex;
   align-items: center;
@@ -164,5 +175,102 @@ export default {
   line-height: 1.4;
   margin-top: 5px;
   display: block;
+}
+
+/* PC端样式 - 768px以上 */
+@media screen and (min-width: 769px) {
+  ::v-deep .el-form-item__label {
+    float: left !important;
+  }
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .ai-advanced-config {
+    padding: 0;
+  }
+
+  .ai-advanced-config .el-form-item {
+    margin-bottom: 15px;
+  }
+
+  /* 标签适配 - 垂直布局 */
+  .ai-advanced-config .el-form-item__label {
+    float: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 8px !important;
+    padding-bottom: 0 !important;
+  }
+
+  .ai-advanced-config .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* 帮助文本字号优化 */
+  .help-text {
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 3px;
+  }
+
+  /* Header项优化 */
+  .header-item {
+    margin-bottom: 8px;
+  }
+
+  .header-item .el-input {
+    margin-right: 5px !important;
+  }
+
+  /* 对话框适配 */
+  .ai-advanced-config .el-dialog {
+    width: 90% !important;
+  }
+
+  .ai-advanced-config .el-dialog__body {
+    padding: 15px !important;
+  }
+
+  .ai-advanced-config .el-upload__text {
+    font-size: 13px;
+  }
+
+  .ai-advanced-config .el-upload__tip {
+    font-size: 11px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .ai-advanced-config .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .ai-advanced-config .el-form-item__label {
+    font-size: 12px;
+  }
+
+  .help-text {
+    font-size: 10px;
+  }
+
+  .ai-advanced-config .el-dialog {
+    width: 95% !important;
+  }
+
+  .ai-advanced-config .el-dialog__body {
+    padding: 10px !important;
+  }
+
+  .ai-advanced-config .el-upload__text {
+    font-size: 12px;
+  }
+
+  .ai-advanced-config .el-upload__tip {
+    font-size: 10px;
+  }
 }
 </style> 

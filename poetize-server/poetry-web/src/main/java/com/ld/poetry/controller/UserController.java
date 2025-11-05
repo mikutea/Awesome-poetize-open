@@ -113,7 +113,6 @@ public class UserController {
                 return PoetryResult.fail("用户信息已过期，请重新登录");
             }
 
-            log.debug("Token验证成功: userId={}, token={}", userId, token);
         } catch (Exception e) {
             log.error("Token验证时发生错误: token={}", token, e);
             return PoetryResult.fail("Token验证失败，请重新登录");
@@ -133,7 +132,6 @@ public class UserController {
             Integer userId = PoetryUtil.getUserId();
             // 使用CacheService清理用户缓存
             cacheService.evictUser(userId);
-            log.debug("清理用户信息缓存: userId={}", userId);
         } catch (Exception e) {
             log.error("清理用户信息缓存时发生错误: userId={}", PoetryUtil.getUserId(), e);
         }
@@ -184,7 +182,6 @@ public class UserController {
         }
 
         Integer userId = currentUser.getId();
-        log.debug("准备更新用户密钥信息: userId={}, place={}, flag={}", userId, place, flag);
 
         // 2. 调用 service 执行真正的更新操作
         PoetryResult<UserVO> result = userService.updateSecretInfo(place, flag, code, password);
@@ -193,7 +190,6 @@ public class UserController {
         if (result.getCode() == 200) {
             try {
                 cacheService.evictUser(userId);
-                log.debug("更新密钥信息成功，清理用户缓存: userId={}", userId);
             } catch (Exception e) {
                 log.error("清理用户密钥信息缓存时发生错误: userId={}", userId, e);
             }
@@ -256,7 +252,6 @@ public class UserController {
                 if (updatedUser != null) {
                     // 重新缓存更新后的用户信息，而不是简单删除缓存
                     cacheService.cacheUser(updatedUser);
-                    log.debug("订阅操作成功，更新用户缓存: userId={}, labelId={}, flag={}", userId, labelId, flag);
                 } else {
                     // 如果获取不到用户信息，则清除缓存
                     cacheService.evictUser(userId);

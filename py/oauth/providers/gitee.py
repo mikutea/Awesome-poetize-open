@@ -85,7 +85,8 @@ class GiteeProvider(OAuth2Provider):
                         user_email = emails_data[0].get("email", "")
                         
             except Exception as e:
-                print(f"获取Gitee邮箱信息异常: {e}")
+                import logging
+                logger = logging.getLogger(__name__)
             
             # 检查邮箱收集需求
             processed_email, email_collection_needed = self.check_email_collection_needed(user_email)

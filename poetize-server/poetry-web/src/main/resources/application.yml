@@ -1,10 +1,9 @@
 server:
   port: 8081
   tomcat:
-    # 启用虚拟线程支持 - Java 21新特性
+    # 启用虚拟线程支持
     use-virtual-threads: true
     # 调整为虚拟线程优化的配置
-    threads.max: 200
     max-connections: 500
     max-http-form-post-size: 120MB
     connection-timeout: 60000
@@ -79,6 +78,21 @@ spring:
     url: jdbc:mariadb://localhost:3306/poetize?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: org.mariadb.jdbc.Driver
+    
+    # Druid 连接池配置
+    druid:
+      # 连接池大小配置
+      initial-size: ${SPRING_DATASOURCE_DRUID_INITIAL_SIZE:5}
+      min-idle: ${SPRING_DATASOURCE_DRUID_MIN_IDLE:5}
+      max-active: ${SPRING_DATASOURCE_DRUID_MAX_ACTIVE:50}
+      
+      # 防止连接泄露、
+      remove-abandoned: true
+      remove-abandoned-timeout: 180
+      
+      # 连接健康检测
+      test-while-idle: true
+      validation-query: SELECT 1
 
   # Redis配置
   redis:

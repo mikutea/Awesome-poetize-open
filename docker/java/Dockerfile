@@ -1,16 +1,16 @@
 # 使用Maven作为构建环境
-FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
+FROM maven:3.9-eclipse-temurin-25-alpine AS builder
 
 WORKDIR /app
 
 # 复制整个poetize-server目录到容器中
 COPY ./poetize-server /app
 
-# 在容器中运行Maven构建
-RUN mvn -f /app/pom.xml clean package -DskipTests
+# 在容器中运行Maven构建（启用Java 25预览特性）
+RUN mvn -f /app/pom.xml clean package -DskipTests -Darguments="--enable-preview"
 
 # 最终运行环境
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 WORKDIR /app
 
@@ -28,4 +28,4 @@ RUN echo '#!/bin/sh\nset -e\nif nc -z localhost 8081; then\n  curl -f http://loc
     chmod +x /app/healthcheck.sh
 
 # 启动命令
-CMD ["sh", "-c", "ls -la /app && java $JAVA_OPTS -jar /app/app.jar"] 
+CMD ["sh", "-c", "ls -la /app && java --enable-preview $JAVA_OPTS -jar /app/app.jar"] 

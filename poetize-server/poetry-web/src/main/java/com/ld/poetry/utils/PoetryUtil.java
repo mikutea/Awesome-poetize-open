@@ -67,7 +67,6 @@ public class PoetryUtil {
 
         // 如果所有缓存都无法获取用户信息，记录日志
         if (user == null) {
-            log.debug("无法从任何缓存中获取用户信息: token={}", token);
         }
 
         if (user != null && !StringUtils.hasText(user.getEmail())) {
@@ -252,7 +251,6 @@ public class PoetryUtil {
                     // 如果缓存中都没有，尝试直接从安全token中提取用户ID
                     Integer userIdFromToken = TokenValidationUtil.extractUserId(tokenWithoutBearer);
                     if (userIdFromToken != null) {
-                        log.debug("从安全token中直接提取用户ID: {}", userIdFromToken);
                         return userIdFromToken;
                     }
 
@@ -353,7 +351,6 @@ public class PoetryUtil {
 
         // 如果无法获取网站信息，记录日志
         if (webInfo == null) {
-            log.debug("无法获取网站信息，随机头像功能将返回null");
         }
         if (webInfo != null) {
             String randomAvatar = webInfo.getRandomAvatar();
@@ -383,7 +380,6 @@ public class PoetryUtil {
 
         // 如果无法获取网站信息，记录日志
         if (webInfo == null) {
-            log.debug("无法获取网站信息，随机名称功能将返回null");
         }
         if (webInfo != null) {
             String randomName = webInfo.getRandomName();

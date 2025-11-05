@@ -46,7 +46,6 @@ public class TaobaoIpProvider implements IpLocationProvider {
                 
                 if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
                     long sleepTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-                    log.debug("淘宝IP服务限流等待: {}ms, IP: {}", sleepTime, ipAddress);
                     Thread.sleep(sleepTime);
                 }
                 

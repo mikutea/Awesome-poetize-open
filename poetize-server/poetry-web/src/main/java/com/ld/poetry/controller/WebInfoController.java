@@ -25,9 +25,6 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -129,6 +126,7 @@ public class WebInfoController {
             String waifuJson = (String) params.get("waifuJson");
             Boolean status = (Boolean) params.get("status");
             Boolean enableWaifu = (Boolean) params.get("enableWaifu");
+            String waifuDisplayMode = (String) params.get("waifuDisplayMode");
             Integer homePagePullUpHeight = (Integer) params.get("homePagePullUpHeight");
             Boolean apiEnabled = (Boolean) params.get("apiEnabled");
             String apiKey = (String) params.get("apiKey");
@@ -148,7 +146,7 @@ public class WebInfoController {
 
             // 调用专门的基本信息更新方法
             int updateResult = webInfoMapper.updateWebInfoById(id, webName, webTitle, siteAddress, footer, backgroundImage,
-                    avatar, waifuJson, status, enableWaifu, homePagePullUpHeight, apiEnabled, apiKey,
+                    avatar, waifuJson, status, enableWaifu, waifuDisplayMode, homePagePullUpHeight, apiEnabled, apiKey,
                     navConfig, footerBackgroundImage, footerBackgroundConfig, email, minimalFooter,
                     enableAutoNight, autoNightStart, autoNightEnd, enableGrayMode, mobileDrawerConfig);
             
@@ -201,7 +199,6 @@ public class WebInfoController {
                         }
                     });
                     
-                    log.debug("网站信息更新后已清除相关缓存并异步触发预渲染");
                 } catch (Exception e) {
                     // 预渲染失败不影响主流程，只记录日志
                     log.warn("网站信息更新后缓存清除和页面预渲染失败", e);
@@ -343,7 +340,6 @@ public class WebInfoController {
             if (!CollectionUtils.isEmpty(list)) {
                 WebInfo latestWebInfo = list.get(0);
                 cacheService.cacheWebInfo(latestWebInfo);
-                log.debug("网站信息缓存刷新成功");
             }
         } catch (Exception e) {
             log.error("刷新网站信息缓存失败", e);
@@ -367,10 +363,42 @@ public class WebInfoController {
                 result.setRandomName(null);
                 result.setWaifuJson(null);
 
-                // 添加访问统计数据
-                addHistoryStatsToWebInfo(result);
+                // 并行加载访问统计和文章总数
+                try (var scope = java.util.concurrent.StructuredTaskScope.open()) {
+                    // Fork 访问统计数据加载
+                    scope.fork(() -> {
+                        addHistoryStatsToWebInfo(result);
+                        return null;
+                    });
+                    
+                    // Fork 文章总数查询
+                    var articleCountTask = scope.fork(() -> {
+                        Long count = new LambdaQueryChainWrapper<>(articleMapper)
+                                .eq(Article::getViewStatus, true)
+                                .count();
+                        return count != null ? count.intValue() : 0;
+                    });
+                    
+                    // 等待两个任务完成
+                    scope.join();
+                    
+                    // 设置文章总数
+                    if (articleCountTask.state() == java.util.concurrent.StructuredTaskScope.Subtask.State.SUCCESS) {
+                        result.setArticleCount(articleCountTask.get());
+                    } else {
+                        result.setArticleCount(0);
+                        log.warn("计算文章总数失败");
+                    }
+                    
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("并行加载网站信息被中断", e);
+                    result.setArticleCount(0);
+                } catch (Exception e) {
+                    log.error("并行加载网站信息失败", e);
+                    result.setArticleCount(0);
+                }
 
-                log.debug("成功从Redis缓存获取网站信息");
                 return PoetryResult.success(result);
             }
 
@@ -395,7 +423,6 @@ public class WebInfoController {
                 Long historyCount = (Long) historyStats.get(CommonConst.IP_HISTORY_COUNT);
                 if (historyCount != null) {
                     result.setHistoryAllCount(historyCount.toString());
-                log.debug("设置总访问量: {}", historyCount);
             } else {
                 result.setHistoryAllCount("0");
                 log.warn("总访问量数据为空，使用默认值0");
@@ -405,7 +432,6 @@ public class WebInfoController {
             try {
                 Long todayVisitCount = historyInfoMapper.getTodayHistoryCount();
                 result.setHistoryDayCount(String.valueOf(todayVisitCount != null ? todayVisitCount : 0));
-                log.debug("设置今日访问量(数据库): {}", todayVisitCount);
             } catch (Exception e) {
                 log.warn("获取数据库今日访问量失败，使用默认值0", e);
                 result.setHistoryDayCount("0");
@@ -417,7 +443,6 @@ public class WebInfoController {
                 // 可以在这里触发异步缓存刷新
             }
 
-            log.debug("成功添加访问统计数据到网站信息");
         } catch (Exception e) {
             // 访问统计获取失败不影响主要功能，使用默认值
             log.warn("获取访问统计时出错，使用默认值", e);
@@ -597,12 +622,9 @@ public class WebInfoController {
                 // 设置今日省份统计
                 result.put("province_today", todayStats.get("province_today"));
                 
-                log.info("✅ 使用Redis获取今日访问数据: IP数量={}, 用户数量={}, 省份数量={}", 
-                    todayStats.get("ip_count_today"), usernameToday.size(), 
-                    ((List<?>) todayStats.get("province_today")).size());
                     
             } catch (Exception e) {
-                log.error("❌ 从Redis获取今日访问统计失败，使用默认值", e);
+                log.error("从Redis获取今日访问统计失败，使用默认值", e);
                 result.put("ip_count_today", 0L);
                 result.put("username_today", new ArrayList<>());
                 result.put("province_today", new ArrayList<>());
@@ -655,7 +677,6 @@ public class WebInfoController {
     @GetMapping("/getWaifuStatus")
     public PoetryResult<Map<String, Object>> getWaifuStatus() {
         try {
-            log.debug("收到获取看板娘状态请求");
 
             // 从缓存获取网站信息以保持性能
             WebInfo webInfo = cacheService.getCachedWebInfo();
@@ -670,7 +691,6 @@ public class WebInfoController {
                 data.put("enableWaifu", enableWaifu);
                 data.put("id", webInfo.getId());
 
-                log.debug("返回看板娘状态: enableWaifu={}, id={}", enableWaifu, webInfo.getId());
                 return PoetryResult.success(data);
             } else {
                 log.warn("网站信息不存在");
@@ -815,7 +835,6 @@ public class WebInfoController {
                     .orderByAsc(Sort::getPriority)
                     .list();
             
-            log.debug("预渲染服务获取分类列表，共{}个分类", sortList.size());
             return PoetryResult.success(sortList);
         } catch (Exception e) {
             log.error("获取预渲染分类列表失败", e);
@@ -845,7 +864,6 @@ public class WebInfoController {
             List<Label> labels = labelWrapper.eq(Label::getSortId, sortId).list();
             sort.setLabels(labels);
             
-            log.debug("预渲染服务获取分类详情，分类ID: {}, 标签数: {}", sortId, labels != null ? labels.size() : 0);
             return PoetryResult.success(sort);
         } catch (Exception e) {
             log.error("获取预渲染分类详情失败，分类ID: {}", sortId, e);
@@ -1074,35 +1092,37 @@ public class WebInfoController {
 
     /**
      * 获取第三方登录状态（轻量级接口，用于前端状态检查）
+     * 使用结构化并发并行检查所有平台状态
      */
     @GetMapping("/getThirdLoginStatus")
     public PoetryResult<Object> getThirdLoginStatus(@RequestParam(required = false) String provider) {
         try {
-            log.debug("获取第三方登录状态，平台: {}", provider);
 
             // 获取所有配置
             List<ThirdPartyOauthConfig> allConfigs = thirdPartyOauthConfigService.getAllConfigs();
 
-            // 获取激活的配置（全局启用且平台启用）
-            List<ThirdPartyOauthConfig> activeConfigs = thirdPartyOauthConfigService.getActiveConfigs();
+            // 使用并行方法检查所有平台状态
+            Map<String, Boolean> platformsStatus = thirdPartyOauthConfigService.getAllPlatformsStatus();
 
             // 构建状态响应
             Map<String, Object> status = new HashMap<>();
 
-            // 检查是否有任何平台全局启用且平台启用
-            boolean globalEnabled = !activeConfigs.isEmpty();
+            // 检查是否有任何平台可用
+            boolean globalEnabled = platformsStatus.values().stream().anyMatch(Boolean::booleanValue);
             status.put("enable", globalEnabled);
 
             // 如果指定了平台，检查该平台状态
             if (provider != null && !provider.trim().isEmpty()) {
-                boolean platformEnabled = activeConfigs.stream()
-                    .anyMatch(config -> provider.equals(config.getPlatformType()));
+                Boolean platformEnabled = platformsStatus.getOrDefault(provider, false);
                 status.put(provider, Map.of("enabled", platformEnabled));
             } else {
                 // 返回所有平台状态（包括未启用的）
                 for (ThirdPartyOauthConfig config : allConfigs) {
                     Map<String, Object> platformStatus = new HashMap<>();
-                    platformStatus.put("enabled", config.getEnabled() && config.getGlobalEnabled());
+                    
+                    // 使用并行检查的结果
+                    Boolean enabled = platformsStatus.getOrDefault(config.getPlatformType(), false);
+                    platformStatus.put("enabled", enabled);
 
                     // 添加平台基本信息
                     platformStatus.put("platformName", config.getPlatformName());
@@ -1112,7 +1132,6 @@ public class WebInfoController {
                 }
             }
 
-            log.debug("第三方登录状态响应: {}", status);
             return PoetryResult.success(status);
         } catch (Exception e) {
             log.error("获取第三方登录状态失败", e);

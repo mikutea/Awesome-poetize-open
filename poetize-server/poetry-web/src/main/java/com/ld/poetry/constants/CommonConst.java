@@ -247,6 +247,9 @@ public class CommonConst {
     public static final String RESOURCE_PATH_TYPE_FAVORITES = "favorites";
     public static final String RESOURCE_PATH_TYPE_LOVE_PHOTO = "lovePhoto";
     public static final String RESOURCE_PATH_TYPE_SITE_INFO = "siteInfo";
+    public static final String RESOURCE_PATH_TYPE_CONTACT = "contact";
+    public static final String RESOURCE_PATH_TYPE_QUICK_ENTRY = "quickEntry";
+    public static final String RESOURCE_PATH_TYPE_ASIDE_BACKGROUND = "asideBackground";
 
     /**
      * 微言

@@ -243,8 +243,8 @@ docker system prune -af && rm -rf Awesome-poetize-open && bash <(curl -sL instal
 ### 环境要求
 
 * **Node.js 14+** - 前端开发
-* **JDK 21** - Java后端开发
-* **Maven 3.6+** - Java项目构建
+* **JDK 25** - Java后端开发（支持 JDK 21+）
+* **Maven 3.9+** - Java项目构建
 * **Python 3.9+** - Python后端开发
 * **Docker & Compose** - 容器化部署
 * **Git** - 版本控制
@@ -263,7 +263,7 @@ docker system prune -af && rm -rf Awesome-poetize-open && bash <(curl -sL instal
 ├── docker-compose.yml       # Docker服务编排文件
 ├── docs/                    # 项目文档
 ├── docker/                  # Docker构建配置目录
-├── poetize-server/          # Java后端（Spring Boot 3.2 + Java 21）
+├── poetize-server/          # Java后端（Spring Boot 3.5.5 + Java 25）
 ├── poetize-ui/              # 博客前端（Vue2）
 ├── poetize-im-ui/           # 聊天室前端（Vue3）
 ├── py/                      # Python后端服务（FastAPI）
@@ -299,7 +299,7 @@ docker system prune -af && rm -rf Awesome-poetize-open && bash <(curl -sL instal
 │   │   └── Dockerfile
 │   ├── poetize-ui/          # 前端UI Docker配置
 │   └── poetize-im-ui/       # 聊天室UI Docker配置
-├── poetize-server/          # Java后端服务（Spring Boot 3.2 + Java 21）
+├── poetize-server/          # Java后端服务（Spring Boot 3.5.5 + Java 25）
 │   ├── pom.xml              # Maven主配置文件
 │   ├── settings.xml         # Maven仓库配置
 │   ├── sql/                 # 数据库脚本
@@ -334,16 +334,19 @@ docker system prune -af && rm -rf Awesome-poetize-open && bash <(curl -sL instal
 │       └── utils/           # 工具类
 ├── py/                      # Python后端服务（FastAPI）
 │   ├── main.py              # FastAPI主应用入口
-│   ├── server.py            # 服务器启动脚本
 │   ├── requirements.txt     # Python依赖列表
 │   ├── config.py            # 配置管理
 │   ├── ai_chat_api.py       # AI聊天接口
-│   ├── captcha_api.py       # 验证码服务
+│   ├── ai_config_client.py  # AI配置客户端
 │   ├── translation_api.py   # 翻译服务
+│   ├── article_rag_mcp_server.py  # 文章检索增强服务
+│   ├── auth_decorator.py    # 认证装饰器
+│   ├── cache_helper.py      # 缓存辅助工具
+│   ├── redis_client.py      # Redis客户端
 │   ├── oauth/               # OAuth第三方登录
 │   │   ├── factory.py       # OAuth工厂类
 │   │   ├── providers/       # 各平台OAuth实现
-│   │   └── ...
+│   │   └── ...              # 其他OAuth相关模块
 │   └── data/                # 配置数据文件
 ├── split_font/              # 字体分割工具
 │   ├── font_subset.py       # 字体分割脚本
@@ -793,7 +796,7 @@ mvn clean install
 **2. Spring Boot 启动失败**
 
 ```bash
-# 检查 JDK 版本（必须是 JDK 21）
+# 检查 JDK 版本（必须是 JDK 25，或兼容 JDK 21+）
 java -version
 
 # 检查数据库连接
@@ -1031,7 +1034,7 @@ docker exec poetize-mariadb mysqldump -uroot -p${ROOT_PWD} poetize > backup.sql
 ## 🛠️ 技术栈
 
 * **前端** - Vue2/Vue3、Element UI、Socket.io、Live2D
-* **后端** - Spring Boot、MyBatis Plus、Fastapi、OAuth2.0
+* **后端** - Spring Boot 3.5.5、MyBatis Plus、FastAPI、OAuth2.0、Java 25
 * **数据库** - MariaDB 11（兼容MySQL 5.7）
 * **部署** - Docker、Docker Compose、Nginx、Shell脚本
 

@@ -82,7 +82,6 @@ public class TextRankSummaryGenerator {
         }
         
         try {
-            log.debug("开始TextRank摘要生成，目标{}句，最大长度{}", sentenceCount, maxLength);
             
             // 步骤1：预处理文本
             String cleanedContent = preprocessText(content);
@@ -110,11 +109,6 @@ public class TextRankSummaryGenerator {
             // 步骤6：生成最终摘要
             String summary = buildFinalSummary(rankedSentences, sentenceCount, maxLength);
             
-            log.debug("TextRank摘要生成完成：原始{}句 -> 选择{}句 -> 摘要长度{}", 
-                sentences.size(), 
-                Math.min(sentenceCount, rankedSentences.size()), 
-                summary.length()
-            );
             
             return summary;
             
@@ -272,7 +266,6 @@ public class TextRankSummaryGenerator {
             System.arraycopy(newScores, 0, scores, 0, size);
             
             if (converged) {
-                log.debug("TextRank算法在第{}轮迭代后收敛", iteration + 1);
                 break;
             }
         }

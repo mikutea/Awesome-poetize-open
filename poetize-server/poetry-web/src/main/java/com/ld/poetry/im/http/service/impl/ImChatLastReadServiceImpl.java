@@ -37,7 +37,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 unreadCounts.put(friendId, unreadCount != null ? unreadCount.intValue() : 0);
             }
             
-            log.debug("用户 {} 的好友未读数: {}", userId, unreadCounts);
             return unreadCounts;
         } catch (Exception e) {
             log.error("获取用户 {} 的好友未读数失败", userId, e);
@@ -57,7 +56,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 unreadCounts.put(groupId, unreadCount != null ? unreadCount.intValue() : 0);
             }
             
-            log.debug("用户 {} 的群聊未读数: {}", userId, unreadCounts);
             return unreadCounts;
         } catch (Exception e) {
             log.error("获取用户 {} 的群聊未读数失败", userId, e);
@@ -108,7 +106,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 this.save(record);
             }
             
-            log.debug("标记用户 {} 和好友 {} 的消息为已读", userId, friendId);
         } catch (Exception e) {
             log.error("标记用户 {} 和好友 {} 的消息为已读失败", userId, friendId, e);
         }
@@ -135,7 +132,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 this.save(record);
             }
             
-            log.debug("标记用户 {} 在群 {} 的消息为已读", userId, groupId);
         } catch (Exception e) {
             log.error("标记用户 {} 在群 {} 的消息为已读失败", userId, groupId, e);
         }
@@ -145,7 +141,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
     public List<Integer> getFriendChatList(Integer userId) {
         try {
             List<Integer> friendList = baseMapper.getFriendChatList(userId);
-            log.debug("用户 {} 的私聊列表: {}", userId, friendList);
             return friendList != null ? friendList : new ArrayList<>();
         } catch (Exception e) {
             log.error("获取用户 {} 的私聊列表失败", userId, e);
@@ -157,7 +152,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
     public List<Integer> getGroupChatList(Integer userId) {
         try {
             List<Integer> groupList = baseMapper.getGroupChatList(userId);
-            log.debug("用户 {} 的群聊列表: {}", userId, groupList);
             return groupList != null ? groupList : new ArrayList<>();
         } catch (Exception e) {
             log.error("获取用户 {} 的群聊列表失败", userId, e);
@@ -188,7 +182,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 this.save(record);
             }
             
-            log.debug("隐藏用户 {} 和好友 {} 的聊天", userId, friendId);
         } catch (Exception e) {
             log.error("隐藏用户 {} 和好友 {} 的聊天失败", userId, friendId, e);
         }
@@ -217,7 +210,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 this.save(record);
             }
             
-            log.debug("隐藏用户 {} 在群 {} 的聊天", userId, groupId);
         } catch (Exception e) {
             log.error("隐藏用户 {} 在群 {} 的聊天失败", userId, groupId, e);
         }
@@ -236,7 +228,6 @@ public class ImChatLastReadServiceImpl extends ServiceImpl<ImChatLastReadMapper,
                 record.setIsHidden(0);
                 record.setLastReadTime(LocalDateTime.now()); // 更新查看时间，移到列表顶部
                 this.updateById(record);
-                log.debug("取消隐藏聊天 - userId: {}, chatType: {}, chatId: {}", userId, chatType, chatId);
             }
         } catch (Exception e) {
             log.error("取消隐藏聊天失败 - userId: {}, chatType: {}, chatId: {}", userId, chatType, chatId, e);

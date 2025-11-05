@@ -28,8 +28,6 @@ public class ArticleVO {
 
     private Integer viewCount;
 
-    private Integer likeCount;
-
     private Boolean commentStatus;
 
     private Boolean recommendStatus;
@@ -84,4 +82,11 @@ public class ArticleVO {
     // 分类名称和标签名称（用于API创建文章时自动创建分类和标签）
     private String sortName;    // 分类名称
     private String labelName;   // 标签名称
+    
+    // 文章访问链接（动态生成，用于API和MCP工具）
+    private String articleUrl;
+    
+    // 翻译内容（按需返回，优化性能）
+    private String translatedTitle;    // 翻译后的标题
+    private String translatedContent;  // 翻译后的内容
 }

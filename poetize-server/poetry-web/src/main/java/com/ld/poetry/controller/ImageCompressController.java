@@ -55,7 +55,6 @@ public class ImageCompressController {
                 return PoetryResult.fail("请上传图片文件！");
             }
 
-            log.info("开始测试压缩: {}", file.getOriginalFilename());
 
             ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
 
@@ -109,7 +108,6 @@ public class ImageCompressController {
                 return PoetryResult.fail("请选择要压缩的图片文件！");
             }
 
-            log.info("开始批量压缩 {} 个文件", files.length);
 
             CompletableFuture<AsyncImageCompressService.BatchCompressResult> future = 
                     asyncImageCompressService.batchCompressAsync(files);
@@ -139,8 +137,6 @@ public class ImageCompressController {
                 return PoetryResult.fail("请上传图片文件！");
             }
 
-            log.info("开始自定义参数压缩测试: {}, 目标尺寸: {}x{}, 质量: {}, 目标大小: {}KB", 
-                    file.getOriginalFilename(), maxWidth, maxHeight, quality, targetSize / 1024);
 
             ImageCompressUtil.CompressResult result = 
                     ImageCompressUtil.smartCompress(file, maxWidth, maxHeight, quality, targetSize);

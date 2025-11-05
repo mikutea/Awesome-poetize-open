@@ -99,7 +99,6 @@ public class MailSendUtil {
             try {
                 currentUsername = PoetryUtil.getUsername();
             } catch (Exception e) {
-                log.debug("无法获取当前用户名，使用默认值");
             }
             
             String commentMail = getCommentMail(commentVO.getType(), sourceName,
@@ -128,14 +127,11 @@ public class MailSendUtil {
 
                     if (count == null) {
                         cacheService.set(mailCountKey, new AtomicInteger(1), CommonConst.CODE_EXPIRE);
-                        log.debug("初始化评论邮件发送计数: email={}", mail.get(0));
                     } else {
                         count.incrementAndGet();
                         cacheService.set(mailCountKey, count, CommonConst.CODE_EXPIRE);
-                        log.debug("更新评论邮件发送计数: email={}, count={}", mail.get(0), count.get());
                     }
                 } else {
-                    log.debug("评论邮件发送已达上限: email={}, count={}", mail.get(0), count.get());
                 }
             } catch (Exception e) {
                 log.error("处理评论邮件发送频率控制时发生错误: email={}", mail.get(0), e);
@@ -227,14 +223,11 @@ public class MailSendUtil {
 
                         if (count == null) {
                             cacheService.set(mailCountKey, new AtomicInteger(1), CommonConst.CODE_EXPIRE);
-                            log.debug("初始化IM邮件发送计数: email={}", mail.get(0));
                         } else {
                             count.incrementAndGet();
                             cacheService.set(mailCountKey, count, CommonConst.CODE_EXPIRE);
-                            log.debug("更新IM邮件发送计数: email={}, count={}", mail.get(0), count.get());
                         }
                     } else {
-                        log.debug("IM邮件发送已达上限: email={}, count={}", mail.get(0), count.get());
                     }
                 } catch (Exception e) {
                     log.error("处理IM邮件发送频率控制时发生错误: email={}", mail.get(0), e);

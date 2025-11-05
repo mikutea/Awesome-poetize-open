@@ -69,6 +69,11 @@ public class SortLabelController {
             return PoetryResult.fail("分类必须配置优先级！");
         }
 
+        if (sort.getSortType() == null) {
+            // 如果前端没传，默认设置为普通分类
+            sort.setSortType(1);
+        }
+
         // 检查分类名称是否已存在（唯一性校验）
         Sort existingSort = sortMapper.selectOne(new QueryWrapper<Sort>().eq("sort_name", sort.getSortName()));
         if (existingSort != null) {
@@ -89,7 +94,6 @@ public class SortLabelController {
             // 2. 重新渲染页面
             prerenderClient.renderHomePage();
             prerenderClient.renderSortIndexPage();
-            log.debug("分类新增后成功触发sitemap更新和页面预渲染");
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类新增后sitemap更新和页面预渲染失败", e);
@@ -120,7 +124,6 @@ public class SortLabelController {
             prerenderClient.deleteCategoryPage(id);
             prerenderClient.renderHomePage();
             prerenderClient.renderSortIndexPage();
-            log.debug("分类删除后成功触发sitemap更新和页面预渲染");
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类删除后sitemap更新和页面预渲染失败", e);
@@ -169,7 +172,6 @@ public class SortLabelController {
             }
             prerenderClient.renderHomePage();
             prerenderClient.renderSortIndexPage();
-            log.debug("分类更新后成功触发sitemap更新和页面预渲染");
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("分类更新后sitemap更新和页面预渲染失败", e);
@@ -219,7 +221,6 @@ public class SortLabelController {
             
             // 2. 重新渲染页面
             prerenderClient.renderCategoryPage(label.getSortId());
-            log.debug("标签新增后成功触发sitemap更新和页面预渲染");
         } catch (Exception e) {
             // 预渲染失败不影响主流程
             log.warn("标签新增后sitemap更新和页面预渲染失败", e);
@@ -252,7 +253,6 @@ public class SortLabelController {
                 
                 // 2. 重新渲染页面
                 prerenderClient.renderCategoryPage(label.getSortId());
-                log.debug("标签删除后成功触发sitemap更新和页面预渲染");
             } catch (Exception e) {
                 // 预渲染失败不影响主流程
                 log.warn("标签删除后sitemap更新和页面预渲染失败", e);
@@ -296,7 +296,6 @@ public class SortLabelController {
             // 2. 重新渲染页面
             if (label.getSortId() != null) {
                 prerenderClient.renderCategoryPage(label.getSortId());
-                log.debug("标签更新后成功触发sitemap更新和页面预渲染");
             }
         } catch (Exception e) {
             // 预渲染失败不影响主流程

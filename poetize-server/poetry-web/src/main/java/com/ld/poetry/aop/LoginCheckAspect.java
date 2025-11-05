@@ -2,7 +2,6 @@ package com.ld.poetry.aop;
 
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.constants.CacheConstants;
-import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
 import com.ld.poetry.enums.CodeMsg;
 import com.ld.poetry.enums.PoetryEnum;
@@ -20,7 +19,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletRequest;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 
 @Aspect
@@ -31,6 +31,20 @@ public class LoginCheckAspect {
 
     @Autowired
     private CacheService cacheService;
+    
+    @Autowired
+    private LockManager lockManager;
+    
+    /**
+     * 管理员请求日志限流缓存
+     * Key: userId, Value: 上次记录日志的时间戳
+     */
+    private final ConcurrentHashMap<Integer, Long> adminLogThrottle = new ConcurrentHashMap<>();
+    
+    /**
+     * 日志记录间隔（毫秒），默认1分钟
+     */
+    private static final long LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
 
     @Around("@annotation(loginCheck)")
     public Object around(ProceedingJoinPoint joinPoint, LoginCheck loginCheck) throws Throwable {
@@ -70,7 +84,10 @@ public class LoginCheckAspect {
                 return PoetryResult.fail("请输入管理员账号！");
             }
         } else if (TokenValidationUtil.isAdminToken(token)) {
-            log.info("管理员请求 - IP: {}, 用户: {}", clientIp, user.getUsername());
+            // 管理员请求日志限流：每分钟最多记录一次
+            if (!loginCheck.silentLog()) {
+                logAdminRequestThrottled(user.getId(), clientIp, user.getUsername());
+            }
             // 检查是否为需要超级管理员权限的接口（保留某些特殊接口的限制）
             if (loginCheck.value() == PoetryEnum.USER_TYPE_ADMIN.getCode()) {
                 // 对于@LoginCheck(0)的接口，检查用户是否为管理员类型
@@ -109,7 +126,8 @@ public class LoginCheckAspect {
             }
 
             if (needRefresh) {
-                synchronized (userId.toString().intern()) {
+                // 使用 LockManager 替代 String.intern()，避免内存泄漏
+                lockManager.executeWithLock("refreshToken:" + userId, () -> {
                     boolean shouldRefresh = false;
 
                     // 双重检查锁定模式
@@ -133,15 +151,13 @@ public class LoginCheckAspect {
                             // 刷新用户token相关缓存
                             cacheService.cacheUserToken(userId, token);
                             cacheService.cacheTokenInterval(userId, false);
-                            log.debug("刷新用户token缓存: userId={}", userId);
                         } else if (TokenValidationUtil.isAdminToken(token)) {
                             // 刷新管理员token相关缓存
                             cacheService.cacheAdminToken(userId, token);
                             cacheService.cacheTokenInterval(userId, true);
-                            log.debug("刷新管理员token缓存: userId={}", userId);
                         }
                     }
-                }
+                });
             }
         } catch (Exception e) {
             log.error("刷新token过期时间时发生错误: userId={}, token={}", user.getId(), token, e);
@@ -152,5 +168,31 @@ public class LoginCheckAspect {
         request.setAttribute("currentUser", user);
         
         return joinPoint.proceed();
+    }
+    
+    /**
+     * 限流记录管理员请求日志
+     * 每个用户每分钟最多记录一次日志
+     * 
+     * @param userId 用户ID
+     * @param clientIp 客户端IP
+     * @param username 用户名
+     */
+    private void logAdminRequestThrottled(Integer userId, String clientIp, String username) {
+        long now = System.currentTimeMillis();
+        Long lastLogTime = adminLogThrottle.get(userId);
+        
+        // 如果是第一次请求或距离上次记录超过指定间隔，则记录日志
+        if (lastLogTime == null || (now - lastLogTime) >= LOG_INTERVAL_MS) {
+            log.info("管理员请求 - IP: {}, 用户: {} (限流：1分钟内的其他请求已省略)", clientIp, username);
+            adminLogThrottle.put(userId, now);
+            
+            // 定期清理过期的记录，避免内存泄漏
+            // 如果缓存大小超过1000，清理5分钟前的记录
+            if (adminLogThrottle.size() > 1000) {
+                long fiveMinutesAgo = now - TimeUnit.MINUTES.toMillis(5);
+                adminLogThrottle.entrySet().removeIf(entry -> entry.getValue() < fiveMinutesAgo);
+            }
+        }
     }
 }

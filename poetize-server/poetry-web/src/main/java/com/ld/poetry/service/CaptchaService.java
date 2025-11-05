@@ -77,5 +77,18 @@ public interface CaptchaService {
      * @return 验证令牌
      */
     String generateVerificationToken();
+    
+    /**
+     * 解除IP封禁
+     * @param ip IP地址
+     * @return 是否成功
+     */
+    boolean unblockIp(String ip);
+    
+    /**
+     * 获取所有被封禁的IP列表
+     * @return 封禁IP列表（包含IP、剩余时间等信息）
+     */
+    List<Map<String, Object>> getBlockedIpList();
 }
 

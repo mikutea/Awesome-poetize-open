@@ -16,6 +16,8 @@ import org.springframework.util.StringUtils;
 import java.io.File;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.StructuredTaskScope;
 
 /**
  * <p>
@@ -507,6 +509,58 @@ public class ThirdPartyOauthConfigServiceImpl extends ServiceImpl<ThirdPartyOaut
         } catch (Exception e) {
             log.error("获取配置统计失败", e);
             return PoetryResult.fail("获取配置统计失败: " + e.getMessage());
+        }
+    }
+    
+    @Override
+    public Map<String, Boolean> getAllPlatformsStatus() {
+        List<ThirdPartyOauthConfig> allConfigs = getAllConfigs();
+        Map<String, Boolean> statusMap = new ConcurrentHashMap<>();
+        
+        // 使用结构化并发并行检查所有平台的可用性
+        try (var scope = StructuredTaskScope.open()) {
+            // 为每个平台创建检查任务
+            for (ThirdPartyOauthConfig config : allConfigs) {
+                String platform = config.getPlatformType();
+                scope.fork(() -> {
+                    boolean isAvailable = checkPlatformAvailability(config);
+                    statusMap.put(platform, isAvailable);
+                    return null;
+                });
+            }
+            
+            // 等待所有检查完成
+            scope.join();
+            
+            log.info("所有OAuth平台状态检查完成，共{}个平台", statusMap.size());
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("OAuth平台状态检查被中断", e);
+        } catch (Exception e) {
+            log.error("OAuth平台状态检查失败", e);
+        }
+        
+        return statusMap;
+    }
+    
+    /**
+     * 检查单个平台的可用性
+     */
+    private boolean checkPlatformAvailability(ThirdPartyOauthConfig config) {
+        if (config == null || !config.getEnabled() || !config.getGlobalEnabled()) {
+            return false;
+        }
+        
+        // 检查必要的配置项
+        if ("twitter".equals(config.getPlatformType())) {
+            return StringUtils.hasText(config.getClientKey()) && 
+                   StringUtils.hasText(config.getClientSecret()) &&
+                   StringUtils.hasText(config.getRedirectUri());
+        } else {
+            return StringUtils.hasText(config.getClientId()) && 
+                   StringUtils.hasText(config.getClientSecret()) &&
+                   StringUtils.hasText(config.getRedirectUri());
         }
     }
 }

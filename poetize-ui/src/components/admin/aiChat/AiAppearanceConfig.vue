@@ -1,43 +1,13 @@
 <template>
   <div class="ai-appearance-config">
     <el-form :model="appearanceConfig" label-width="120px">
-      <el-form-item label="机器人头像">
-        <div class="avatar-upload">
-          <el-upload
-            class="avatar-uploader"
-            :action="uploadUrl"
-            :headers="uploadHeaders"
-            :show-file-list="false"
-            :on-success="handleAvatarSuccess"
-            :before-upload="beforeAvatarUpload">
-            <img v-if="appearanceConfig.botAvatar" :src="appearanceConfig.botAvatar" class="avatar">
-            <i v-else class="el-icon-plus avatar-uploader-icon"></i>
-          </el-upload>
-        </div>
-      </el-form-item>
-
       <el-form-item label="机器人名称">
         <el-input v-model="appearanceConfig.botName" placeholder="例如: 小助手"></el-input>
       </el-form-item>
 
       <el-form-item label="主题颜色">
         <el-color-picker v-model="appearanceConfig.themeColor"></el-color-picker>
-      </el-form-item>
-
-      <el-form-item label="聊天窗口位置">
-        <el-radio-group v-model="appearanceConfig.position">
-          <el-radio label="bottom-right">右下角</el-radio>
-          <el-radio label="bottom-left">左下角</el-radio>
-          <el-radio label="center">居中</el-radio>
-        </el-radio-group>
-      </el-form-item>
-
-      <el-form-item label="聊天气泡样式">
-        <el-radio-group v-model="appearanceConfig.bubbleStyle">
-          <el-radio label="modern">现代风格</el-radio>
-          <el-radio label="classic">经典风格</el-radio>
-          <el-radio label="minimal">简约风格</el-radio>
-        </el-radio-group>
+        <span style="margin-left: 10px; color: #909399; font-size: 12px;">用于用户消息气泡颜色</span>
       </el-form-item>
 
       <el-form-item label="显示打字动效">
@@ -58,11 +28,8 @@ export default {
     value: {
       type: Object,
       default: () => ({
-        botAvatar: '',
         botName: 'AI助手',
         themeColor: '#409EFF',
-        position: 'bottom-right',
-        bubbleStyle: 'modern',
         typingAnimation: true,
         showTimestamp: true
       })
@@ -75,89 +42,94 @@ export default {
     }
   },
   
-  computed: {
-    uploadUrl() {
-      return this.$constant.baseURL + "/admin/upload";
-    },
-    
-    uploadHeaders() {
-      return {
-        'Authorization': 'Bearer ' + localStorage.getItem('adminToken')
-      };
-    }
-  },
-  
   watch: {
     value: {
       handler(newVal) {
-        this.appearanceConfig = { ...newVal };
+        if (JSON.stringify(newVal) !== JSON.stringify(this.appearanceConfig)) {
+          this.appearanceConfig = { ...newVal };
+        }
       },
       deep: true
     },
     
     appearanceConfig: {
       handler(newVal) {
-        this.$emit('input', newVal);
+        if (JSON.stringify(newVal) !== JSON.stringify(this.value)) {
+          this.$emit('input', newVal);
+        }
       },
       deep: true
-    }
-  },
-  
-  methods: {
-    // 头像上传成功
-    handleAvatarSuccess(res) {
-      if (res.flag) {
-        this.appearanceConfig.botAvatar = res.data;
-        this.$message.success('头像上传成功');
-      } else {
-        this.$message.error('头像上传失败');
-      }
-    },
-    
-    // 头像上传前验证
-    beforeAvatarUpload(file) {
-      const isImage = file.type.indexOf('image/') === 0;
-      const isLt2M = file.size / 1024 / 1024 < 2;
-      
-      if (!isImage) {
-        this.$message.error('只能上传图片文件!');
-        return false;
-      }
-      if (!isLt2M) {
-        this.$message.error('图片大小不能超过 2MB!');
-        return false;
-      }
-      return true;
     }
   }
 }
 </script>
 
 <style scoped>
-.avatar-uploader .el-upload {
-  border: 1px dashed #d9d9d9;
-  border-radius: 6px;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
+.ai-appearance-config {
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 10px;
 }
 
-.avatar-uploader .el-upload:hover {
-  border-color: #409EFF;
+/* 移动端对话框中不限制高度 */
+@media screen and (max-width: 768px) {
+  .ai-appearance-config {
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 
-.avatar-uploader-icon {
-  font-size: 28px;
-  color: #8c939d;
-  width: 100px;
-  height: 100px;
-  line-height: 100px;
-  text-align: center;
+/* PC端样式 - 768px以上 */
+@media screen and (min-width: 769px) {
+  ::v-deep .el-form-item__label {
+    float: left !important;
+  }
 }
 
-.avatar {
-  width: 100px;
-  height: 100px;
-  display: block;
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .ai-appearance-config {
+    padding: 0;
+  }
+
+  .ai-appearance-config .el-form-item {
+    margin-bottom: 15px;
+  }
+
+  /* 标签适配 - 垂直布局 */
+  .ai-appearance-config .el-form-item__label {
+    float: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 8px !important;
+    padding-bottom: 0 !important;
+  }
+
+  .ai-appearance-config .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* 提示文本 */
+  .ai-appearance-config .el-form-item__content span {
+    font-size: 11px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .ai-appearance-config .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .ai-appearance-config .el-form-item__label {
+    font-size: 12px;
+  }
+
+  .ai-appearance-config .el-form-item__content span {
+    font-size: 10px;
+  }
 }
 </style> 

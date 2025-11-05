@@ -6,7 +6,7 @@
         <!-- 背景图片 -->
         <video class="index-video" autoplay="autoplay" muted="muted" loop="loop"
                preload="metadata" 
-               :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
+               :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
         </video>
         <div style="position: absolute;left: 0;top: 0;padding: 5px 20px">
           <!-- 标题 -->
@@ -110,7 +110,9 @@
 
 <script>
 
-  const myFooter = () => import( "./common/myFooter");
+    import { useMainStore } from '@/stores/main';
+
+const myFooter = () => import( "./common/myFooter");
   const funny = () => import( "./funny");
   const friend = () => import( "./friend");
 
@@ -128,7 +130,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 

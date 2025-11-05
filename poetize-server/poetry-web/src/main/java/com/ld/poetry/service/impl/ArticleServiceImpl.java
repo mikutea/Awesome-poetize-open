@@ -8,7 +8,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.ResourceCheck;
-import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.dao.ArticleMapper;
 import com.ld.poetry.dao.LabelMapper;
@@ -26,13 +25,10 @@ import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict;
 import java.util.regex.Pattern;
-import org.springframework.cache.annotation.Cacheable;
-import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.cache.annotation.CachePut;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -50,9 +46,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 import com.ld.poetry.utils.PrerenderClient;
 import com.ld.poetry.utils.SmartSummaryGenerator;
-import com.ld.poetry.utils.TextRankSummaryGenerator;
 import com.ld.poetry.service.SummaryService;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
 import com.ld.poetry.service.SeoService;
 import com.ld.poetry.event.ArticleSavedEvent;
 import org.springframework.context.ApplicationEventPublisher;
@@ -111,137 +108,119 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
+    
+    @Autowired
+    private LockManager lockManager;
 
     @Override
     public PoetryResult saveArticle(ArticleVO articleVO) {
-        long startTime = System.currentTimeMillis();
-        log.info("【Service性能监控】开始保存文章到数据库");
+        // 调用重载方法，使用默认参数（不跳过AI翻译，无暂存翻译）
+        return saveArticle(articleVO, false, null);
+    }
+    
+    @Override
+    public PoetryResult saveArticle(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation) {
+        log.info("开始保存文章");
         
+        // 参数验证
         if (articleVO.getViewStatus() != null && !articleVO.getViewStatus() && !StringUtils.hasText(articleVO.getPassword())) {
             return PoetryResult.fail("请设置文章密码！");
         }
-        Article article = new Article();
-        if (StringUtils.hasText(articleVO.getArticleCover())) {
-            article.setArticleCover(articleVO.getArticleCover());
-        }
-        if (StringUtils.hasText(articleVO.getVideoUrl())) {
-            article.setVideoUrl(articleVO.getVideoUrl());
-        }
-        if (articleVO.getViewStatus() != null && !articleVO.getViewStatus() && StringUtils.hasText(articleVO.getPassword())) {
-            article.setPassword(articleVO.getPassword());
-            article.setTips(articleVO.getTips());
-        }
-        article.setViewStatus(articleVO.getViewStatus());
-        article.setCommentStatus(articleVO.getCommentStatus());
-        article.setRecommendStatus(articleVO.getRecommendStatus());
-        article.setSubmitToSearchEngine(articleVO.getSubmitToSearchEngine());
-        article.setArticleTitle(articleVO.getArticleTitle());
-        article.setArticleContent(articleVO.getArticleContent());
         
-        // 立即生成AI摘要，确保预渲染时有正确的摘要
-        if (StringUtils.hasText(articleVO.getArticleContent())) {
-            try {
-                String aiSummary = summaryService.generateSummarySync(articleVO.getArticleContent());
-                article.setSummary(StringUtils.hasText(aiSummary) ? aiSummary : "");
-                log.info("AI摘要生成成功，长度: {}", aiSummary.length());
-            } catch (Exception e) {
-                log.warn("AI摘要生成失败，使用空摘要: {}", e.getMessage());
-                article.setSummary("");
-            }
-        } else {
-            article.setSummary("");
-        }
-        
-        article.setSortId(articleVO.getSortId());
-        article.setLabelId(articleVO.getLabelId());
-        
-        // 增强的用户ID设置逻辑
-        Integer userId = null;
-        if (articleVO.getUserId() != null) {
-            userId = articleVO.getUserId();
-        } else {
-            userId = PoetryUtil.getUserId();
-            if (userId == null) {
-                log.error("保存文章失败：无法获取用户ID");
-                return PoetryResult.fail("无法确定文章作者，请重新登录后再试");
-            }
-        }
-        
-        article.setUserId(userId);
-        
-        long beforeSaveTime = System.currentTimeMillis();
-        log.info("【Service性能监控】准备保存到数据库，耗时: {}ms", beforeSaveTime - startTime);
-        
-        boolean saved = save(article);
-        if (!saved) {
+        // ========== 步骤1：在短事务中保存文章原文 ==========
+        Integer savedArticleId = saveArticleInTransaction(articleVO);
+        if (savedArticleId == null) {
+            log.error("数据库保存失败");
             return PoetryResult.fail("保存文章失败");
         }
-        
-        long afterSaveTime = System.currentTimeMillis();
-        log.info("【Service性能监控】数据库保存完成，耗时: {}ms", afterSaveTime - beforeSaveTime);
+        log.info("文章原文保存成功，文章ID: {}，事务已提交，数据库连接已释放", savedArticleId);
         
         // 将文章ID回填到VO对象
-        articleVO.setId(article.getId());
-
-        // 异步发送订阅邮件，避免阻塞保存操作
-        if (articleVO.getViewStatus()) {
-            final Integer labelId = articleVO.getLabelId();
-            final String articleTitle = articleVO.getArticleTitle();
+        articleVO.setId(savedArticleId);
+        
+        // ========== 步骤2：事务外执行AI翻译（串行等待，但不占用数据库连接）==========
+        Map<String, String> translationResult;
+        try {
+            translationResult = translationService.translateArticleOnly(
+                articleVO.getArticleTitle(),
+                articleVO.getArticleContent(),
+                skipAiTranslation,
+                pendingTranslation
+            );
+        } catch (Exception e) {
+            log.warn("翻译任务失败（继续后续流程）", e);
+            translationResult = null;
+        }
+        
+        // ========== 步骤3：在新事务中保存翻译结果 ==========
+        if (translationResult != null && !translationResult.isEmpty()) {
+            try {
+                saveTranslationInNewTransaction(
+                    savedArticleId,
+                    translationResult.get("title"),
+                    translationResult.get("content"),
+                    translationResult.get("language")
+                );
+                log.info("翻译结果保存成功，新事务已提交");
+            } catch (Exception e) {
+                log.error("翻译结果保存失败（继续执行后续流程）", e);
+            }
+        }
+        
+        try {
+            // ========== 步骤4：生成多语言摘要（基于原文+翻译）==========
+            // 生成摘要
+            try {
+                summaryService.generateAndSaveSummary(savedArticleId);
+            } catch (Exception e) {
+                log.error("摘要生成失败，预渲染将使用文章开头作为降级方案", e);
+                // 摘要生成失败不影响主流程，继续执行
+            }
             
-            new Thread(() -> {
-                long mailStartTime = System.currentTimeMillis();
-                log.info("【Service性能监控】开始异步发送订阅邮件");
-                
-                try {
-                    List<User> users = userService.lambdaQuery().select(User::getEmail, User::getSubscribe).eq(User::getUserStatus, PoetryEnum.STATUS_ENABLE.getCode()).list();
-                    List<String> emails = users.stream().filter(u -> {
-                        List<Integer> sub = JSON.parseArray(u.getSubscribe(), Integer.class);
-                        return !CollectionUtils.isEmpty(sub) && sub.contains(labelId);
-                    }).map(User::getEmail).collect(Collectors.toList());
-
-                    if (!CollectionUtils.isEmpty(emails)) {
-                        LambdaQueryChainWrapper<Label> wrapper = new LambdaQueryChainWrapper<>(labelMapper);
-                        Label label = wrapper.select(Label::getLabelName).eq(Label::getId, labelId).one();
-                        String text = getSubscribeMail(label.getLabelName(), articleTitle);
-                        WebInfo webInfo = cacheService.getCachedWebInfo();
-                        mailUtil.sendMailMessage(emails, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
-                        
-                        long mailEndTime = System.currentTimeMillis();
-                        log.info("【Service性能监控】订阅邮件发送完成，发送给{}个用户，耗时: {}ms", emails.size(), mailEndTime - mailStartTime);
-                    } else {
-                        log.info("【Service性能监控】无需发送订阅邮件（无匹配用户）");
+            // 异步发送订阅邮件
+            if (articleVO.getViewStatus()) {
+                final Integer finalLabelId = articleVO.getLabelId();
+                final String finalArticleTitle = articleVO.getArticleTitle();
+                // 使用虚拟线程异步发送邮件，不阻塞主流程
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        sendSubscriptionEmails(finalLabelId, finalArticleTitle);
+                    } catch (Exception e) {
+                        log.error("订阅邮件发送失败", e);
                     }
-                } catch (Exception e) {
-                    long mailErrorTime = System.currentTimeMillis();
-                    log.error("【Service性能监控】订阅邮件发送失败，耗时: {}ms，错误: {}", mailErrorTime - mailStartTime, e.getMessage(), e);
+                });
+            }
+            
+            // 清除缓存
+            try {
+                cacheService.evictSortArticleList();
+            } catch (Exception e) {
+                log.error("清除缓存失败: {}", e.getMessage(), e);
+            }
+            
+            // ========== 步骤5：发布文章保存事件 ==========
+            try {
+                if (eventPublisher == null) {
+                    log.error("eventPublisher为空，无法发布事件");
+                } else {
+                    eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), 
+                                                                    articleVO.getViewStatus(), "CREATE", 
+                                                                    articleVO.getSubmitToSearchEngine()));
+                    log.info("已发布文章保存事件，文章ID: {}, 可见: {}", savedArticleId, articleVO.getViewStatus());
                 }
-            }).start();
-        }
-        
-        // 异步翻译完成后内部会触发预渲染
-        new Thread(() -> translationService.translateAndSaveArticle(article.getId())).start();
-        
-        // 手动清除Redis中的分类文章列表缓存，确保首页能显示新文章
-        try {
-            cacheService.evictSortArticleList();
-            log.info("已清除分类文章列表缓存，确保首页显示最新文章");
+            } catch (Exception e) {
+                log.error("发布文章保存事件失败: {}", e.getMessage(), e);
+            }
+            
+            log.info("文章保存流程全部完成，文章ID: {}", savedArticleId);
+            
+            // 核心任务完成后立即返回
+            return PoetryResult.success(savedArticleId);
+            
         } catch (Exception e) {
-            log.error("清除分类文章列表缓存失败: {}", e.getMessage(), e);
+            log.error("后台任务执行失败，文章ID: {}", savedArticleId, e);
+            return PoetryResult.fail("部分操作失败：" + e.getMessage() + "，但文章已保存，文章ID: " + savedArticleId);
         }
-        
-        // 发布文章保存事件，触发预渲染更新（在事务提交后执行）
-        try {
-            eventPublisher.publishEvent(new ArticleSavedEvent(article.getId(), article.getSortId(), 
-                                                            article.getViewStatus(), "CREATE"));
-            log.info("已发布文章保存事件，将触发首页预渲染更新");
-        } catch (Exception e) {
-            log.error("发布文章保存事件失败: {}", e.getMessage(), e);
-        }
-        
-        long endTime = System.currentTimeMillis();
-        log.info("【Service性能监控】saveArticle方法总耗时: {}ms", endTime - startTime);
-        
-        return PoetryResult.success(article.getId());
     }
 
     /**
@@ -276,7 +255,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         try {
             currentUsername = PoetryUtil.getUsername();
         } catch (Exception e) {
-            log.warn("【异步保存】无法获取当前用户名，使用默认值: {}", e.getMessage());
+            log.warn("无法获取当前用户名，使用默认值: {}", e.getMessage());
             currentUsername = "System";
         }
         final String finalUsername = currentUsername;
@@ -284,147 +263,111 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // 初始化保存状态
         ArticleSaveStatus initialStatus = new ArticleSaveStatus(taskId, "processing", "正在保存文章...", null);
         ARTICLE_SAVE_STATUS.put(taskId, initialStatus);
-        log.info("【异步保存】初始化保存状态，任务ID: {}, 当前任务总数: {}", taskId, ARTICLE_SAVE_STATUS.size());
+        log.info("初始化异步保存任务，任务ID: {}", taskId);
         
-        // 异步执行保存
-        new Thread(() -> {
+        // 使用虚拟线程异步执行保存
+        Thread.ofVirtual().name("article-save-" + taskId).start(() -> {
             try {
-                log.info("【异步保存】开始异步保存文章，任务ID: {}", taskId);
                 
-                // 创建文章对象
-                Article article = new Article();
-                if (StringUtils.hasText(articleVO.getArticleCover())) {
-                    article.setArticleCover(articleVO.getArticleCover());
-                }
-                if (StringUtils.hasText(articleVO.getVideoUrl())) {
-                    article.setVideoUrl(articleVO.getVideoUrl());
-                }
-                if (articleVO.getViewStatus() != null && !articleVO.getViewStatus() && StringUtils.hasText(articleVO.getPassword())) {
-                    article.setPassword(articleVO.getPassword());
-                    article.setTips(articleVO.getTips());
-                }
-                article.setViewStatus(articleVO.getViewStatus());
-                article.setCommentStatus(articleVO.getCommentStatus());
-                article.setRecommendStatus(articleVO.getRecommendStatus());
-                article.setSubmitToSearchEngine(articleVO.getSubmitToSearchEngine());
-                article.setArticleTitle(articleVO.getArticleTitle());
-                article.setArticleContent(articleVO.getArticleContent());
-                article.setSortId(articleVO.getSortId());
-                article.setLabelId(articleVO.getLabelId());
-                article.setUserId(userId);
-                
-                // 设置必要的基础字段
-                article.setCreateTime(LocalDateTime.now());
-                article.setUpdateTime(LocalDateTime.now());
-                article.setUpdateBy(finalUsername);
-                
-                // 更新状态：正在生成摘要
-                updateSaveStatus(taskId, "processing", "正在生成AI摘要...");
-                
-                // 生成AI摘要
-                if (StringUtils.hasText(articleVO.getArticleContent())) {
-                    try {
-                        log.info("【异步保存】开始生成AI摘要，任务ID: {}, 文章内容长度: {}", taskId, articleVO.getArticleContent().length());
-                        String aiSummary = summaryService.generateSummarySync(articleVO.getArticleContent());
-                        article.setSummary(StringUtils.hasText(aiSummary) ? aiSummary : "");
-                        log.info("【异步保存】AI摘要生成成功，任务ID: {}, 摘要长度: {}", taskId, aiSummary != null ? aiSummary.length() : 0);
-                    } catch (Exception e) {
-                        log.error("【异步保存】AI摘要生成失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
-                        article.setSummary("");
-                    }
-                } else {
-                    log.info("【异步保存】文章内容为空，跳过AI摘要生成，任务ID: {}", taskId);
-                    article.setSummary("");
-                }
+                // 设置用户ID（虚拟线程中无法访问RequestContext）
+                articleVO.setUserId(userId);
                 
                 // 更新状态：正在保存到数据库
                 updateSaveStatus(taskId, "processing", "正在保存到数据库...");
                 
-                // 保存到数据库
-                log.info("【异步保存】开始保存到数据库，任务ID: {}", taskId);
-                boolean saved = save(article);
-                if (!saved) {
-                    log.error("【异步保存】数据库保存失败，任务ID: {}", taskId);
+                // ========== 步骤1：使用短事务方法保存文章 ==========
+                Integer savedArticleId = saveArticleInTransaction(articleVO);
+                if (savedArticleId == null) {
+                    log.error("数据库保存失败，任务ID: {}", taskId);
                     updateSaveStatus(taskId, "failed", "数据库保存失败");
                     return;
                 }
-                log.info("【异步保存】数据库保存成功，任务ID: {}, 文章ID: {}", taskId, article.getId());
+                log.info("文章保存成功，任务ID: {}, 文章ID: {}，短事务已提交", taskId, savedArticleId);
+                
+                // ========== 步骤2：事务外执行AI翻译（串行执行）==========
+                updateSaveStatus(taskId, "processing", "文章已保存，正在进行AI翻译...");
+                Map<String, String> translationResult;
+                try {
+                    translationResult = translationService.translateArticleOnly(
+                        articleVO.getArticleTitle(),
+                        articleVO.getArticleContent(),
+                        skipAiTranslation,
+                        pendingTranslation
+                    );
+                } catch (Exception e) {
+                    log.warn("翻译任务失败，任务ID: {}", taskId, e);
+                    translationResult = null;
+                }
 
-                // 手动清除Redis中的分类文章列表缓存，确保首页能显示新文章
+                // ========== 步骤3：在新事务中保存翻译结果 ==========
+                if (translationResult != null && !translationResult.isEmpty()) {
+                    updateSaveStatus(taskId, "processing", "文章已保存，正在保存翻译结果...");
+                    try {
+                        saveTranslationInNewTransaction(
+                            savedArticleId,
+                            translationResult.get("title"),
+                            translationResult.get("content"),
+                            translationResult.get("language")
+                        );
+                        log.info("翻译结果保存成功，任务ID: {}，新事务已提交", taskId);
+                    } catch (Exception e) {
+                        log.error("翻译结果保存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    }
+                }
+                
+                // ========== 步骤4：生成多语言摘要（基于原文+翻译）==========
+                updateSaveStatus(taskId, "processing", "文章已保存，正在生成多语言AI摘要...");
+                try {
+                    summaryService.generateAndSaveSummary(savedArticleId);
+                } catch (Exception e) {
+                    log.error("摘要生成失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                }
+                
+                // 清除缓存
                 try {
                     cacheService.evictSortArticleList();
-                    log.info("【异步保存】已清除分类文章列表缓存，确保首页显示最新文章，任务ID: {}", taskId);
                 } catch (Exception e) {
-                    log.error("【异步保存】清除分类文章列表缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    log.error("清除缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
-                
-                // 发布文章保存事件，触发预渲染更新（在事务提交后执行）
-                try {
-                    eventPublisher.publishEvent(new ArticleSavedEvent(article.getId(), article.getSortId(), 
-                                                                    article.getViewStatus(), "CREATE"));
-                    log.info("【异步保存】已发布文章保存事件，将触发首页预渲染更新，任务ID: {}", taskId);
-                } catch (Exception e) {
-                    log.error("【异步保存】发布文章保存事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
-                }
-                
-                // 更新状态：后台处理中
-                updateSaveStatus(taskId, "processing", "文章已保存，正在处理邮件通知和翻译...");
                 
                 // 异步发送订阅邮件
                 if (articleVO.getViewStatus()) {
-                    try {
-                        log.info("【异步保存】开始发送订阅邮件，任务ID: {}", taskId);
-                        sendSubscriptionEmails(articleVO.getLabelId(), articleVO.getArticleTitle());
-                        log.info("【异步保存】订阅邮件发送完成，任务ID: {}", taskId);
-                    } catch (Exception e) {
-                        log.error("【异步保存】订阅邮件发送失败，任务ID: {}", taskId, e);
-                    }
-                } else {
-                    log.info("【异步保存】文章不可见，跳过订阅邮件发送，任务ID: {}", taskId);
-                }
-                
-                // 异步翻译（翻译完成后内部会触发预渲染）
-                try {
-                    log.info("【异步保存】开始文章翻译，任务ID: {}, 跳过AI翻译: {}, 有暂存翻译: {}",
-                            taskId, skipAiTranslation, pendingTranslation != null && !pendingTranslation.isEmpty());
-                    translationService.translateAndSaveArticle(article.getId(), skipAiTranslation, pendingTranslation);
-                    log.info("【异步保存】文章翻译完成（包含预渲染），任务ID: {}", taskId);
-                } catch (Exception e) {
-                    log.error("【异步保存】文章翻译失败，任务ID: {}", taskId, e);
-                }
-                // 更新状态：翻译完成，正在处理sitemap更新和SEO推送
-                updateSaveStatus(taskId, "processing", "文章已保存，正在处理sitemap更新和SEO推送...");
-
-                // 注意：sitemap更新已经通过 ArticleEventListener.updateSitemapAsync() 处理
-                // 无需在这里重复处理sitemap更新
-                log.info("【异步保存】文章ID {} 保存成功，sitemap更新将通过事件监听器自动处理，任务ID: {}", article.getId(), taskId);
-                
-                // 如果需要推送至搜索引擎且文章可见，异步处理
-                if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine())) {
-                    log.info("【异步保存】文章ID {} 标记为需要推送至搜索引擎，开始异步处理，任务ID: {}", article.getId(), taskId);
-                    
-                    // 异步执行SEO推送，避免阻塞用户操作
-                    new Thread(() -> {
+                    final Integer finalLabelId = articleVO.getLabelId();
+                    final String finalArticleTitle = articleVO.getArticleTitle();
+                    final String finalTaskId = taskId;
+                    // 使用虚拟线程异步发送邮件，不阻塞主流程
+                    Thread.ofVirtual().start(() -> {
                         try {
-                            boolean seoResult = seoService.submitToSearchEngines(article.getId());
-                            log.info("【异步保存】文章ID {} 搜索引擎推送完成，结果: {}，任务ID: {}", article.getId(), seoResult ? "成功" : "失败", taskId);
+                            sendSubscriptionEmails(finalLabelId, finalArticleTitle);
                         } catch (Exception e) {
-                            log.error("【异步保存】搜索引擎推送失败，但不影响文章保存，文章ID: " + article.getId() + ", 任务ID: " + taskId, e);
+                            log.error("订阅邮件发送失败，任务ID: {}", finalTaskId, e);
                         }
-                    }).start();
-                } else {
-                    log.info("【异步保存】文章ID {} 未标记为需要推送至搜索引擎，任务ID: {}", article.getId(), taskId);
+                    });
                 }
                 
-                // 最终成功状态
-                updateSaveStatus(taskId, "success", "文章保存成功！AI摘要已生成", article.getId());
-                log.info("【异步保存】文章保存完成，任务ID: {}, 文章ID: {}", taskId, article.getId());
+                // ========== 步骤5：发布文章保存事件 ==========
+                try {
+                    if (eventPublisher == null) {
+                        log.error("eventPublisher为空，无法发布事件，任务ID: {}", taskId);
+                    } else {
+                        eventPublisher.publishEvent(new ArticleSavedEvent(savedArticleId, articleVO.getSortId(), 
+                                                                        articleVO.getViewStatus(), "CREATE", 
+                                                                        articleVO.getSubmitToSearchEngine()));
+                        log.info("已发布文章保存事件，任务ID: {}, 文章ID: {}, 可见: {}", taskId, savedArticleId, articleVO.getViewStatus());
+                    }
+                } catch (Exception e) {
+                    log.error("发布文章保存事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                }
+                
+                // 最终成功状态（SEO推送将在预渲染完成后自动执行）
+                updateSaveStatus(taskId, "success", "文章保存成功！AI摘要已生成", savedArticleId);
+                log.info("异步文章保存流程全部完成，任务ID: {}, 文章ID: {}", taskId, savedArticleId);
                 
             } catch (Exception e) {
-                log.error("【异步保存】文章保存失败，任务ID: {}", taskId, e);
+                log.error("文章保存失败，任务ID: {}", taskId, e);
                 updateSaveStatus(taskId, "failed", "保存失败：" + e.getMessage());
             }
-        }).start();
+        });
         
         return PoetryResult.success(taskId);
     }
@@ -434,25 +377,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
      */
     @Override
     public PoetryResult<ArticleSaveStatus> getArticleSaveStatus(String taskId) {
-        // 轮询期间的日志降级为DEBUG，减少噪音
-        log.debug("【异步保存】查询保存状态，任务ID: {}", taskId);
         
         ArticleSaveStatus status = ARTICLE_SAVE_STATUS.get(taskId);
         if (status == null) {
-            log.warn("【异步保存】任务不存在，任务ID: {}, 当前存在的任务: {}", taskId, ARTICLE_SAVE_STATUS.keySet());
+            log.warn("任务不存在，任务ID: {}", taskId);
             return PoetryResult.fail("任务不存在或已过期");
         }
         
-        // 只在状态变化或首次查询时输出详细日志
-        if (log.isDebugEnabled()) {
-            log.debug("【异步保存】找到状态 - 任务ID: {}, 状态: {}, 消息: {}, 文章ID: {}, 最后更新时间: {}", 
-                    taskId, status.getStatus(), status.getMessage(), status.getArticleId(), status.getLastUpdateTime());
-        }
-        
-        // 如果任务完成（成功或失败），5分钟后自动清理
+        // 如果任务完成（成功或失败），10分钟后自动清理
         if (("success".equals(status.getStatus()) || "failed".equals(status.getStatus())) 
-            && System.currentTimeMillis() - status.getLastUpdateTime() > 5 * 60 * 1000) {
-            log.info("【异步保存】任务已过期，清理任务，任务ID: {}", taskId);
+            && System.currentTimeMillis() - status.getLastUpdateTime() > 10 * 60 * 1000) {
             ARTICLE_SAVE_STATUS.remove(taskId);
             return PoetryResult.fail("任务已过期");
         }
@@ -475,13 +409,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private void updateSaveStatus(String taskId, String status, String message, Integer articleId) {
         ArticleSaveStatus saveStatus = ARTICLE_SAVE_STATUS.get(taskId);
         if (saveStatus != null) {
-            log.info("【异步保存】更新状态 - 任务ID: {}, 状态: {}, 消息: {}, 文章ID: {}", taskId, status, message, articleId);
             saveStatus.setStatus(status);
             saveStatus.setMessage(message);
             saveStatus.setArticleId(articleId);
             saveStatus.setLastUpdateTime(System.currentTimeMillis());
         } else {
-            log.warn("【异步保存】状态更新失败 - 任务ID不存在: {}, 尝试更新状态: {}, 消息: {}", taskId, status, message);
+            log.warn("状态更新失败 - 任务ID不存在: {}, 尝试更新状态: {}, 消息: {}", taskId, status, message);
         }
     }
     
@@ -568,6 +501,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public PoetryResult deleteArticle(Integer id) {
         Integer userId = PoetryUtil.getUserId();
         
@@ -583,7 +517,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return PoetryResult.fail("没有权限删除此文章！");
         }
         
-        // 删除文章
+        // 删除文章（事务保护）
         removeById(id);
 
         // 使用Redis缓存清理替换PoetryCache
@@ -594,12 +528,24 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     @Override
     public PoetryResult updateArticle(ArticleVO articleVO) {
+        // 调用重载方法，使用默认参数（不跳过AI翻译，无暂存翻译）
+        return updateArticle(articleVO, false, null);
+    }
+    
+    @Override
+    public PoetryResult updateArticle(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation) {
+        log.info("开始更新文章，ID: {}", articleVO.getId());
+        
+        // 参数验证
         if (articleVO.getViewStatus() != null && !articleVO.getViewStatus() && !StringUtils.hasText(articleVO.getPassword())) {
             return PoetryResult.fail("请设置文章密码！");
         }
 
         Integer userId = PoetryUtil.getUserId();
+        final Integer updatedArticleId = articleVO.getId();
+        final String updatedContent = articleVO.getArticleContent();
         
+        // 构建更新链式包装器
         LambdaUpdateChainWrapper<Article> updateChainWrapper = lambdaUpdate()
                 .eq(Article::getId, articleVO.getId())
                 .eq(Article::getUserId, userId)
@@ -630,40 +576,81 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         if (articleVO.getSubmitToSearchEngine() != null) {
             updateChainWrapper.set(Article::getSubmitToSearchEngine, articleVO.getSubmitToSearchEngine());
         }
-        // 同步更新摘要（如果内容有变化）
-        if (StringUtils.hasText(articleVO.getArticleContent())) {
+        
+        // ========== 步骤1：在短事务中更新文章 ==========
+        boolean updateResult = updateArticleInTransaction(updateChainWrapper);
+        if (!updateResult) {
+            log.error("数据库更新失败");
+            return PoetryResult.fail("更新文章失败");
+        }
+        log.info("文章更新成功，文章ID: {}，事务已提交，数据库连接已释放", updatedArticleId);
+        
+        // ========== 步骤2：事务外执行AI翻译（串行等待，但不占用数据库连接）==========
+        Map<String, String> translationResult;
+        try {
+            translationResult = translationService.translateArticleOnly(
+                articleVO.getArticleTitle(),
+                articleVO.getArticleContent(),
+                skipAiTranslation,
+                pendingTranslation
+            );
+        } catch (Exception e) {
+            log.warn("翻译任务失败（继续后续流程）", e);
+            translationResult = null;
+        }
+        
+        // ========== 步骤3：在新事务中保存翻译结果 ==========
+        if (translationResult != null && !translationResult.isEmpty()) {
             try {
-                String aiSummary = summaryService.generateSummarySync(articleVO.getArticleContent());
-                updateChainWrapper.set(Article::getSummary, StringUtils.hasText(aiSummary) ? aiSummary : "");
-                log.info("文章更新：AI摘要生成成功，长度: {}", aiSummary.length());
+                saveTranslationInNewTransaction(
+                    updatedArticleId,
+                    translationResult.get("title"),
+                    translationResult.get("content"),
+                    translationResult.get("language")
+                );
+                log.info("翻译结果保存成功，新事务已提交");
             } catch (Exception e) {
-                log.warn("文章更新：AI摘要生成失败，保持原摘要: {}", e.getMessage());
+                log.error("翻译结果保存失败（继续执行后续流程）", e);
             }
         }
         
-        updateChainWrapper.update();
-        
-        // 手动清除Redis中的分类文章列表缓存，确保首页能显示更新后的文章
         try {
-            cacheService.evictSortArticleList();
-            log.info("已清除分类文章列表缓存，确保首页显示更新后的文章");
+            // ========== 步骤4：更新多语言摘要（基于原文+翻译）==========
+            // 更新摘要
+            if (StringUtils.hasText(updatedContent)) {
+                try {
+                    summaryService.updateSummary(updatedArticleId, updatedContent);
+                } catch (Exception e) {
+                    log.error("摘要更新失败，预渲染将使用原有摘要或文章开头", e);
+                    // 摘要更新失败不影响主流程，继续执行
+                }
+            }
+            
+            // 清除缓存
+            try {
+                cacheService.evictSortArticleList();
+            } catch (Exception e) {
+                log.error("清除缓存失败: {}", e.getMessage(), e);
+            }
+
+            // ========== 步骤5：发布文章更新事件 ==========
+            try {
+                eventPublisher.publishEvent(new ArticleSavedEvent(updatedArticleId, articleVO.getSortId(), 
+                                                                articleVO.getViewStatus(), "UPDATE", 
+                                                                articleVO.getSubmitToSearchEngine()));
+            } catch (Exception e) {
+                log.error("发布文章更新事件失败: {}", e.getMessage(), e);
+            }
+            
+            log.info("文章更新流程全部完成，文章ID: {}", updatedArticleId);
+
+            // 核心任务完成后立即返回
+            return PoetryResult.success();
+            
         } catch (Exception e) {
-            log.error("清除分类文章列表缓存失败: {}", e.getMessage(), e);
+            log.error("后台任务执行失败，文章ID: {}", updatedArticleId, e);
+            return PoetryResult.fail("部分操作失败：" + e.getMessage() + "，但文章已更新");
         }
-
-        // 发布文章更新事件，触发预渲染更新（在事务提交后执行）
-        try {
-            eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), 
-                                                            articleVO.getViewStatus(), "UPDATE"));
-            log.info("已发布文章更新事件，将触发首页预渲染更新");
-        } catch (Exception e) {
-            log.error("发布文章更新事件失败: {}", e.getMessage(), e);
-        }
-
-        // 更新后重新翻译，TranslationService 内部完毕后预渲染
-        new Thread(() -> translationService.refreshArticleTranslation(articleVO.getId())).start();
-
-        return PoetryResult.success();
     }
 
     @Override
@@ -759,12 +746,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                         // 可以添加一个字段标识翻译也匹配了
                         articleVO.setHasTranslationMatch(true);
                         
-                        log.debug("文章ID {} 原文和翻译都匹配搜索词，优先显示原文，翻译语言: {}", articleVO.getId(), matchedLanguage);
                         
                     } else if (originalMatches) {
                         // 只有原文匹配
                         articleVO.setIsTranslationMatch(false);
-                        log.debug("文章ID {} 仅原文匹配搜索词", articleVO.getId());
                         
                     } else if (translationMatches) {
                         // 只有翻译匹配
@@ -798,7 +783,6 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                                 articleVO.setArticleContent(highlightedContent); // 替换显示的内容
                             }
                             
-                            log.debug("文章ID {} 仅翻译匹配搜索词，显示翻译内容，语言: {}", articleVO.getId(), matchedLanguage);
                         }
                     } else {
                         // 原文和翻译都不匹配（理论上不应该出现）
@@ -1005,10 +989,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return PoetryResult.success(result);
         }
 
-        synchronized (CommonConst.SORT_ARTICLE_LIST.intern()) {
+        // 缓存未命中，使用写锁更新缓存
+        return lockManager.executeWithWriteLock("cache:" + CommonConst.SORT_ARTICLE_LIST, () -> {
             // 双重检查锁定
-            cachedResult = cacheService.getCachedSortArticleList();
-            if (cachedResult == null) {
+            Map<?, List<Article>> finalCachedResult = cacheService.getCachedSortArticleList();
+            if (finalCachedResult == null) {
                 Map<Integer, List<Article>> articleMap = new HashMap<>();
                 Map<Integer, List<ArticleVO>> resultMap = new HashMap<>();
 
@@ -1059,7 +1044,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             } else {
                 // 转换缓存结果为ArticleVO
                 Map<Integer, List<ArticleVO>> resultMap = new HashMap<>();
-                for (Map.Entry<?, List<Article>> entry : cachedResult.entrySet()) {
+                for (Map.Entry<?, List<Article>> entry : finalCachedResult.entrySet()) {
                     // 安全地转换键类型，处理String到Integer的转换
                     Integer sortId = convertToInteger(entry.getKey());
                     if (sortId != null) {
@@ -1081,7 +1066,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 }
                 return PoetryResult.success(resultMap);
             }
-        }
+        });
     }
 
     private ArticleVO buildArticleVO(Article article, Boolean isAdmin) {
@@ -1093,41 +1078,102 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
         }
 
-        User user = commonQuery.getUser(articleVO.getUserId());
-        if (user != null && StringUtils.hasText(user.getUsername())) {
-            articleVO.setUsername(user.getUsername());
-        } else if (!isAdmin) {
-            articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
-        }
-        if (articleVO.getCommentStatus()) {
-            articleVO.setCommentCount(commonQuery.getCommentCount(articleVO.getId(), CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode()));
-        } else {
-            articleVO.setCommentCount(0);
+        // 生成文章访问链接
+        try {
+            String siteUrl = mailUtil.getSiteUrl();
+            if (StringUtils.hasText(siteUrl)) {
+                articleVO.setArticleUrl(siteUrl + "/article/" + article.getId());
+            }
+        } catch (Exception e) {
         }
 
-        List<Sort> sortInfo = commonQuery.getSortInfo();
-        if (!CollectionUtils.isEmpty(sortInfo)) {
-            for (Sort s : sortInfo) {
-                if (s.getId().intValue() == articleVO.getSortId().intValue()) {
-                    Sort sort = new Sort();
-                    BeanUtils.copyProperties(s, sort);
-                    sort.setLabels(null);
-                    articleVO.setSort(sort);
-                    if (!CollectionUtils.isEmpty(s.getLabels())) {
-                        for (int j = 0; j < s.getLabels().size(); j++) {
-                            Label l = s.getLabels().get(j);
-                            if (l.getId().intValue() == articleVO.getLabelId().intValue()) {
-                                Label label = new Label();
-                                BeanUtils.copyProperties(l, label);
-                                articleVO.setLabel(label);
-                                break;
+        // 并行获取关联数据（用户信息、评论数、分类信息）
+        try (var scope = StructuredTaskScope.open()) {
+            // Fork 用户信息查询
+            Subtask<User> userTask = scope.fork(() -> 
+                commonQuery.getUser(articleVO.getUserId())
+            );
+            
+            // Fork 评论数查询（仅当评论开启时）
+            Subtask<Integer> commentCountTask = articleVO.getCommentStatus() 
+                ? scope.fork(() -> commonQuery.getCommentCount(articleVO.getId(), CommentTypeEnum.COMMENT_TYPE_ARTICLE.getCode()))
+                : null;
+            
+            // Fork 分类信息查询
+            Subtask<List<Sort>> sortInfoTask = scope.fork(() -> 
+                commonQuery.getSortInfo()
+            );
+            
+            // 等待所有查询完成
+            scope.join();
+            
+            // 处理用户信息
+            if (userTask.state() == Subtask.State.SUCCESS) {
+                User user = userTask.get();
+                if (user != null && StringUtils.hasText(user.getUsername())) {
+                    articleVO.setUsername(user.getUsername());
+                } else if (!isAdmin) {
+                    articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
+                }
+            } else if (!isAdmin) {
+                articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
+            }
+            
+            // 处理评论数
+            if (commentCountTask != null && commentCountTask.state() == Subtask.State.SUCCESS) {
+                articleVO.setCommentCount(commentCountTask.get());
+            } else {
+                articleVO.setCommentCount(0);
+            }
+            
+            // 处理分类和标签信息
+            if (sortInfoTask.state() == Subtask.State.SUCCESS) {
+                List<Sort> sortInfo = sortInfoTask.get();
+                if (!CollectionUtils.isEmpty(sortInfo)) {
+                    for (Sort s : sortInfo) {
+                        if (s.getId().intValue() == articleVO.getSortId().intValue()) {
+                            Sort sort = new Sort();
+                            BeanUtils.copyProperties(s, sort);
+                            sort.setLabels(null);
+                            articleVO.setSort(sort);
+                            // 同时设置sortName字段，方便API直接使用
+                            articleVO.setSortName(s.getSortName());
+                            if (!CollectionUtils.isEmpty(s.getLabels())) {
+                                for (int j = 0; j < s.getLabels().size(); j++) {
+                                    Label l = s.getLabels().get(j);
+                                    if (l.getId().intValue() == articleVO.getLabelId().intValue()) {
+                                        Label label = new Label();
+                                        BeanUtils.copyProperties(l, label);
+                                        articleVO.setLabel(label);
+                                        // 同时设置labelName字段，方便API直接使用
+                                        articleVO.setLabelName(l.getLabelName());
+                                        break;
+                                    }
+                                }
                             }
+                            break;
                         }
                     }
-                    break;
                 }
             }
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("构建文章VO时并行查询被中断，使用降级数据", e);
+            // 降级处理：使用默认值
+            if (!isAdmin) {
+                articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
+            }
+            articleVO.setCommentCount(0);
+        } catch (Exception e) {
+            log.error("构建文章VO时并行查询失败，使用降级数据", e);
+            // 降级处理
+            if (!isAdmin) {
+                articleVO.setUsername(PoetryUtil.getRandomName(articleVO.getUserId().toString()));
+            }
+            articleVO.setCommentCount(0);
         }
+        
         return articleVO;
     }
 
@@ -1245,6 +1291,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Internal-Service", "poetize-java");
+            headers.set("X-Admin-Request", "true");
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             
@@ -1279,7 +1326,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             LambdaQueryChainWrapper<Article> lambdaQuery = lambdaQuery()
                     .select(Article::getId, Article::getUserId, Article::getSortId, Article::getLabelId, 
                             Article::getArticleCover, Article::getArticleTitle, Article::getArticleContent,
-                            Article::getSummary, Article::getViewCount, Article::getLikeCount, 
+                            Article::getSummary, Article::getViewCount, 
                             Article::getCommentStatus, Article::getRecommendStatus, Article::getViewStatus,
                             Article::getCreateTime, Article::getUpdateTime, Article::getVideoUrl)
                     .eq(Article::getViewStatus, true)  // 只查询可见的文章
@@ -1291,8 +1338,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 return PoetryResult.success(new ArrayList<>());
             }
 
-            // 转换为ArticleVO并计算热度分数
-            List<ArticleVO> articleVOList = articles.stream().map(article -> {
+            // 使用并行流转换为ArticleVO（利用虚拟线程的优势）
+            List<ArticleVO> articleVOList = articles.parallelStream().map(article -> {
                 // 如果内容太长，截取用于显示
                 if (StringUtils.hasText(article.getArticleContent()) && article.getArticleContent().length() > CommonConst.SUMMARY) {
                     article.setArticleContent(article.getArticleContent().substring(0, CommonConst.SUMMARY)
@@ -1337,7 +1384,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
 
     /**
      * 计算文章热度分数的智能算法
-     * 综合考虑浏览量、点赞数、评论数、发布时间等因素
+     * 综合考虑浏览量、评论数、发布时间等因素
      * 
      * @param articleVO 文章VO对象
      * @return 热度分数（越高越热门）
@@ -1345,20 +1392,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     private double calculateHotScore(ArticleVO articleVO) {
         // 基础数据
         int viewCount = articleVO.getViewCount() != null ? articleVO.getViewCount() : 0;
-        int likeCount = articleVO.getLikeCount() != null ? articleVO.getLikeCount() : 0;
         int commentCount = articleVO.getCommentCount() != null ? articleVO.getCommentCount() : 0;
         LocalDateTime createTime = articleVO.getCreateTime();
         
-        // 1. 浏览量权重 (40%) - 标准化处理
-        double viewScore = Math.log10(Math.max(viewCount, 1)) * 40;
+        // 1. 浏览量权重 (60%) - 标准化处理，权重提升
+        double viewScore = Math.log10(Math.max(viewCount, 1)) * 60;
         
-        // 2. 点赞数权重 (30%) - 点赞的价值比浏览更高
-        double likeScore = Math.log10(Math.max(likeCount, 1)) * 30 * 3; // 点赞权重加强
+        // 2. 评论数权重 (30%) - 评论表示深度参与，权重提升
+        double commentScore = Math.log10(Math.max(commentCount, 1)) * 30 * 6; // 评论权重更高
         
-        // 3. 评论数权重 (20%) - 评论表示深度参与
-        double commentScore = Math.log10(Math.max(commentCount, 1)) * 20 * 5; // 评论权重更高
-        
-        // 4. 时间衰减因子 (10%) - 新文章有加成，但不会完全压倒旧的热门文章
+        // 3. 时间衰减因子 (10%) - 新文章有加成，但不会完全压倒旧的热门文章
         double timeScore = 0;
         if (createTime != null) {
             long daysSinceCreation = java.time.Duration.between(createTime, LocalDateTime.now()).toDays();
@@ -1376,38 +1419,27 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             }
         }
         
-        // 5. 互动比率加成 - 点赞率和评论率高的文章额外加分
+        // 4. 互动比率加成 - 评论率高的文章额外加分
         double engagementBonus = 0;
         if (viewCount > 0) {
-            double likeRate = (double) likeCount / viewCount;
             double commentRate = (double) commentCount / viewCount;
-            
-            // 点赞率超过1%的文章加分
-            if (likeRate > 0.01) {
-                engagementBonus += Math.min(likeRate * 1000, 10); // 最多加10分
-            }
             
             // 评论率超过0.5%的文章加分
             if (commentRate > 0.005) {
-                engagementBonus += Math.min(commentRate * 2000, 15); // 最多加15分
+                engagementBonus += Math.min(commentRate * 2000, 20); // 最多加20分
             }
         }
         
-        // 6. 推荐文章额外加分
+        // 5. 推荐文章额外加分
         double recommendBonus = 0;
         if (Boolean.TRUE.equals(articleVO.getRecommendStatus())) {
-            recommendBonus = 20; // 被推荐的文章额外加20分
+            recommendBonus = 25; // 被推荐的文章额外加25分
         }
         
         // 计算最终热度分数
-        double finalScore = viewScore + likeScore + commentScore + timeScore + engagementBonus + recommendBonus;
+        double finalScore = viewScore + commentScore + timeScore + engagementBonus + recommendBonus;
         
         // 调试日志
-        if (log.isDebugEnabled()) {
-            log.debug("文章[{}]热度计算: 浏览({})={:.2f}, 点赞({})={:.2f}, 评论({})={:.2f}, 时间={:.2f}, 互动={:.2f}, 推荐={:.2f}, 总分={:.2f}",
-                    articleVO.getArticleTitle(), viewCount, viewScore, likeCount, likeScore, 
-                    commentCount, commentScore, timeScore, engagementBonus, recommendBonus, finalScore);
-        }
         
         return finalScore;
     }
@@ -1447,7 +1479,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         try {
             currentUsername = PoetryUtil.getUsername();
         } catch (Exception e) {
-            log.warn("【异步更新】无法获取当前用户名，使用默认值: {}", e.getMessage());
+            log.warn("无法获取当前用户名，使用默认值: {}", e.getMessage());
             currentUsername = "System";
         }
         final String finalUsername = currentUsername;
@@ -1455,15 +1487,11 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // 初始化更新状态
         ArticleSaveStatus initialStatus = new ArticleSaveStatus(taskId, "processing", "正在更新文章...", articleVO.getId());
         ARTICLE_SAVE_STATUS.put(taskId, initialStatus);
-        log.info("【异步更新】初始化更新状态，任务ID: {}, 文章ID: {}, 当前任务总数: {}", taskId, articleVO.getId(), ARTICLE_SAVE_STATUS.size());
+        log.info("初始化异步更新任务，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
         
-        // 异步执行更新
-        new Thread(() -> {
+        // 使用虚拟线程异步执行更新
+        Thread.ofVirtual().name("article-update-" + taskId).start(() -> {
             try {
-                log.info("【异步更新】开始异步更新文章，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
-                
-                // 更新状态：正在生成摘要
-                updateSaveStatus(taskId, "processing", "正在生成AI摘要...");
                 
                 // 构建更新条件
                 LambdaUpdateChainWrapper<Article> updateChainWrapper = lambdaUpdate()
@@ -1497,95 +1525,84 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                     updateChainWrapper.set(Article::getSubmitToSearchEngine, articleVO.getSubmitToSearchEngine());
                 }
                 
-                // 生成AI摘要（如果内容有变化）
-                if (StringUtils.hasText(articleVO.getArticleContent())) {
-                    try {
-                        log.info("【异步更新】开始生成AI摘要，任务ID: {}, 文章内容长度: {}", taskId, articleVO.getArticleContent().length());
-                        String aiSummary = summaryService.generateSummarySync(articleVO.getArticleContent());
-                        updateChainWrapper.set(Article::getSummary, StringUtils.hasText(aiSummary) ? aiSummary : "");
-                        log.info("【异步更新】AI摘要生成成功，任务ID: {}, 摘要长度: {}", taskId, aiSummary != null ? aiSummary.length() : 0);
-                    } catch (Exception e) {
-                        log.error("【异步更新】AI摘要生成失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
-                        log.warn("【异步更新】文章更新：AI摘要生成失败，保持原摘要，任务ID: {}", taskId);
-                    }
-                }
-                
                 // 更新状态：正在更新数据库
                 updateSaveStatus(taskId, "processing", "正在更新数据库...");
                 
-                // 执行数据库更新
-                log.info("【异步更新】开始更新数据库，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
-                boolean updated = updateChainWrapper.update();
-                if (!updated) {
-                    log.error("【异步更新】数据库更新失败，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
+                // ========== 步骤1：使用短事务方法更新文章 ==========
+                boolean updateResult = updateArticleInTransaction(updateChainWrapper);
+                if (!updateResult) {
+                    log.error("数据库更新失败，任务ID: {}", taskId);
                     updateSaveStatus(taskId, "failed", "数据库更新失败");
                     return;
                 }
-                log.info("【异步更新】数据库更新成功，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
+                log.info("文章更新成功，任务ID: {}, 文章ID: {}，短事务已提交", taskId, articleVO.getId());
+                
+                // ========== 步骤2：事务外执行AI翻译（串行执行）==========
+                updateSaveStatus(taskId, "processing", "文章已更新，正在进行AI翻译...");
+                Map<String, String> translationResult;
+                try {
+                    translationResult = translationService.translateArticleOnly(
+                        articleVO.getArticleTitle(),
+                        articleVO.getArticleContent(),
+                        skipAiTranslation,
+                        pendingTranslation
+                    );
+                } catch (Exception e) {
+                    log.warn("翻译任务失败，任务ID: {}", taskId, e);
+                    translationResult = null;
+                }
 
-                // 手动清除Redis中的分类文章列表缓存，确保首页能显示更新后的文章
+                // ========== 步骤3：在新事务中保存翻译结果 ==========
+                if (translationResult != null && !translationResult.isEmpty()) {
+                    updateSaveStatus(taskId, "processing", "文章已更新，正在保存翻译结果...");
+                    try {
+                        saveTranslationInNewTransaction(
+                            articleVO.getId(),
+                            translationResult.get("title"),
+                            translationResult.get("content"),
+                            translationResult.get("language")
+                        );
+                        log.info("翻译结果保存成功，任务ID: {}，新事务已提交", taskId);
+                    } catch (Exception e) {
+                        log.error("翻译结果保存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    }
+                }
+                
+                // ========== 步骤4：更新多语言摘要（基于原文+翻译）==========
+                if (StringUtils.hasText(articleVO.getArticleContent())) {
+                    updateSaveStatus(taskId, "processing", "文章已更新，正在生成多语言AI摘要...");
+                    try {
+                        summaryService.updateSummary(articleVO.getId(), articleVO.getArticleContent());
+                    } catch (Exception e) {
+                        log.error("摘要更新失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    }
+                }
+                
+                // 清除缓存
                 try {
                     cacheService.evictSortArticleList();
-                    log.info("【异步更新】已清除分类文章列表缓存，确保首页显示更新后的文章，任务ID: {}", taskId);
                 } catch (Exception e) {
-                    log.error("【异步更新】清除分类文章列表缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    log.error("清除缓存失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
                 
-                // 发布文章更新事件，触发预渲染更新（在事务提交后执行）
+                // ========== 步骤5：发布文章更新事件 ==========
                 try {
                     eventPublisher.publishEvent(new ArticleSavedEvent(articleVO.getId(), articleVO.getSortId(), 
-                                                                    articleVO.getViewStatus(), "UPDATE"));
-                    log.info("【异步更新】已发布文章更新事件，将触发首页预渲染更新，任务ID: {}", taskId);
+                                                                    articleVO.getViewStatus(), "UPDATE", 
+                                                                    articleVO.getSubmitToSearchEngine()));
                 } catch (Exception e) {
-                    log.error("【异步更新】发布文章更新事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
+                    log.error("发布文章更新事件失败，任务ID: {}, 错误: {}", taskId, e.getMessage(), e);
                 }
                 
-                // 更新状态：后台处理中
-                updateSaveStatus(taskId, "processing", "文章已更新，正在处理翻译...");
-                
-                // 异步翻译（翻译完成后内部会触发预渲染）
-                try {
-                    log.info("【异步更新】开始文章翻译，任务ID: {}, 文章ID: {}, 跳过AI翻译: {}, 有暂存翻译: {}",
-                            taskId, articleVO.getId(), skipAiTranslation, pendingTranslation != null && !pendingTranslation.isEmpty());
-                    translationService.translateAndSaveArticle(articleVO.getId(), skipAiTranslation, pendingTranslation);
-                    log.info("【异步更新】文章翻译完成（包含预渲染），任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
-                } catch (Exception e) {
-                    log.error("【异步更新】文章翻译失败，任务ID: {}, 文章ID: {}, 错误: {}", taskId, articleVO.getId(), e.getMessage(), e);
-                }
-                
-                // 更新状态：翻译完成，正在处理sitemap更新和SEO推送
-                updateSaveStatus(taskId, "processing", "文章已更新，正在处理sitemap更新和SEO推送...");
-                
-                // 注意：sitemap更新（包括文章可见性变更）已经通过 ArticleEventListener.updateSitemapAsync() 处理
-                // 无需在这里重复处理sitemap更新
-                log.info("【异步更新】文章ID {} 更新完成，sitemap更新将通过事件监听器自动处理，任务ID: {}", articleVO.getId(), taskId);
-                
-                // 如果需要推送至搜索引擎且文章可见，异步处理
-                if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine()) && Boolean.TRUE.equals(articleVO.getViewStatus())) {
-                    log.info("【异步更新】更新文章ID {} 标记为需要推送至搜索引擎，开始异步处理，任务ID: {}", articleVO.getId(), taskId);
-                    
-                    // 异步执行SEO推送，避免阻塞用户操作
-                    new Thread(() -> {
-                        try {
-                            boolean seoResult = seoService.submitToSearchEngines(articleVO.getId());
-                            log.info("【异步更新】更新文章ID {} 搜索引擎推送完成，结果: {}，任务ID: {}", articleVO.getId(), seoResult ? "成功" : "失败", taskId);
-                        } catch (Exception e) {
-                            log.error("【异步更新】搜索引擎推送失败，但不影响文章更新，文章ID: " + articleVO.getId() + ", 任务ID: " + taskId, e);
-                        }
-                    }).start();
-                } else {
-                    log.info("【异步更新】更新文章ID {} 未标记为需要推送至搜索引擎或文章不可见，任务ID: {}", articleVO.getId(), taskId);
-                }
-                
-                // 最终成功状态
+                // 最终成功状态（SEO推送将在预渲染完成后自动执行）
                 updateSaveStatus(taskId, "success", "文章更新成功！AI摘要已生成", articleVO.getId());
-                log.info("【异步更新】文章更新完成，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
+                log.info("异步文章更新流程全部完成，任务ID: {}, 文章ID: {}", taskId, articleVO.getId());
                 
             } catch (Exception e) {
-                log.error("【异步更新】文章更新失败，任务ID: {}, 文章ID: {}, 错误: {}", taskId, articleVO.getId(), e.getMessage(), e);
+                log.error("文章更新失败，任务ID: {}, 文章ID: {}, 错误: {}", taskId, articleVO.getId(), e.getMessage(), e);
                 updateSaveStatus(taskId, "failed", "更新失败：" + e.getMessage());
             }
-        }).start();
+        });
         
         return PoetryResult.success(taskId);
     }
@@ -1732,6 +1749,90 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         }
         
         return truncated + "...";
+    }
+
+    /**
+     * 在独立事务中保存文章原文（短事务）
+     * 
+     * @param articleVO 文章VO对象
+     * @return 保存成功返回文章ID，失败返回null
+     */
+    @Transactional(rollbackFor = Exception.class)
+    private Integer saveArticleInTransaction(ArticleVO articleVO) {
+        Article article = new Article();
+        
+        if (StringUtils.hasText(articleVO.getArticleCover())) {
+            article.setArticleCover(articleVO.getArticleCover());
+        }
+        if (StringUtils.hasText(articleVO.getVideoUrl())) {
+            article.setVideoUrl(articleVO.getVideoUrl());
+        }
+        if (articleVO.getViewStatus() != null && !articleVO.getViewStatus() && StringUtils.hasText(articleVO.getPassword())) {
+            article.setPassword(articleVO.getPassword());
+            article.setTips(articleVO.getTips());
+        }
+        
+        article.setViewStatus(articleVO.getViewStatus());
+        article.setCommentStatus(articleVO.getCommentStatus());
+        article.setRecommendStatus(articleVO.getRecommendStatus());
+        article.setSubmitToSearchEngine(articleVO.getSubmitToSearchEngine());
+        article.setArticleTitle(articleVO.getArticleTitle());
+        article.setArticleContent(articleVO.getArticleContent());
+        article.setSummary("");  // 先设置空摘要，保存后会同步生成多语言AI摘要
+        article.setSortId(articleVO.getSortId());
+        article.setLabelId(articleVO.getLabelId());
+        
+        // 设置用户ID
+        Integer userId = null;
+        if (articleVO.getUserId() != null) {
+            userId = articleVO.getUserId();
+        } else {
+            userId = PoetryUtil.getUserId();
+            if (userId == null) {
+                log.error("保存文章失败：无法获取用户ID");
+                return null;
+            }
+        }
+        article.setUserId(userId);
+        
+        // 保存到数据库
+        boolean result = save(article);
+        if (!result) {
+            log.error("数据库保存失败");
+            return null;
+        }
+        
+        return article.getId();
+    }
+
+    /**
+     * 在新事务中保存翻译结果
+     * 
+     * @param articleId 文章ID
+     * @param title 翻译后的标题
+     * @param content 翻译后的内容
+     * @param language 目标语言
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    private void saveTranslationInNewTransaction(Integer articleId, String title, String content, String language) {
+        try {
+            translationService.saveTranslationResult(articleId, title, content, language);
+        } catch (Exception e) {
+            log.error("翻译结果保存失败，文章ID: {}, 语言: {}", articleId, language, e);
+            throw e;  // 抛出异常以触发事务回滚
+        }
+    }
+
+    /**
+     * 在独立事务中更新文章（短事务）
+     * 
+     * @param updateChainWrapper 更新链式包装器
+     * @return 更新成功返回true，失败返回false
+     */
+    @Transactional(rollbackFor = Exception.class)
+    private boolean updateArticleInTransaction(LambdaUpdateChainWrapper<Article> updateChainWrapper) {
+        boolean result = updateChainWrapper.update();
+        return result;
     }
 
 }

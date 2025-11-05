@@ -99,6 +99,20 @@
           </div>
         </el-form-item>
 
+        <!-- 看板娘显示模式 - 仅在看板娘开启时显示 -->
+        <el-form-item v-if="webInfo.enableWaifu" label="显示模式" prop="waifuDisplayMode">
+          <el-radio-group v-model="webInfo.waifuDisplayMode">
+            <el-radio label="live2d">
+              <span>Live2D看板娘</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">（完整动画角色）</span>
+            </el-radio>
+            <el-radio label="button">
+              <span>简洁按钮</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">（圆形AI聊天按钮）</span>
+            </el-radio>
+          </el-radio-group>
+        </el-form-item>
+
         <!-- AI聊天配置区域 - 仅在看板娘开启时显示 -->
         <div v-if="webInfo.enableWaifu" style="margin-left: 20px; padding-left: 20px; margin-top: 20px; margin-bottom: 20px;">
           <el-divider content-position="left">
@@ -107,8 +121,8 @@
             </span>
           </el-divider>
           
-          <!-- 折叠面板形式展示配置 -->
-          <el-collapse v-model="activeAiConfigPanels" accordion>
+          <!-- PC端：折叠面板形式展示配置 -->
+          <el-collapse v-model="activeAiConfigPanels" accordion style="margin: 0 50px;" class="ai-config-collapse" v-if="!isMobileView">
             <!-- AI模型配置面板 -->
             <el-collapse-item title="AI模型配置" name="model">
               <AiModelConfig v-model="aiConfigs.modelConfig" />
@@ -133,6 +147,30 @@
             </el-collapse-item>
           </el-collapse>
 
+          <!-- 移动端：卡片按钮形式 -->
+          <div v-else class="ai-config-mobile-cards">
+            <div class="config-card" @click="openMobileConfigDialog('model')">
+              <i class="el-icon-setting"></i>
+              <span>AI模型配置</span>
+              <i class="el-icon-arrow-right"></i>
+            </div>
+            <div class="config-card" @click="openMobileConfigDialog('chat')">
+              <i class="el-icon-chat-dot-round"></i>
+              <span>聊天设置</span>
+              <i class="el-icon-arrow-right"></i>
+            </div>
+            <div class="config-card" @click="openMobileConfigDialog('appearance')">
+              <i class="el-icon-picture-outline"></i>
+              <span>外观设置</span>
+              <i class="el-icon-arrow-right"></i>
+            </div>
+            <div class="config-card" @click="openMobileConfigDialog('advanced')">
+              <i class="el-icon-s-tools"></i>
+              <span>高级设置</span>
+              <i class="el-icon-arrow-right"></i>
+            </div>
+          </div>
+
           <!-- AI配置保存按钮 -->
           <div style="text-align: center; margin-top: 20px;">
             <el-button type="primary" @click="saveAiConfigs" :loading="savingAiConfigs">
@@ -140,6 +178,30 @@
             </el-button>
           </div>
         </div>
+
+        <!-- 移动端配置对话框 -->
+        <el-dialog 
+          :title="mobileConfigDialogTitle" 
+          :visible.sync="mobileConfigDialogVisible"
+          :fullscreen="false"
+          :close-on-click-modal="false"
+          width="90%"
+          custom-class="centered-dialog mobile-ai-config-dialog">
+          <div class="mobile-config-content">
+            <AiModelConfig v-if="currentMobileConfig === 'model'" v-model="aiConfigs.modelConfig" />
+            <AiChatSettings v-if="currentMobileConfig === 'chat'" v-model="aiConfigs.chatConfig" />
+            <AiAppearanceConfig v-if="currentMobileConfig === 'appearance'" v-model="aiConfigs.appearanceConfig" />
+            <AiAdvancedConfig 
+              v-if="currentMobileConfig === 'advanced'"
+              v-model="aiConfigs.advancedConfig"
+              @export-config="exportAiConfig"
+              @import-config="importAiConfig" />
+          </div>
+          <div slot="footer" class="dialog-footer">
+            <el-button @click="mobileConfigDialogVisible = false">关闭</el-button>
+            <el-button type="primary" @click="saveMobileConfig">保存</el-button>
+          </div>
+        </el-dialog>
 
         <!-- 自动夜间开关 -->
         <el-form-item label="自动夜间" prop="enableAutoNight">
@@ -778,7 +840,7 @@
         </div>
         
         <!-- 邮件测试对话框 -->
-        <el-dialog title="测试邮件发送" :visible.sync="emailTestDialogVisible" width="500px">
+        <el-dialog title="测试邮件发送" :visible.sync="emailTestDialogVisible" width="500px" custom-class="centered-dialog">
           <el-form :model="emailTestForm" label-width="100px">
             <el-form-item label="测试邮箱">
               <el-input v-model="emailTestForm.testEmail" placeholder="请输入接收测试邮件的邮箱地址"></el-input>
@@ -796,7 +858,7 @@
           :visible.sync="emailDetailDialogVisible" 
           width="90%" 
           :close-on-click-modal="true"
-          custom-class="email-detail-dialog">
+          custom-class="centered-dialog email-detail-dialog">
           <div v-if="currentEmailConfig" class="email-detail-content">
             <el-descriptions :column="1" border size="medium">
               <el-descriptions-item label="邮箱服务器">
@@ -1349,7 +1411,6 @@ X-API-KEY: {{apiConfig.apiKey}}
         "articleContent": "文章内容摘要...",
         "articleCover": "图片URL",
         "viewCount": 100,
-        "likeCount": 10,
         "commentCount": 5,
         "createTime": "2023-04-01 12:00:00",
         "sort": { "id": 1, "sortName": "分类名称" },
@@ -1384,7 +1445,6 @@ X-API-KEY: {{apiConfig.apiKey}}
     "articleContent": "完整文章内容，包括Markdown格式",
     "articleCover": "图片URL",
     "viewCount": 100,
-    "likeCount": 10,
     "commentStatus": true,
     "recommendStatus": false,
     "viewStatus": true,
@@ -1475,7 +1535,7 @@ X-API-KEY: {{apiConfig.apiKey}}
     </div>
 
     <!-- 高级配置对话框 -->
-    <el-dialog title="邮箱高级配置" :visible.sync="advancedConfigVisible" width="600px">
+    <el-dialog title="邮箱高级配置" :visible.sync="advancedConfigVisible" width="600px" custom-class="centered-dialog">
       <el-form :model="currentAdvancedConfig" label-width="160px">
         <el-tabs v-model="activeConfigTab">
           <el-tab-pane label="基础设置" name="basic">
@@ -1571,7 +1631,7 @@ X-API-KEY: {{apiConfig.apiKey}}
       :visible.sync="mobileDrawerDialogVisible"
       width="900px"
       :close-on-click-modal="false"
-      custom-class="mobile-drawer-config-dialog">
+      custom-class="centered-dialog mobile-drawer-config-dialog">
       
       <el-form label-width="100px" class="drawer-config-form">
         <!-- 标题类型 -->
@@ -1761,7 +1821,9 @@ X-API-KEY: {{apiConfig.apiKey}}
 </template>
 
 <script>
-  const uploadPicture = () => import( "../common/uploadPicture");
+    import { useMainStore } from '@/stores/main';
+
+const uploadPicture = () => import( "../common/uploadPicture");
   const ApiTestTool = () => import( "./ApiTestTool");
   const AiModelConfig = () => import( "./aiChat/AiModelConfig");
   const AiChatSettings = () => import( "./aiChat/AiChatSettings");
@@ -1799,6 +1861,7 @@ X-API-KEY: {{apiConfig.apiKey}}
           avatar: "",
           waifuJson: "",
           enableWaifu: false,
+          waifuDisplayMode: 'live2d', // 默认使用Live2D模式
           status: false,
           navConfig: "",
           footerBackgroundImage: "",
@@ -2027,6 +2090,11 @@ X-API-KEY: {{apiConfig.apiKey}}
         // AI聊天配置相关数据
         activeAiConfigPanels: [],
         savingAiConfigs: false,
+        // 移动端配置对话框
+        isMobileView: false,
+        mobileConfigDialogVisible: false,
+        currentMobileConfig: '',
+        mobileConfigDialogTitle: '',
         aiConfigs: {
           modelConfig: {
             provider: 'openai',
@@ -2039,7 +2107,7 @@ X-API-KEY: {{apiConfig.apiKey}}
             enableStreaming: false
           },
           chatConfig: {
-            systemPrompt: "你是一个友善的AI助手，请用中文回答问题。",
+            systemPrompt: "AI assistant. Respond in Chinese naturally.",
             welcomeMessage: "你好！有什么可以帮助你的吗？",
             historyCount: 10,
             rateLimit: 20,
@@ -2070,6 +2138,9 @@ X-API-KEY: {{apiConfig.apiKey}}
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       // 平台配置数据源
       platformsConfig() {
         return [
@@ -2157,18 +2228,21 @@ X-API-KEY: {{apiConfig.apiKey}}
       
       // 检测设备类型
       this.checkDeviceType();
+      // 检测移动端视图
+      this.checkMobileView();
       window.addEventListener('resize', this.checkDeviceType);
+      window.addEventListener('resize', this.checkMobileView);
     },
 
     beforeDestroy() {
       // 移除监听器
       window.removeEventListener('resize', this.checkDeviceType);
+      window.removeEventListener('resize', this.checkMobileView);
     },
 
     methods: {
       // 新增：并行初始化所有数据
       async initializeData() {
-        console.log("开始并行加载所有配置数据...");
         const startTime = Date.now();
         
         try {
@@ -2186,7 +2260,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           await Promise.allSettled(promises);
           
           const endTime = Date.now();
-          console.log(`所有配置数据加载完成，耗时: ${endTime - startTime}ms`);
         } catch (error) {
           console.error("初始化数据时出错:", error);
         }
@@ -2226,7 +2299,6 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 自动检测网站地址
       async detectSiteAddress() {
         this.detectingAddress = true;
-        console.log('开始自动检测网站地址...');
         
         try {
           const currentOrigin = window.location.origin;
@@ -2242,7 +2314,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           }
           
           this.webInfo.siteAddress = finalUrl;
-          console.log('最终使用的网站地址:', finalUrl);
           
         } catch (error) {
           console.error('自动检测网站地址失败:', error);
@@ -2280,6 +2351,7 @@ X-API-KEY: {{apiConfig.apiKey}}
               this.webInfo.avatar = res.data.avatar;
               this.webInfo.waifuJson = res.data.waifuJson;
               this.webInfo.enableWaifu = res.data.enableWaifu;
+              this.webInfo.waifuDisplayMode = res.data.waifuDisplayMode || 'live2d';
               this.webInfo.status = res.data.status;
               this.webInfo.navConfig = res.data.navConfig || "[]";
               this.webInfo.footerBackgroundImage = res.data.footerBackgroundImage || "";
@@ -2346,7 +2418,6 @@ X-API-KEY: {{apiConfig.apiKey}}
                   this.navConfigText = navItems.map(item => item.name).join(',');
                 } else {
                   this.resetToDefaultNav();
-                  console.log("导航栏配置为空数组，使用默认配置");
                 }
               } catch (e) {
                 console.error("解析导航栏配置失败:", e);
@@ -2383,6 +2454,7 @@ X-API-KEY: {{apiConfig.apiKey}}
               waifuJson: this.webInfo.waifuJson,
               status: this.webInfo.status,
               enableWaifu: this.webInfo.enableWaifu,
+              waifuDisplayMode: this.webInfo.waifuDisplayMode,
               homePagePullUpHeight: this.webInfo.homePagePullUpHeight,
               apiEnabled: this.webInfo.apiEnabled,
               apiKey: this.webInfo.apiKey,
@@ -2447,7 +2519,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           notices: JSON.stringify(this.notices)
         }
         
-        console.log('保存公告参数:', param);
         
         this.$http.post(this.$constant.baseURL + "/webInfo/updateNotices", param, true)
           .then((res) => {
@@ -2508,7 +2579,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           randomName: JSON.stringify(this.randomName)
         }
         
-        console.log('保存随机名称参数:', param);
         
         this.$http.post(this.$constant.baseURL + "/webInfo/updateRandomName", param, true)
           .then((res) => {
@@ -2631,7 +2701,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           // 这样可以避免并发更新导致的缓存竞态条件
           const updateData = { ...value };
 
-          console.log('准备更新网站信息:', updateData);
 
           // 使用单一请求更新所有信息，避免并发问题
           const promises = [
@@ -3031,7 +3100,6 @@ X-API-KEY: {{apiConfig.apiKey}}
               }).then(() => {
                 // 用户确认，更新状态
                 this.webInfo.enableWaifu = newStatus;
-                console.log(`切换看板娘状态为: ${newStatus}`);
                 
                 // 准备要更新的数据
                 const param = {
@@ -3071,7 +3139,6 @@ X-API-KEY: {{apiConfig.apiKey}}
                       
                       // 保存回localStorage
                       localStorage.setItem('webInfo', JSON.stringify(webInfoData));
-                      console.log('更新本地存储的看板娘状态:', newStatus);
                       
                     } catch (e) {
                       console.error('更新本地存储失败:', e);
@@ -3151,11 +3218,8 @@ X-API-KEY: {{apiConfig.apiKey}}
       },
       // 优化：将getThirdLoginConfig改为异步方法
       async getThirdLoginConfig() {
-        console.log("开始获取第三方登录配置...");
         try {
           const res = await this.$http.get(this.$constant.baseURL + "/webInfo/getThirdLoginConfig");
-          console.log("第三方登录配置API响应:", res);
-          console.log("响应数据:", res.data);
           
           // 确保返回完整的配置结构
           const defaultConfig = {
@@ -3205,7 +3269,6 @@ X-API-KEY: {{apiConfig.apiKey}}
           };
           
           if (res.data) {
-            console.log("开始合并配置数据...");
             // 合并返回的数据和默认配置，确保所有必需的属性都存在
             this.thirdLoginConfig = {
               enable: res.data.enable !== undefined ? res.data.enable : defaultConfig.enable,
@@ -3238,15 +3301,11 @@ X-API-KEY: {{apiConfig.apiKey}}
                 ...(res.data.baidu || {})
               }
             };
-            console.log("合并后的第三方登录配置:", this.thirdLoginConfig);
           } else {
-            console.log("API返回数据为空，使用默认配置");
             this.thirdLoginConfig = defaultConfig;
-            console.log("默认第三方登录配置:", this.thirdLoginConfig);
           }
         } catch (error) {
           console.error("获取第三方登录配置失败:", error);
-          console.log("错误详情:", error.response || error.message);
           // 设置完整的默认配置
           this.thirdLoginConfig = {
             enable: false,
@@ -3293,7 +3352,6 @@ X-API-KEY: {{apiConfig.apiKey}}
               enabled: false
             }
           };
-          console.log("使用错误处理的默认配置:", this.thirdLoginConfig);
             this.$message.error("获取第三方登录配置失败: " + error.message);
           throw error;
         }
@@ -3531,6 +3589,27 @@ X-API-KEY: {{apiConfig.apiKey}}
       // 检测设备类型
       checkDeviceType() {
         this.isMobileDevice = window.innerWidth <= 768 || this.isMobile();
+      },
+      // 检测是否为移动端视图（AI配置专用）
+      checkMobileView() {
+        this.isMobileView = window.innerWidth <= 768;
+      },
+      // 打开移动端配置对话框
+      openMobileConfigDialog(type) {
+        const titles = {
+          model: 'AI模型配置',
+          chat: '聊天设置',
+          appearance: '外观设置',
+          advanced: '高级设置'
+        };
+        this.currentMobileConfig = type;
+        this.mobileConfigDialogTitle = titles[type];
+        this.mobileConfigDialogVisible = true;
+      },
+      // 保存移动端配置
+      saveMobileConfig() {
+        this.mobileConfigDialogVisible = false;
+        this.$message.success('配置已更新，点击"保存AI聊天配置"按钮完成保存');
       },
       // 处理默认邮箱变更
       handleDefaultChange(index) {
@@ -4108,7 +4187,7 @@ X-API-KEY: {{apiConfig.apiKey}}
             this.mobileDrawerDialogVisible = false;
             this.getWebInfo();
             // 同步更新Vuex store，让其他组件能立即获取最新配置
-            this.$store.dispatch("getWebsitConfig");
+            this.mainStore.getWebsitConfig();
           })
           .catch((error) => {
             this.$message.error('保存失败: ' + (error.response?.data?.message || error.message));
@@ -4118,53 +4197,56 @@ X-API-KEY: {{apiConfig.apiKey}}
       // AI聊天配置相关方法
       async loadAiConfigs() {
         try {
-          const response = await this.$http.get(this.$constant.pythonBaseURL + "/ai/chat/getConfig", {}, true);
-          if (response.flag && response.data) {
+          const response = await this.$http.get(this.$constant.baseURL + "/webInfo/ai/config/chat/get", {}, true);
+          if (response.code === 200 && response.data) {
             const config = response.data;
             
-            // 映射AI模型配置
+            // 映射AI模型配置（Java驼峰格式）
             this.aiConfigs.modelConfig = {
               provider: config.provider || 'openai',
-              apiKey: config.api_key || '',
+              apiKey: config.apiKey || '',
               model: config.model || 'gpt-3.5-turbo',
-              baseUrl: config.api_base || '',
+              baseUrl: config.apiBase || '',
               temperature: config.temperature || 0.7,
-              maxTokens: config.max_tokens || 1000,
+              maxTokens: config.maxTokens || 1000,
+              topP: config.topP || 1.0,
+              frequencyPenalty: config.frequencyPenalty || 0,
+              presencePenalty: config.presencePenalty || 0,
               enabled: config.enabled || false,
-              enableStreaming: config.enable_streaming || false
+              enableStreaming: config.enableStreaming || false
             };
             
-            // 映射聊天配置
+            // 映射聊天配置（Java驼峰格式）
             this.aiConfigs.chatConfig = {
-              systemPrompt: config.custom_instructions || "你是一个友善的AI助手，请用中文回答问题。",
-              welcomeMessage: config.welcome_message || "你好！有什么可以帮助你的吗？",
-              historyCount: config.max_conversation_length || 10,
-              rateLimit: config.rate_limit || 20,
-              requireLogin: config.require_login || false,
-              saveHistory: config.enable_chat_history !== false,
-              contentFilter: config.enable_content_filter !== false,
-              maxMessageLength: config.max_message_length || 500
+              systemPrompt: config.customInstructions || "AI assistant. Respond in Chinese naturally.",
+              welcomeMessage: config.welcomeMessage || "你好！有什么可以帮助你的吗？",
+              historyCount: config.maxConversationLength || 10,
+              rateLimit: config.rateLimit || 20,
+              requireLogin: config.requireLogin || false,
+              saveHistory: config.enableChatHistory !== false,
+              contentFilter: config.enableContentFilter !== false,
+              maxMessageLength: config.maxMessageLength || 500
             };
             
-            // 映射外观配置
+            // 映射外观配置（Java驼峰格式）
             this.aiConfigs.appearanceConfig = {
-              botAvatar: config.chat_avatar || '',
-              botName: config.chat_name || 'AI助手',
-              themeColor: config.theme_color || '#409EFF',
+              botAvatar: config.chatAvatar || '',
+              botName: config.chatName || 'AI助手',
+              themeColor: config.themeColor || '#409EFF',
               position: 'bottom-right',
               bubbleStyle: 'modern',
-              typingAnimation: config.enable_typing_indicator !== false,
+              typingAnimation: config.enableTypingIndicator !== false,
               showTimestamp: true
             };
             
-            // 映射高级配置
+            // 映射高级配置（Java驼峰格式）
             this.aiConfigs.advancedConfig = {
               proxy: '',
               timeout: 30,
               retryCount: 3,
               customHeaders: [],
               debugMode: false,
-              enableThinking: config.enable_thinking || false
+              enableThinking: config.enableThinking || false
             };
           }
         } catch (error) {
@@ -4176,40 +4258,46 @@ X-API-KEY: {{apiConfig.apiKey}}
       async saveAiConfigs() {
         this.savingAiConfigs = true;
         try {
+          // 构建保存请求数据（Java驼峰格式）
           const saveData = {
+            configType: 'ai_chat',
+            configName: 'default',
             provider: this.aiConfigs.modelConfig.provider,
-            api_base: this.aiConfigs.modelConfig.baseUrl,
+            apiBase: this.aiConfigs.modelConfig.baseUrl,
             model: this.aiConfigs.modelConfig.model,
             temperature: this.aiConfigs.modelConfig.temperature,
-            max_tokens: this.aiConfigs.modelConfig.maxTokens,
+            maxTokens: this.aiConfigs.modelConfig.maxTokens,
+            topP: this.aiConfigs.modelConfig.topP || 1.0,
+            frequencyPenalty: this.aiConfigs.modelConfig.frequencyPenalty || 0,
+            presencePenalty: this.aiConfigs.modelConfig.presencePenalty || 0,
             enabled: this.aiConfigs.modelConfig.enabled,
-            enable_streaming: this.aiConfigs.modelConfig.enableStreaming,
+            enableStreaming: this.aiConfigs.modelConfig.enableStreaming,
             // 聊天配置
-            custom_instructions: this.aiConfigs.chatConfig.systemPrompt,
-            welcome_message: this.aiConfigs.chatConfig.welcomeMessage,
-            max_conversation_length: this.aiConfigs.chatConfig.historyCount,
-            rate_limit: this.aiConfigs.chatConfig.rateLimit,
-            require_login: this.aiConfigs.chatConfig.requireLogin,
-            enable_chat_history: this.aiConfigs.chatConfig.saveHistory,
-            enable_content_filter: this.aiConfigs.chatConfig.contentFilter,
-            max_message_length: this.aiConfigs.chatConfig.maxMessageLength,
+            customInstructions: this.aiConfigs.chatConfig.systemPrompt,
+            welcomeMessage: this.aiConfigs.chatConfig.welcomeMessage,
+            maxConversationLength: this.aiConfigs.chatConfig.historyCount,
+            rateLimit: this.aiConfigs.chatConfig.rateLimit,
+            requireLogin: this.aiConfigs.chatConfig.requireLogin,
+            enableChatHistory: this.aiConfigs.chatConfig.saveHistory,
+            enableContentFilter: this.aiConfigs.chatConfig.contentFilter,
+            maxMessageLength: this.aiConfigs.chatConfig.maxMessageLength,
             // 外观配置
-            chat_avatar: this.aiConfigs.appearanceConfig.botAvatar,
-            chat_name: this.aiConfigs.appearanceConfig.botName,
-            theme_color: this.aiConfigs.appearanceConfig.themeColor,
-            enable_typing_indicator: this.aiConfigs.appearanceConfig.typingAnimation,
+            chatAvatar: this.aiConfigs.appearanceConfig.botAvatar,
+            chatName: this.aiConfigs.appearanceConfig.botName,
+            themeColor: this.aiConfigs.appearanceConfig.themeColor,
+            enableTypingIndicator: this.aiConfigs.appearanceConfig.typingAnimation,
             // 高级配置
-            enable_thinking: this.aiConfigs.advancedConfig.enableThinking
+            enableThinking: this.aiConfigs.advancedConfig.enableThinking
           };
 
           // 只有当API密钥不是隐藏格式时才发送
           if (this.aiConfigs.modelConfig.apiKey && !this.aiConfigs.modelConfig.apiKey.includes('*')) {
-            saveData.api_key = this.aiConfigs.modelConfig.apiKey;
+            saveData.apiKey = this.aiConfigs.modelConfig.apiKey;
           }
 
-          const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/saveConfig', saveData, true);
+          const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/save', saveData, true);
           
-          if (response.flag) {
+          if (response.code === 200) {
             this.$message.success('AI聊天配置保存成功');
             // 重新加载配置，获取最新的隐藏密钥格式
             await this.loadAiConfigs();
@@ -4441,6 +4529,89 @@ X-API-KEY: {{apiConfig.apiKey}}
     .simple-address-btn {
       font-size: 13px;
       padding: 8px 12px;
+    }
+  }
+
+  /* ===========================================
+     表单移动端样式 - PC端和移动端响应式
+     =========================================== */
+  
+  /* PC端样式 - 768px以上 */
+  @media screen and (min-width: 769px) {
+    ::v-deep .el-form-item__label {
+      float: left !important;
+    }
+  }
+
+  /* 移动端样式 - 768px及以下 */
+  @media screen and (max-width: 768px) {
+    /* 表单标签 - 垂直布局 */
+    ::v-deep .el-form-item__label {
+      float: none !important;
+      width: 100% !important;
+      text-align: left !important;
+      margin-bottom: 8px !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
+      padding-bottom: 0 !important;
+      line-height: 1.5 !important;
+    }
+
+    ::v-deep .el-form-item__content {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+
+    ::v-deep .el-form-item {
+      margin-bottom: 20px !important;
+      padding: 0 10px !important;
+    }
+
+    /* 输入框移动端优化 */
+    ::v-deep .el-input__inner {
+      font-size: 16px !important;
+      height: 44px !important;
+      border-radius: 8px !important;
+    }
+
+    ::v-deep .el-textarea__inner {
+      font-size: 16px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 选择器移动端优化 */
+    ::v-deep .el-select {
+      width: 100% !important;
+    }
+
+    ::v-deep .el-select .el-input__inner {
+      height: 44px !important;
+      line-height: 44px !important;
+    }
+
+    /* 按钮移动端优化 */
+    ::v-deep .el-button {
+      min-height: 40px !important;
+      border-radius: 8px !important;
+    }
+  }
+
+  /* 极小屏幕优化 - 480px及以下 */
+  @media screen and (max-width: 480px) {
+    ::v-deep .el-form-item__label {
+      font-size: 13px !important;
+    }
+
+    ::v-deep .el-input__inner,
+    ::v-deep .el-select .el-input__inner {
+      height: 40px !important;
+      line-height: 40px !important;
+      font-size: 15px !important;
+    }
+
+    ::v-deep .el-button {
+      min-height: 38px !important;
+      font-size: 14px !important;
     }
   }
 
@@ -4992,23 +5163,8 @@ X-API-KEY: {{apiConfig.apiKey}}
 
   /* 移动端侧边栏配置对话框适配 */
   @media screen and (max-width: 768px) {
-    .mobile-drawer-config-dialog {
-      width: 95% !important;
-      margin: 0 !important;
-    }
-
-    .mobile-drawer-config-dialog .el-dialog__header {
-      padding: 15px 20px !important;
-    }
-
     .mobile-drawer-config-dialog .el-dialog__title {
       font-size: 16px !important;
-    }
-
-    .mobile-drawer-config-dialog .el-dialog__body {
-      padding: 15px 20px !important;
-      max-height: 70vh;
-      overflow-y: auto;
     }
 
     .mobile-drawer-config-dialog .el-form {
@@ -5109,15 +5265,6 @@ X-API-KEY: {{apiConfig.apiKey}}
 
   /* 超小屏幕适配 */
   @media screen and (max-width: 480px) {
-    .mobile-drawer-config-dialog {
-      width: 98% !important;
-    }
-
-    .mobile-drawer-config-dialog .el-dialog__body {
-      padding: 10px 15px !important;
-      max-height: 65vh;
-    }
-
     .mobile-drawer-config-dialog .el-form-item__label {
       width: 50px !important;
       font-size: 11px !important;
@@ -5167,17 +5314,6 @@ X-API-KEY: {{apiConfig.apiKey}}
 
   /* 移动端邮箱详情对话框适配 */
   @media screen and (max-width: 768px) {
-    .email-detail-dialog {
-      width: 95% !important;
-      margin: 0 !important;
-    }
-
-    .email-detail-dialog .el-dialog__body {
-      padding: 15px !important;
-      max-height: 70vh;
-      overflow-y: auto;
-    }
-
     .email-detail-content .el-descriptions-item__label {
       width: 40%;
       font-size: 13px;
@@ -5196,22 +5332,6 @@ X-API-KEY: {{apiConfig.apiKey}}
   }
 
   @media screen and (max-width: 480px) {
-    .email-detail-dialog {
-      width: 98% !important;
-    }
-
-    .email-detail-dialog .el-dialog__header {
-      padding: 15px !important;
-    }
-
-    .email-detail-dialog .el-dialog__title {
-      font-size: 16px !important;
-    }
-
-    .email-detail-dialog .el-dialog__body {
-      padding: 10px !important;
-    }
-
     .email-detail-content .el-descriptions-item__label {
       width: 35%;
       font-size: 12px;
@@ -5235,10 +5355,169 @@ X-API-KEY: {{apiConfig.apiKey}}
     }
   }
 
+  /* 移动端AI配置卡片 */
+  .ai-config-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 10px;
+  }
+
+  .ai-config-mobile-cards .config-card {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .ai-config-mobile-cards .config-card:active {
+    background: #f5f7fa;
+    transform: scale(0.98);
+  }
+
+  .ai-config-mobile-cards .config-card > i:first-child {
+    font-size: 24px;
+    color: #409EFF;
+    margin-right: 12px;
+  }
+
+  .ai-config-mobile-cards .config-card > span {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    color: #303133;
+  }
+
+  .ai-config-mobile-cards .config-card > i:last-child {
+    font-size: 16px;
+    color: #c0c4cc;
+  }
+
+  /* ========== 暗色模式适配 - AI配置卡片 ========== */
+  
+  .dark-mode .ai-config-mobile-cards .config-card {
+    background: #2c2c2c !important;
+    border-color: #404040 !important;
+  }
+  
+  .dark-mode .ai-config-mobile-cards .config-card:active {
+    background: #333333 !important;
+  }
+  
+  .dark-mode .ai-config-mobile-cards .config-card > span {
+    color: #e0e0e0 !important;
+  }
+  
+  .dark-mode .ai-config-mobile-cards .config-card > i:last-child {
+    color: #707070 !important;
+  }
+
+  /* captcha-config-card 暗色模式 */
+  .dark-mode .captcha-config-card {
+    background-color: #2c2c2c !important;
+    border-color: #404040 !important;
+  }
+  
+  .dark-mode .captcha-config-card .el-card__header {
+    background-color: #2c2c2c !important;
+    border-bottom-color: #404040 !important;
+    color: #e0e0e0 !important;
+  }
+  
+  .dark-mode .captcha-config-card .el-card__body {
+    background-color: #2c2c2c !important;
+    color: #b0b0b0 !important;
+  }
+
+  /* 看板娘AI聊天配置移动端适配 */
+  @media screen and (max-width: 768px) {
+    /* AI聊天配置外层容器 */
+    .el-form-item + div {
+      margin-left: 0 !important;
+      padding-left: 10px !important;
+      padding-right: 10px !important;
+    }
+  }
+
+  @media screen and (max-width: 480px) {
+    .ai-config-mobile-cards {
+      gap: 10px;
+      padding: 0 5px;
+    }
+
+    .ai-config-mobile-cards .config-card {
+      padding: 14px;
+    }
+
+    .ai-config-mobile-cards .config-card > span {
+      font-size: 14px;
+    }
+  }
+
 
 </style>
 
 <style>
+/* 移动端AI配置对话框 */
+@media screen and (max-width: 768px) {
+  /* 蓝色Header样式 */
+  .mobile-ai-config-dialog .el-dialog__header {
+    /* background: #409EFF; */
+    padding: 16px 20px;
+  }
+
+  .mobile-ai-config-dialog .el-dialog__title {
+    /* color: #fff; */
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .mobile-ai-config-dialog .el-dialog__headerbtn .el-dialog__close {
+    /* color: #fff; */
+    font-size: 22px;
+  }
+
+  .mobile-ai-config-dialog .el-dialog__footer {
+    padding: 0 !important;
+  }
+
+  .mobile-ai-config-dialog .dialog-footer {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    border-top: 1px solid #e4e7ed;
+    background: #fff;
+  }
+  
+  /* 暗色模式 - 移动端AI配置对话框 footer */
+  .dark-mode .mobile-ai-config-dialog .dialog-footer {
+    background: #2c2c2c !important;
+    border-top-color: #404040 !important;
+  }
+
+  .mobile-ai-config-dialog .dialog-footer .el-button {
+    flex: 1;
+    padding: 12px;
+    font-size: 15px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .mobile-ai-config-dialog .dialog-footer {
+    padding: 12px 10px;
+  }
+
+  .mobile-ai-config-dialog .dialog-footer .el-button {
+    font-size: 14px;
+    padding: 10px;
+  }
+}
+
 /* el-message-box 移动端适配 - 非scoped样式，作用于全局动态元素 */
 @media screen and (max-width: 768px) {
   /* 通用confirm对话框适配 */
@@ -5352,5 +5631,28 @@ X-API-KEY: {{apiConfig.apiKey}}
     padding: 14px 10px !important;
     font-size: 14px !important;
   }
+}
+
+</style>
+
+<!-- 全局样式：修复 el-collapse 内 el-select 下拉框被裁剪的问题 -->
+<style>
+/* 确保折叠面板内容区域不裁剪下拉框 */
+.el-collapse-item__wrap {
+  overflow: visible !important;
+}
+
+.el-collapse-item__content {
+  overflow: visible !important;
+}
+
+/* 确保下拉框有足够的 z-index */
+.el-select-dropdown {
+  z-index: 3000 !important;
+}
+
+/* 确保 popper 容器不被隐藏 */
+.el-popper {
+  z-index: 3000 !important;
 }
 </style>

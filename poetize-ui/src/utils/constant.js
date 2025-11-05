@@ -15,6 +15,7 @@ export default {
 
   // 本地看板娘资源路径
   live2d_path: "/static/live2d-widget/dist/",
+  // 使用本地模型文件
   cdnPath: "/static/live2d_api/",
   waifuPath: "/webInfo/getWaifuJson",
   // 一言API保留外部链接，但添加本地备用数据
@@ -29,7 +30,6 @@ export default {
 
   friendWebName: "POETIZE",
   friendUrl: location.protocol + "//" + location.hostname + (location.port ? ':' + location.port : ''),
-  friendAvatar: "https://s1.ax1x.com/2022/11/10/z9E7X4.jpg",
   friendIntroduction: "这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～",
   friendCover: "https://s1.ax1x.com/2022/11/10/z9VlHs.png",
 

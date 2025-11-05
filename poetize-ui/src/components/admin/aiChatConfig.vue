@@ -26,15 +26,17 @@
           
           <el-form :model="modelConfig" label-width="120px">
             <el-form-item label="AI服务商">
-              <el-select v-model="modelConfig.provider" placeholder="请选择AI服务商" @change="onProviderChange">
+              <el-select 
+                v-model="modelConfig.provider" 
+                placeholder="请选择AI服务商" 
+                @change="onProviderChange">
                 <el-option label="OpenAI" value="openai"></el-option>
                 <el-option label="Claude (Anthropic)" value="anthropic"></el-option>
-                <el-option label="Google Gemini" value="google"></el-option>
-                <el-option label="百度文心" value="baidu"></el-option>
-                <el-option label="阿里通义千问" value="alibaba"></el-option>
-                <el-option label="腾讯混元" value="tencent"></el-option>
+                <el-option label="DeepSeek" value="deepseek"></el-option>
+                <el-option label="硅基流动 SiliconFlow" value="siliconflow"></el-option>
                 <el-option label="自定义API" value="custom"></el-option>
               </el-select>
+              <small class="help-text">其他服务商（如通义千问、文心一言等）请使用"自定义API"选项</small>
             </el-form-item>
 
             <el-form-item label="API密钥">
@@ -58,7 +60,7 @@
             <el-form-item label="模型名称">
               <el-select 
                 v-model="modelConfig.model" 
-                :placeholder="modelConfig.provider === 'custom' ? '请输入自定义模型名称' : '请选择模型'" 
+                :placeholder="getModelPlaceholder" 
                 filterable 
                 allow-create
                 :class="{'custom-model-select': modelConfig.provider === 'custom'}">
@@ -69,7 +71,10 @@
                   :value="model.value">
                 </el-option>
               </el-select>
-              <small class="help-text" v-if="modelConfig.provider === 'custom'">
+              <small class="help-text" v-if="modelConfig.provider === 'siliconflow'">
+                💡 支持自定义：可选择预设模型或直接输入硅基流动平台任意可用模型名称
+              </small>
+              <small class="help-text" v-else-if="modelConfig.provider === 'custom'">
                 💡 自定义API：请输入您的模型名称，支持任何兼容OpenAI格式的模型
               </small>
               <small class="help-text" v-else>
@@ -80,7 +85,7 @@
               </small>
             </el-form-item>
 
-            <el-form-item label="API基础URL" v-if="modelConfig.provider === 'custom'">
+            <el-form-item label="API基础URL" v-if="!['openai', 'anthropic'].includes(modelConfig.provider)">
               <el-input 
                 v-model="modelConfig.baseUrl" 
                 placeholder="例如: https://api.example.com/v1">
@@ -115,6 +120,16 @@
             <el-form-item label="启用流式响应">
               <el-switch v-model="modelConfig.enableStreaming"></el-switch>
               <small class="help-text">启用后AI回复将实时显示，提供更流畅的对话体验，包括工具调用过程可视化</small>
+            </el-form-item>
+
+            <el-form-item label="启用思考模式">
+              <el-switch v-model="modelConfig.enableThinking"></el-switch>
+              <small class="help-text">启用后AI会先思考再回答，提供更深入的分析（仅部分模型支持，如o1系列）</small>
+            </el-form-item>
+
+            <el-form-item label="启用工具调用">
+              <el-switch v-model="modelConfig.enableTools"></el-switch>
+              <small class="help-text">启用后AI可以调用MCP工具（如搜索、计算等），提供更强大的功能。关闭后AI仅进行纯对话</small>
             </el-form-item>
 
             <el-form-item label="连接测试">
@@ -204,6 +219,84 @@
               <el-switch v-model="chatConfig.contentFilter"></el-switch>
               <small class="help-text">启用内容安全过滤</small>
             </el-form-item>
+
+            <!-- 记忆管理配置 -->
+            <el-divider content-position="left">
+              <i class="el-icon-data-analysis"></i> 记忆管理设置
+            </el-divider>
+
+            <el-form-item label="启用记忆功能">
+              <el-switch v-model="chatConfig.enableMemory"></el-switch>
+              <small class="help-text">使用 Mem0 服务为 AI 提供长期记忆能力</small>
+            </el-form-item>
+
+            <el-form-item label="Mem0 API密钥" v-if="chatConfig.enableMemory">
+              <el-input 
+                v-model="chatConfig.mem0ApiKey" 
+                type="password" 
+                show-password
+                placeholder="输入新密钥以更新，留空保持原值"
+                @input="onMem0ApiKeyInput">
+                <template slot="append">
+                  <el-button @click="testMem0Connection" :loading="testingMem0" type="primary">
+                    测试连接
+                  </el-button>
+                </template>
+              </el-input>
+              <div v-if="isMem0KeyMasked" class="api-key-status">
+                <i class="el-icon-success"></i>
+                <span>Mem0 密钥已保存（部分隐藏）</span>
+                <el-button type="text" size="small" @click="showFullMem0Key" v-if="!showingFullMem0Key">重新输入密钥</el-button>
+              </div>
+              <div v-else class="help-text" style="margin-top: 5px;">
+                💡 免费版每月 1000 次调用。
+                <a href="https://mem0.dev/pd-api" target="_blank" style="color: #409EFF;">获取 API 密钥</a>
+              </div>
+              <span v-if="mem0TestResult" :class="mem0TestResult.success ? 'test-success' : 'test-error'">
+                {{ mem0TestResult.message }}
+              </span>
+            </el-form-item>
+
+            <el-form-item label="自动保存记忆" v-if="chatConfig.enableMemory">
+              <el-switch v-model="chatConfig.memoryAutoSave"></el-switch>
+              <small class="help-text">每次对话后自动保存到 Mem0</small>
+            </el-form-item>
+
+            <el-form-item label="自动检索记忆" v-if="chatConfig.enableMemory">
+              <el-switch v-model="chatConfig.memoryAutoRecall"></el-switch>
+              <small class="help-text">根据用户消息自动检索相关记忆</small>
+            </el-form-item>
+
+            <el-form-item label="记忆检索数量" v-if="chatConfig.enableMemory && chatConfig.memoryAutoRecall">
+              <el-slider 
+                v-model="chatConfig.memoryRecallLimit" 
+                :min="1" 
+                :max="10" 
+                :step="1"
+                show-stops
+                :marks="{ 1: '1', 3: '3', 5: '5', 10: '10' }">
+              </el-slider>
+              <small class="help-text">每次最多检索 {{ chatConfig.memoryRecallLimit }} 条相关记忆（建议 3-5 条）</small>
+            </el-form-item>
+
+            <el-alert 
+              v-if="chatConfig.enableMemory"
+              title="用量提醒"
+              type="info"
+              :closable="false"
+              style="margin-bottom: 15px;">
+              <template>
+                <p style="margin: 0; font-size: 13px;">
+                  免费版每月 1000 次 API 调用。每次对话消耗：
+                  <br>
+                  • 保存记忆：1 次调用
+                  <br>
+                  • 检索记忆：1 次调用
+                  <br>
+                  如果同时开启保存和检索，每次对话约消耗 2 次调用。
+                </p>
+              </template>
+            </el-alert>
           </el-form>
         </el-card>
       </el-tab-pane>
@@ -263,53 +356,11 @@
             <el-form-item label="显示时间戳">
               <el-switch v-model="appearanceConfig.showTimestamp"></el-switch>
             </el-form-item>
-          </el-form>
-        </el-card>
-      </el-tab-pane>
 
-      <!-- 高级设置 -->
-      <el-tab-pane label="高级设置" name="advanced">
-        <el-card class="config-card">
-          <div slot="header" class="card-header">
-            <span>高级配置</span>
-            <el-button type="primary" @click="saveAdvancedConfig" :loading="saving">保存配置</el-button>
-          </div>
-          
-          <el-form :model="advancedConfig" label-width="120px">
-            <el-form-item label="代理设置">
-              <el-input v-model="advancedConfig.proxy" placeholder="例如: http://proxy.example.com:8080"></el-input>
-            </el-form-item>
-
-            <el-form-item label="超时时间(秒)">
-              <el-input-number v-model="advancedConfig.timeout" :min="5" :max="300"></el-input-number>
-            </el-form-item>
-
-            <el-form-item label="重试次数">
-              <el-input-number v-model="advancedConfig.retryCount" :min="0" :max="5"></el-input-number>
-            </el-form-item>
-
-            <el-form-item label="自定义Headers">
-              <div v-for="(header, index) in advancedConfig.customHeaders" :key="index" class="header-item">
-                <el-input v-model="header.key" placeholder="Header名称" style="width: 200px; margin-right: 10px;"></el-input>
-                <el-input v-model="header.value" placeholder="Header值" style="width: 300px; margin-right: 10px;"></el-input>
-                <el-button type="danger" icon="el-icon-delete" @click="removeHeader(index)"></el-button>
-              </div>
-              <el-button type="primary" icon="el-icon-plus" @click="addHeader">添加Header</el-button>
-            </el-form-item>
-
-            <el-form-item label="启用思考模式">
-              <el-switch v-model="advancedConfig.enableThinking"></el-switch>
-              <small class="help-text">启用后AI会先思考再回答，提供更深入的分析（仅部分模型支持，如o1系列）</small>
-            </el-form-item>
-
-            <el-form-item label="调试模式">
-              <el-switch v-model="advancedConfig.debugMode"></el-switch>
-              <small class="help-text">启用后会在控制台输出详细日志</small>
-            </el-form-item>
-
-            <el-form-item label="数据导出">
+            <el-form-item label="配置管理">
               <el-button @click="exportConfig">导出配置</el-button>
               <el-button @click="showImportDialog">导入配置</el-button>
+              <small class="help-text">可将所有配置导出为JSON文件，或从文件导入配置</small>
             </el-form-item>
           </el-form>
         </el-card>
@@ -317,7 +368,7 @@
     </el-tabs>
 
     <!-- 导入配置对话框 -->
-    <el-dialog title="导入配置" :visible.sync="importDialogVisible" width="500px">
+    <el-dialog title="导入配置" :visible.sync="importDialogVisible" width="500px" custom-class="centered-dialog">
       <el-upload
         drag
         :action="uploadUrl"
@@ -391,19 +442,27 @@ export default {
         temperature: 0.7,
         maxTokens: 1000,
         enabled: false,
-        enableStreaming: false
+        enableStreaming: false,
+        enableThinking: false,
+        enableTools: true  // 默认启用工具调用
       },
       
       // 聊天设置
       chatConfig: {
-        systemPrompt: "你是一个友善的AI助手，请用中文回答问题。",
+        systemPrompt: "AI assistant. Respond in Chinese naturally.",
         welcomeMessage: "你好！有什么可以帮助你的吗？",
         historyCount: 10,
         rateLimit: 20,
         requireLogin: false,
         saveHistory: true,
         contentFilter: true,
-        maxMessageLength: 500
+        maxMessageLength: 500,
+        // 记忆管理设置
+        enableMemory: false,
+        mem0ApiKey: '',
+        memoryAutoSave: true,
+        memoryAutoRecall: true,
+        memoryRecallLimit: 3
       },
       
       // 外观设置
@@ -417,19 +476,16 @@ export default {
         showTimestamp: true
       },
       
-      // 高级设置
-      advancedConfig: {
-        proxy: '',
-        timeout: 30,
-        retryCount: 3,
-        customHeaders: [],
-        debugMode: false,
-        enableThinking: false
-      },
-      
       isApiKeyMasked: true,
       showingFullKey: false,
-      originalMaskedKey: ''
+      originalMaskedKey: '',
+      
+      // Mem0 API密钥状态
+      isMem0KeyMasked: false,
+      showingFullMem0Key: false,
+      originalMaskedMem0Key: '',
+      testingMem0: false,
+      mem0TestResult: null
     }
   },
   
@@ -447,48 +503,53 @@ export default {
     availableModels() {
       const modelMap = {
         openai: [
-          { label: 'GPT-4', value: 'gpt-4' },
-          { label: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' },
+          { label: 'GPT-5', value: 'gpt-5' },
+          { label: 'GPT-5 Codex', value: 'gpt-5-codex' },
+          { label: 'GPT-5 Nano', value: 'gpt-5-nano' },
+          { label: 'GPT-4.1', value: 'gpt-4.1' },
           { label: 'GPT-4o', value: 'gpt-4o' },
+          { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+          { label: 'GPT-4 Turbo', value: 'gpt-4-turbo' },
+          { label: 'GPT-4', value: 'gpt-4' },
           { label: 'o1-preview (思考模式)', value: 'o1-preview' },
           { label: 'o1-mini (思考模式)', value: 'o1-mini' },
-          { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-          { label: 'GPT-3.5 Turbo 16K', value: 'gpt-3.5-turbo-16k' }
+          { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' }
         ],
         anthropic: [
+          { label: 'Claude Sonnet 4.5 (最新)', value: 'claude-sonnet-4-5-20250929' },
+          { label: 'Claude Haiku 4.5 (快速)', value: 'claude-haiku-4-5-20251015' },
+          { label: 'Claude Opus 4.1 (强大)', value: 'claude-opus-4-1-20250805' },
+          { label: 'Claude Sonnet 4', value: 'claude-sonnet-4-20250514' },
+          { label: 'Claude-3.5 Sonnet', value: 'claude-3-5-sonnet-20241022' },
+          { label: 'Claude-3.5 Haiku', value: 'claude-3-5-haiku-20241022' },
           { label: 'Claude-3 Opus', value: 'claude-3-opus-20240229' },
           { label: 'Claude-3 Sonnet', value: 'claude-3-sonnet-20240229' },
           { label: 'Claude-3 Haiku', value: 'claude-3-haiku-20240307' }
         ],
-        google: [
-          { label: 'Gemini Pro', value: 'gemini-pro' },
-          { label: 'Gemini Pro Vision', value: 'gemini-pro-vision' }
+        deepseek: [
+          { label: 'DeepSeek Chat', value: 'deepseek-chat' },
+          { label: 'DeepSeek Reasoner (思考模式)', value: 'deepseek-reasoner' }
         ],
-        baidu: [
-          { label: '文心一言', value: 'ernie-bot' },
-          { label: '文心一言 Turbo', value: 'ernie-bot-turbo' }
-        ],
-        alibaba: [
-          { label: '通义千问', value: 'qwen-turbo' },
-          { label: '通义千问 Plus', value: 'qwen-plus' }
-        ],
-        tencent: [
-          { label: '混元大模型', value: 'hunyuan' }
+        siliconflow: [
+          { label: 'DeepSeek-R1 (推理模型)', value: 'deepseek-ai/DeepSeek-R1' },
+          { label: 'DeepSeek-V3', value: 'deepseek-ai/DeepSeek-V3' },
+          { label: 'DeepSeek-V3.2-Exp', value: 'deepseek-ai/DeepSeek-V3.2-Exp' },
+          { label: 'Qwen2.5-72B-Instruct', value: 'Qwen/Qwen2.5-72B-Instruct' },
+          { label: 'Qwen2.5-32B-Instruct', value: 'Qwen/Qwen2.5-32B-Instruct' },
+          { label: 'GLM-4.6', value: 'zai-org/GLM-4.6' },
+          { label: 'Kimi-K2-Instruct', value: 'Pro/moonshotai/Kimi-K2-Instruct-0905' },
+          { label: 'Meta-Llama-3.1-70B', value: 'meta-llama/Meta-Llama-3.1-70B-Instruct' }
         ],
         custom: [
           { label: 'GPT-3.5 Turbo (OpenAI兼容)', value: 'gpt-3.5-turbo' },
           { label: 'GPT-4 (OpenAI兼容)', value: 'gpt-4' },
           { label: 'GPT-4o (OpenAI兼容)', value: 'gpt-4o' },
-          { label: 'o1-preview (思考模式)', value: 'o1-preview' },
-          { label: 'o1-mini (思考模式)', value: 'o1-mini' },
-          { label: 'Claude-3 Sonnet (兼容)', value: 'claude-3-sonnet-20240229' },
           { label: 'DeepSeek Chat', value: 'deepseek-chat' },
-          { label: 'DeepSeek Coder', value: 'deepseek-coder' },
-          { label: 'Qwen2.5-72B-Instruct (ModelScope)', value: 'Qwen/Qwen2.5-72B-Instruct' },
-          { label: 'Qwen2.5-32B-Instruct (ModelScope)', value: 'Qwen/Qwen2.5-32B-Instruct' },
-          { label: 'Moonshot v1', value: 'moonshot-v1-8k' },
-          { label: 'GLM-4', value: 'glm-4' },
-          { label: 'Qwen Turbo', value: 'qwen-turbo' },
+          { label: 'Qwen2.5-72B (ModelScope)', value: 'Qwen/Qwen2.5-72B-Instruct' },
+          { label: 'Qwen Turbo (阿里云)', value: 'qwen-turbo' },
+          { label: 'Qwen Plus (阿里云)', value: 'qwen-plus' },
+          { label: 'GLM-4 (智谱)', value: 'glm-4' },
+          { label: 'ERNIE-Bot (百度)', value: 'ernie-bot' },
           { label: '自定义模型', value: 'custom-model' }
         ]
       };
@@ -497,65 +558,83 @@ export default {
     
     isThinkingModelSelected() {
       // 检查是否选择了支持思考模式的模型
-      const thinkingModels = ['o1-preview', 'o1-mini'];
+      const thinkingModels = ['o1-preview', 'o1-mini', 'deepseek-reasoner'];
       return thinkingModels.includes(this.modelConfig.model) || 
              this.modelConfig.model.includes('o1') ||
+             this.modelConfig.model.includes('reasoner') ||
+             this.modelConfig.model.includes('DeepSeek-R1') ||
              this.modelConfig.model.includes('thinking');
+    },
+    
+    getModelPlaceholder() {
+      if (this.modelConfig.provider === 'siliconflow') {
+        return '选择预设模型或直接输入任意模型名称';
+      } else if (this.modelConfig.provider === 'custom') {
+        return '请输入自定义模型名称';
+      }
+      return '请选择模型';
     }
   },
   
   created() {
-    this.loadConfigs();
+    // 移除此处的 loadConfigs 调用，统一在 mounted 中加载
   },
   
   methods: {
     // 加载所有配置
     async loadConfigs() {
       try {
-        const response = await this.$http.get(this.$constant.pythonBaseURL + "/ai/chat/getConfig", {}, true);
-        if (response.flag && response.data) {
-          // 从后端API获取配置数据
+        const response = await this.$http.get(this.$constant.baseURL + "/webInfo/ai/config/chat/get", {}, true);
+        if (response.code === 200 && response.data) {
+          // 从后端API获取配置数据（Java驼峰格式）
           const config = response.data;
           
           // 映射基础配置
           this.modelConfig.provider = config.provider || 'openai';
-          this.modelConfig.apiKey = config.api_key || '';
+          this.modelConfig.apiKey = config.apiKey || '';
           this.modelConfig.model = config.model || 'gpt-3.5-turbo';
-          this.modelConfig.baseUrl = config.api_base || '';
+          this.modelConfig.baseUrl = config.apiBase || '';
           this.modelConfig.temperature = config.temperature || 0.7;
-          this.modelConfig.maxTokens = config.max_tokens || 1000;
+          this.modelConfig.maxTokens = config.maxTokens || 1000;
           this.modelConfig.enabled = config.enabled || false;
-          this.modelConfig.enableStreaming = config.enable_streaming || false;
+          this.modelConfig.enableStreaming = config.enableStreaming || false;
           
           // 检查API密钥是否被隐藏（包含星号表示已保存但被隐藏）
           this.isApiKeyMasked = this.modelConfig.apiKey && this.modelConfig.apiKey.includes('*');
           this.originalMaskedKey = this.isApiKeyMasked ? this.modelConfig.apiKey : '';
           
-          // 映射聊天配置
+          // 映射聊天配置（Java驼峰格式）
           this.chatConfig = {
-            systemPrompt: config.custom_instructions || "你是一个友善的AI助手，请用中文回答问题。",
-            welcomeMessage: config.welcome_message || "你好！有什么可以帮助你的吗？",
-            historyCount: config.max_conversation_length || 10,
-            rateLimit: config.rate_limit || 20,
-            requireLogin: config.require_login || false,
-            saveHistory: config.enable_chat_history !== false,
-            contentFilter: config.enable_content_filter !== false,
-            maxMessageLength: config.max_message_length || 500
+            systemPrompt: config.customInstructions || "AI assistant. Respond in Chinese naturally.",
+            welcomeMessage: config.welcomeMessage || "你好！有什么可以帮助你的吗？",
+            historyCount: config.maxConversationLength || 10,
+            rateLimit: config.rateLimit || 20,
+            requireLogin: config.requireLogin || false,
+            saveHistory: config.enableChatHistory !== false,
+            contentFilter: config.enableContentFilter !== false,
+            maxMessageLength: config.maxMessageLength || 500,
+            // 记忆管理配置
+            enableMemory: config.enableMemory || false,
+            mem0ApiKey: config.mem0ApiKey || '',
+            memoryAutoSave: config.memoryAutoSave !== false,
+            memoryAutoRecall: config.memoryAutoRecall !== false,
+            memoryRecallLimit: config.memoryRecallLimit || 3
           };
           
+          // 检查 Mem0 API密钥是否被隐藏
+          this.isMem0KeyMasked = this.chatConfig.mem0ApiKey && this.chatConfig.mem0ApiKey.includes('*');
+          this.originalMaskedMem0Key = this.isMem0KeyMasked ? this.chatConfig.mem0ApiKey : '';
+          
           // 映射外观配置
-          this.appearanceConfig.botAvatar = config.chat_avatar || '';
-          this.appearanceConfig.botName = config.chat_name || 'AI助手';
-          this.appearanceConfig.themeColor = config.theme_color || '#409EFF';
-          this.appearanceConfig.typingAnimation = config.enable_typing_indicator || true;
+          this.appearanceConfig.botAvatar = config.chatAvatar || '';
+          this.appearanceConfig.botName = config.chatName || 'AI助手';
+          this.appearanceConfig.themeColor = config.themeColor || '#409EFF';
+          this.appearanceConfig.typingAnimation = config.enableTypingIndicator || true;
           this.appearanceConfig.showTimestamp = true; // 固定值
           
-          // 映射高级配置
-          this.advancedConfig.timeout = 30; // 固定值
-          this.advancedConfig.retryCount = 3; // 固定值
-          this.advancedConfig.debugMode = false; // 固定值
-          this.advancedConfig.customHeaders = []; // 固定值
-          this.advancedConfig.enableThinking = config.enable_thinking || false; // 从后端加载
+          // 映射思考模式和工具调用配置
+          this.modelConfig.enableThinking = config.enableThinking || false;
+          this.modelConfig.enableTools = config.enableTools !== false; // 默认为true
         }
       } catch (error) {
         console.error('加载AI配置失败:', error);
@@ -564,67 +643,94 @@ export default {
     },
     
     // 服务商变更处理
-    onProviderChange() {
-      const models = this.availableModels;
-      if (models.length > 0) {
-        // 如果是自定义API且当前已有模型名称，保持不变
-        if (this.modelConfig.provider === 'custom' && this.modelConfig.model) {
-          // 保持现有模型名称不变
-        } else {
-          // 其他情况选择第一个可用模型
-          this.modelConfig.model = models[0].value;
-        }
-      } else if (this.modelConfig.provider === 'custom') {
-        // 如果是自定义API但没有预设模型，设置一个常用的默认值
-        if (!this.modelConfig.model) {
-          this.modelConfig.model = 'gpt-3.5-turbo';
-        }
+    onProviderChange(newProvider) {
+      // 防止重复触发
+      if (this._providerChanging) {
+        return;
       }
-      this.testResult = null;
+      this._providerChanging = true;
+      
+      try {
+        const models = this.availableModels;
+        if (models.length > 0) {
+          // 如果是自定义API且当前已有模型名称，保持不变
+          if (this.modelConfig.provider === 'custom' && this.modelConfig.model) {
+            // 保持现有模型名称不变
+          } else {
+            // 其他情况选择第一个可用模型
+            this.modelConfig.model = models[0].value;
+          }
+        } else if (this.modelConfig.provider === 'custom') {
+          // 如果是自定义API但没有预设模型，设置一个常用的默认值
+          if (!this.modelConfig.model) {
+            this.modelConfig.model = 'gpt-3.5-turbo';
+          }
+        }
+        this.testResult = null;
+      } finally {
+        // 使用 nextTick 确保 DOM 更新完成后才重置标志
+        this.$nextTick(() => {
+          this._providerChanging = false;
+        });
+      }
     },
     
     // 保存模型配置
     async saveModelConfig() {
       try {
-        // 构建保存请求数据
+        // 构建保存请求数据（Java驼峰格式）
         const saveData = {
+          configType: 'ai_chat',
+          configName: 'default',
           provider: this.modelConfig.provider,
-          api_base: this.modelConfig.baseUrl,
+          apiBase: this.modelConfig.baseUrl,
           model: this.modelConfig.model,
           temperature: this.modelConfig.temperature,
-          max_tokens: this.modelConfig.maxTokens,
+          maxTokens: this.modelConfig.maxTokens,
           enabled: this.modelConfig.enabled,
-          enable_streaming: this.modelConfig.enableStreaming,
+          enableStreaming: this.modelConfig.enableStreaming,
           // 聊天配置
-          custom_instructions: this.chatConfig.systemPrompt,
-          welcome_message: this.chatConfig.welcomeMessage,
-          max_conversation_length: this.chatConfig.historyCount,
-          rate_limit: this.chatConfig.rateLimit,
-          require_login: this.chatConfig.requireLogin,
-          enable_chat_history: this.chatConfig.saveHistory,
-          enable_content_filter: this.chatConfig.contentFilter,
-          max_message_length: this.chatConfig.maxMessageLength || 500,
+          customInstructions: this.chatConfig.systemPrompt,
+          welcomeMessage: this.chatConfig.welcomeMessage,
+          maxConversationLength: this.chatConfig.historyCount,
+          rateLimit: this.chatConfig.rateLimit,
+          requireLogin: this.chatConfig.requireLogin,
+          enableChatHistory: this.chatConfig.saveHistory,
+          enableContentFilter: this.chatConfig.contentFilter,
+          maxMessageLength: this.chatConfig.maxMessageLength || 500,
           // 外观配置
-          chat_avatar: this.appearanceConfig.botAvatar,
-          chat_name: this.appearanceConfig.botName,
-          theme_color: this.appearanceConfig.themeColor,
-          enable_typing_indicator: this.appearanceConfig.typingAnimation,
-          // 高级配置
-          enable_thinking: this.advancedConfig.enableThinking
+          chatAvatar: this.appearanceConfig.botAvatar,
+          chatName: this.appearanceConfig.botName,
+          themeColor: this.appearanceConfig.themeColor,
+          enableTypingIndicator: this.appearanceConfig.typingAnimation,
+          // 思考模式和工具调用配置
+          enableThinking: this.modelConfig.enableThinking,
+          enableTools: this.modelConfig.enableTools,
+          // 记忆管理配置
+          enableMemory: this.chatConfig.enableMemory,
+          memoryAutoSave: this.chatConfig.memoryAutoSave,
+          memoryAutoRecall: this.chatConfig.memoryAutoRecall,
+          memoryRecallLimit: this.chatConfig.memoryRecallLimit
         };
 
         // 只有当API密钥不是隐藏格式时才发送
         if (this.modelConfig.apiKey && !this.modelConfig.apiKey.includes('*')) {
-          saveData.api_key = this.modelConfig.apiKey;
+          saveData.apiKey = this.modelConfig.apiKey;
         }
-        // 如果API密钥是隐藏格式，不发送api_key字段，让后端保持原有密钥不变
-
-        const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/saveConfig', saveData, true);
+        // 如果API密钥是隐藏格式，不发送apiKey字段，让后端保持原有密钥不变
         
-        if (response.flag) {
+        // 处理 Mem0 API 密钥
+        if (this.chatConfig.mem0ApiKey && !this.chatConfig.mem0ApiKey.includes('*')) {
+          saveData.mem0ApiKey = this.chatConfig.mem0ApiKey;
+        }
+        // 如果 Mem0 密钥是隐藏格式，不发送该字段，让后端保持原有密钥不变
+
+        const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/save', saveData, true);
+        
+        if (response.code === 200) {
           this.$message.success('配置保存成功');
           // 保存成功后重新加载配置，获取最新的隐藏密钥格式
-          await this.loadConfig();
+          await this.loadConfigs();
         } else {
           this.$message.error(response.message || '保存失败');
         }
@@ -646,12 +752,6 @@ export default {
       await this.saveModelConfig();
     },
     
-    // 保存高级配置
-    async saveAdvancedConfig() {
-      // 复用模型配置保存方法，因为后端是统一保存的
-      await this.saveModelConfig();
-    },
-
     // 测试连接
     async testConnection() {
       this.testing = true;
@@ -661,9 +761,9 @@ export default {
         // 检查是否使用的是隐藏的密钥
         if (this.isApiKeyMasked || (this.modelConfig.apiKey && this.modelConfig.apiKey.includes('*'))) {
           // 如果密钥被隐藏，使用保存的配置进行测试（不发送密钥）
-          const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/testConnection', {
+          const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/test', {
             provider: this.modelConfig.provider,
-            api_base: this.modelConfig.baseUrl,
+            apiBase: this.modelConfig.baseUrl,
             model: this.modelConfig.model,
             use_saved_config: true  // 告诉后端使用已保存的配置
           }, true);
@@ -690,7 +790,7 @@ export default {
             model: this.modelConfig.model
           };
 
-          const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/testConnection', testData, true);
+          const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/test', testData, true);
 
           if (response.flag) {
             this.testResult = {
@@ -743,23 +843,12 @@ export default {
       return true;
     },
     
-    // 添加自定义Header
-    addHeader() {
-      this.advancedConfig.customHeaders.push({ key: '', value: '' });
-    },
-    
-    // 移除自定义Header
-    removeHeader(index) {
-      this.advancedConfig.customHeaders.splice(index, 1);
-    },
-    
     // 导出配置
     exportConfig() {
       const config = {
         model: this.modelConfig,
         chat: this.chatConfig,
-        appearance: this.appearanceConfig,
-        advanced: this.advancedConfig
+        appearance: this.appearanceConfig
       };
       
       const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
@@ -794,7 +883,6 @@ export default {
           Object.assign(this.modelConfig, config.model || {});
           Object.assign(this.chatConfig, config.chat || {});
           Object.assign(this.appearanceConfig, config.appearance || {});
-          Object.assign(this.advancedConfig, config.advanced || {});
           this.$message.success('配置导入成功');
           this.importDialogVisible = false;
         } catch (error) {
@@ -853,40 +941,6 @@ export default {
       });
     },
 
-    // 加载配置
-    async loadConfig() {
-      try {
-        const response = await this.$http.get(this.$constant.pythonBaseURL + "/ai/chat/getConfig", {}, true);
-        if (response.flag && response.data) {
-          // 更新各个配置对象
-          if (response.data.provider) this.modelConfig.provider = response.data.provider;
-          if (response.data.api_key) this.modelConfig.apiKey = response.data.api_key;
-          if (response.data.api_base) this.modelConfig.baseUrl = response.data.api_base;
-          if (response.data.model) this.modelConfig.model = response.data.model;
-          if (response.data.temperature !== undefined) this.modelConfig.temperature = response.data.temperature;
-          if (response.data.max_tokens) this.modelConfig.maxTokens = response.data.max_tokens;
-          if (response.data.enabled !== undefined) this.modelConfig.enabled = response.data.enabled;
-          if (response.data.enable_streaming !== undefined) this.modelConfig.enableStreaming = response.data.enable_streaming;
-          if (response.data.custom_instructions) this.chatConfig.systemPrompt = response.data.custom_instructions;
-          if (response.data.welcome_message) this.chatConfig.welcomeMessage = response.data.welcome_message;
-          if (response.data.max_conversation_length) this.chatConfig.historyCount = response.data.max_conversation_length;
-          if (response.data.enable_chat_history !== undefined) this.chatConfig.saveHistory = response.data.enable_chat_history;
-          if (response.data.enable_content_filter !== undefined) this.chatConfig.contentFilter = response.data.enable_content_filter;
-          if (response.data.chat_avatar) this.appearanceConfig.botAvatar = response.data.chat_avatar;
-          if (response.data.chat_name) this.appearanceConfig.botName = response.data.chat_name;
-          if (response.data.theme_color) this.appearanceConfig.themeColor = response.data.theme_color;
-          if (response.data.enable_typing_indicator !== undefined) this.appearanceConfig.typingAnimation = response.data.enable_typing_indicator;
-          if (response.data.enable_thinking !== undefined) this.advancedConfig.enableThinking = response.data.enable_thinking;
-          
-          console.log('AI聊天配置加载成功');
-        } else {
-          console.warn('加载配置失败:', response.message);
-        }
-      } catch (error) {
-        console.error('加载配置失败:', error);
-      }
-    },
-
     onApiKeyInput() {
       // 当用户修改API密钥时，重置隐藏状态
       if (this.modelConfig.apiKey && !this.modelConfig.apiKey.includes('*')) {
@@ -920,12 +974,89 @@ export default {
       this.isApiKeyMasked = true;
       this.showingFullKey = false;
       this.modelConfig.apiKey = this.originalMaskedKey;
+    },
+    
+    // Mem0 API密钥输入处理
+    onMem0ApiKeyInput() {
+      // 当用户修改 Mem0 API密钥时，重置隐藏状态
+      if (this.chatConfig.mem0ApiKey && !this.chatConfig.mem0ApiKey.includes('*')) {
+        this.isMem0KeyMasked = false;
+        this.showingFullMem0Key = false;
+      }
+      // 如果输入框被清空，也重置状态
+      if (!this.chatConfig.mem0ApiKey) {
+        this.isMem0KeyMasked = false;
+        this.showingFullMem0Key = false;
+      }
+      // 清除之前的测试结果
+      this.mem0TestResult = null;
+    },
+    
+    // 显示完整的 Mem0 API密钥
+    async showFullMem0Key() {
+      this.$confirm('要重新输入 Mem0 API密钥吗？当前密钥将被清空。', '重新输入密钥', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }).then(() => {
+        this.isMem0KeyMasked = false;
+        this.showingFullMem0Key = false;
+        this.chatConfig.mem0ApiKey = ''; // 清空输入框，让用户重新输入
+        this.$message.info('请重新输入您的 Mem0 API密钥');
+      }).catch(() => {
+        // 用户取消操作
+      });
+    },
+    
+    // 测试 Mem0 连接
+    async testMem0Connection() {
+      if (!this.chatConfig.mem0ApiKey) {
+        this.$message.warning('请先输入 Mem0 API 密钥');
+        return;
+      }
+      
+      this.testingMem0 = true;
+      this.mem0TestResult = null;
+      
+      try {
+        const testData = {
+          mem0_api_key: this.chatConfig.mem0ApiKey
+        };
+        
+        const response = await this.$http.post(
+          this.$constant.pythonBaseURL + '/ai/memory/testConnection', 
+          testData, 
+          true
+        );
+        
+        if (response.flag) {
+          this.mem0TestResult = {
+            success: true,
+            message: response.message || 'Mem0 API 连接测试成功！'
+          };
+          this.$message.success('Mem0 API 连接测试成功！');
+        } else {
+          this.mem0TestResult = {
+            success: false,
+            message: response.message || '连接测试失败'
+          };
+          this.$message.error('连接测试失败: ' + response.message);
+        }
+      } catch (error) {
+        this.mem0TestResult = {
+          success: false,
+          message: error.message || '测试失败'
+        };
+        this.$message.error('测试失败: ' + error.message);
+      } finally {
+        this.testingMem0 = false;
+      }
     }
   },
   
   // 组件挂载时加载配置
   async mounted() {
-    await this.loadConfig();
+    await this.loadConfigs();
   }
 }
 </script>
@@ -999,6 +1130,28 @@ export default {
   align-items: center;
 }
 
+/* ========== 暗色模式适配 ========== */
+
+/* config-card 暗色模式 */
+.dark-mode .config-card {
+  background-color: #2c2c2c !important;
+  border-color: #404040 !important;
+}
+
+.dark-mode .config-card .el-card__header {
+  background-color: #2c2c2c !important;
+  border-bottom-color: #404040 !important;
+}
+
+.dark-mode .config-card .card-header span {
+  color: #e0e0e0 !important;
+}
+
+.dark-mode .config-card .el-card__body {
+  background-color: #2c2c2c !important;
+  color: #b0b0b0 !important;
+}
+
 .help-text {
   color: #909399;
   margin-left: 10px;
@@ -1039,12 +1192,6 @@ export default {
   width: 100px;
   height: 100px;
   display: block;
-}
-
-.header-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
 }
 
 .test-chat-btn {
@@ -1153,5 +1300,125 @@ export default {
   padding: 0;
   font-size: 12px;
   color: #409EFF;
+}
+
+/* ===========================================
+   表单移动端样式 - PC端和移动端响应式
+   =========================================== */
+
+/* PC端样式 - 768px以上 */
+@media screen and (min-width: 769px) {
+  ::v-deep .el-form-item__label {
+    float: left !important;
+  }
+}
+
+/* 移动端样式 - 768px及以下 */
+@media screen and (max-width: 768px) {
+  /* 表单标签 - 垂直布局 */
+  ::v-deep .el-form-item__label {
+    float: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    margin-bottom: 8px !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    padding-bottom: 0 !important;
+    line-height: 1.5 !important;
+  }
+
+  ::v-deep .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  ::v-deep .el-form-item {
+    margin-bottom: 20px !important;
+  }
+
+  /* 输入框移动端优化 */
+  ::v-deep .el-input__inner {
+    font-size: 16px !important;
+    height: 44px !important;
+    border-radius: 8px !important;
+  }
+
+  ::v-deep .el-textarea__inner {
+    font-size: 16px !important;
+    border-radius: 8px !important;
+  }
+
+  /* 选择器移动端优化 */
+  ::v-deep .el-select {
+    width: 100% !important;
+  }
+
+  ::v-deep .el-select .el-input__inner {
+    height: 44px !important;
+    line-height: 44px !important;
+  }
+
+  /* 按钮移动端优化 */
+  ::v-deep .el-button {
+    min-height: 40px !important;
+    border-radius: 8px !important;
+  }
+
+  /* 页面容器移动端优化 */
+  .ai-chat-management {
+    padding: 15px !important;
+  }
+
+  .page-title {
+    font-size: 20px !important;
+  }
+
+  .title-section {
+    padding: 16px !important;
+  }
+
+  /* 对话框移动端优化 */
+  ::v-deep .el-dialog {
+    width: 95% !important;
+    margin-top: 5vh !important;
+  }
+
+  ::v-deep .el-dialog__body {
+    padding: 15px !important;
+  }
+
+  /* 测试按钮移动端优化 */
+  .test-chat-btn {
+    bottom: 20px !important;
+    right: 20px !important;
+    padding: 12px 16px !important;
+  }
+}
+
+/* 极小屏幕优化 - 480px及以下 */
+@media screen and (max-width: 480px) {
+  ::v-deep .el-form-item__label {
+    font-size: 13px !important;
+  }
+
+  ::v-deep .el-input__inner,
+  ::v-deep .el-select .el-input__inner {
+    height: 40px !important;
+    line-height: 40px !important;
+    font-size: 15px !important;
+  }
+
+  ::v-deep .el-button {
+    min-height: 38px !important;
+    font-size: 14px !important;
+  }
+
+  .page-title {
+    font-size: 18px !important;
+  }
+
+  .ai-chat-management {
+    padding: 10px !important;
+  }
 }
 </style> 

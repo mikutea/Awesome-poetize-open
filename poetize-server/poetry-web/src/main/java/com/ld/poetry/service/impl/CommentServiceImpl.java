@@ -1,5 +1,8 @@
 package com.ld.poetry.service.impl;
 
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
+
 import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -24,7 +27,6 @@ import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.CommentVO;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -94,7 +96,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         comment.setCommentContent(commentVO.getCommentContent());
         comment.setParentCommentId(commentVO.getParentCommentId());
 
-        // 🔧 修复：正确设置floorCommentId
         Integer floorCommentId = calculateFloorCommentId(commentVO.getParentCommentId(), commentVO.getFloorCommentId());
         comment.setFloorCommentId(floorCommentId);
 
@@ -135,7 +136,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private Integer calculateFloorCommentId(Integer parentCommentId, Integer frontendFloorCommentId) {
         // 如果是一级评论（parentCommentId为0或null），floorCommentId应该为null
         if (parentCommentId == null || parentCommentId.equals(CommonConst.FIRST_COMMENT)) {
-            log.debug("[DEBUG] 🏢 一级评论，floorCommentId设置为null");
             return null;
         }
 
@@ -144,11 +144,10 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
         // 验证前端传递的floorCommentId是否正确
         if (frontendFloorCommentId != null && !frontendFloorCommentId.equals(floorCommentId)) {
-            log.warn("[WARN] ⚠️ 前端传递的floorCommentId({})与计算结果({})不一致，使用计算结果",
+            log.warn("前端传递的floorCommentId({})与计算结果({})不一致，使用计算结果",
                     frontendFloorCommentId, floorCommentId);
         }
 
-        log.debug("[DEBUG] 🏢 计算得到floorCommentId: {}", floorCommentId);
         return floorCommentId;
     }
 
@@ -160,13 +159,12 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
     private Integer findFloorCommentId(Integer commentId) {
         Comment comment = getById(commentId);
         if (comment == null) {
-            log.error("[ERROR] ❌ 找不到评论ID: {}", commentId);
+            log.error("找不到评论ID: {}", commentId);
             return null;
         }
 
         // 如果是一级评论，返回自己的ID
         if (comment.getParentCommentId() == null || comment.getParentCommentId().equals(CommonConst.FIRST_COMMENT)) {
-            log.debug("[DEBUG] 🏢 找到一级评论ID: {}", comment.getId());
             return comment.getId();
         }
 
@@ -229,8 +227,6 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
                 .page(page);
 
             long queryEndTime = System.currentTimeMillis();
-            log.debug("一级评论分页查询耗时: {}ms, 查询到{}条记录",
-                queryEndTime - queryStartTime, mainCommentsPage.getRecords().size());
 
             if (CollectionUtils.isEmpty(mainCommentsPage.getRecords())) {
                 baseRequestVO.setRecords(new ArrayList<>());
@@ -315,37 +311,61 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         CommentVO commentVO = new CommentVO();
         BeanUtils.copyProperties(c, commentVO);
 
-        User user = commonQuery.getUser(commentVO.getUserId());
-        if (user != null) {
-            commentVO.setAvatar(user.getAvatar());
-            commentVO.setUsername(user.getUsername());
-            log.debug("[DEBUG] 🔧 用户信息设置完成 - 用户名:{}, 头像:{}", user.getUsername(), user.getAvatar());
-        } else {
-            log.debug("[DEBUG] ⚠️ 未找到用户信息 - 用户ID:{}", commentVO.getUserId());
-        }
-
-        if (!StringUtils.hasText(commentVO.getUsername())) {
-            String randomName = PoetryUtil.getRandomName(commentVO.getUserId().toString());
-            commentVO.setUsername(randomName);
-        }
-
-        if (commentVO.getParentUserId() != null) {
-            User u = commonQuery.getUser(commentVO.getParentUserId());
-            if (u != null) {
-                commentVO.setParentUsername(u.getUsername());
-                log.debug("[DEBUG] 🔧 父用户信息设置完成 - 父用户名:{}", u.getUsername());
-            } else {
-                log.debug("[DEBUG] ⚠️ 未找到父用户信息 - 父用户ID:{}", commentVO.getParentUserId());
+        // 并行获取用户信息和父用户信息
+        try (var scope = StructuredTaskScope.open()) {
+            // Fork 当前用户信息查询
+            Subtask<User> userTask = scope.fork(() -> 
+                commonQuery.getUser(commentVO.getUserId())
+            );
+            
+            // Fork 父用户信息查询（如果存在）
+            Subtask<User> parentUserTask = (commentVO.getParentUserId() != null) 
+                ? scope.fork(() -> commonQuery.getUser(commentVO.getParentUserId()))
+                : null;
+            
+            // 等待查询完成
+            scope.join();
+            
+            // 处理当前用户信息
+            if (userTask.state() == Subtask.State.SUCCESS) {
+                User user = userTask.get();
+                if (user != null) {
+                    commentVO.setAvatar(user.getAvatar());
+                    commentVO.setUsername(user.getUsername());
+                } else {
+                }
             }
-            if (!StringUtils.hasText(commentVO.getParentUsername())) {
+
+            if (!StringUtils.hasText(commentVO.getUsername())) {
+                String randomName = PoetryUtil.getRandomName(commentVO.getUserId().toString());
+                commentVO.setUsername(randomName);
+            }
+
+            // 处理父用户信息
+            if (parentUserTask != null && parentUserTask.state() == Subtask.State.SUCCESS) {
+                User u = parentUserTask.get();
+                if (u != null) {
+                    commentVO.setParentUsername(u.getUsername());
+                } else {
+                }
+            }
+            
+            if (commentVO.getParentUserId() != null && !StringUtils.hasText(commentVO.getParentUsername())) {
                 String randomParentName = PoetryUtil.getRandomName(commentVO.getParentUserId().toString());
                 commentVO.setParentUsername(randomParentName);
-                log.debug("[DEBUG] 🔧 设置随机父用户名:{}", randomParentName);
+            }
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (!StringUtils.hasText(commentVO.getUsername())) {
+                commentVO.setUsername(PoetryUtil.getRandomName(commentVO.getUserId().toString()));
+            }
+        } catch (Exception e) {
+            if (!StringUtils.hasText(commentVO.getUsername())) {
+                commentVO.setUsername(PoetryUtil.getRandomName(commentVO.getUserId().toString()));
             }
         }
 
-        log.debug("[DEBUG] ✅ CommentVO构建完成 - ID:{}, 用户名:{}, 父用户名:{}",
-                 commentVO.getId(), commentVO.getUsername(), commentVO.getParentUsername());
         return commentVO;
     }
 
@@ -556,7 +576,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
 
     /**
-     * 🔧 修复后的方法：递归获取指定评论的所有嵌套子评论（深度优先遍历）
+     * 修复后的方法：递归获取指定评论的所有嵌套子评论（深度优先遍历）
      * 确保子评论紧跟在其父评论下方显示，保持对话连贯性
      * @param parentCommentId 父评论ID
      * @param baseRequestVO 请求参数
@@ -573,37 +593,22 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             .orderByAsc(Comment::getCreateTime)
             .list();
 
-        log.debug("[DEBUG] 🔍 查询父评论ID:{} 的直接子评论: {}条", parentCommentId, directChildren.size());
 
-        // 🔧 添加详细的直接子评论信息
-        for (int i = 0; i < directChildren.size(); i++) {
-            Comment child = directChildren.get(i);
-            log.debug("[DEBUG]   直接子评论[{}]: ID={}, 用户ID={}, 内容长度={}, 创建时间={}",
-                     i + 1, child.getId(), child.getUserId(),
-                     child.getCommentContent() != null ? child.getCommentContent().length() : 0,
-                     child.getCreateTime());
-        }
-
-        // 🔧 关键修复：使用深度优先遍历，确保每个子评论的回复紧跟在其后面
+        // 使用深度优先遍历，确保每个子评论的回复紧跟在其后面
         for (Comment child : directChildren) {
             // 先添加当前子评论
             allComments.add(child);
-            log.debug("[DEBUG] ➕ 添加子评论ID:{} 到结果列表，当前位置:{}", child.getId(), allComments.size());
 
             // 然后递归获取该子评论的所有嵌套子评论，并立即添加到结果列表
-            log.debug("[DEBUG] 🔄 开始递归查询评论ID:{} 的子评论", child.getId());
             List<Comment> nestedChildren = getAllNestedComments(child.getId(), baseRequestVO);
             allComments.addAll(nestedChildren);
-            log.debug("[DEBUG] 🔍 评论ID:{} 的嵌套子评论: {}条，累计总数: {}条",
-                     child.getId(), nestedChildren.size(), allComments.size());
         }
 
-        log.debug("[DEBUG] 📊 getAllNestedComments完成 - 父评论ID:{}, 返回总数:{}条", parentCommentId, allComments.size());
         return allComments;
     }
 
     /**
-     * 🔧 新接口：子评论懒加载查询
+     * 新接口：子评论懒加载查询
      * 支持分页加载某个评论的子评论
      *
      * @param parentCommentId 父评论ID
@@ -613,85 +618,50 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
      * @return 分页的子评论列表
      */
     public PoetryResult<Page<CommentVO>> listChildComments(Integer parentCommentId, BaseRequestVO baseRequestVO, Integer current, Integer size) {
-        // 🔧 添加详细的参数调试日志
-        log.debug("[DEBUG] 🔍 listChildComments参数验证:");
-        log.debug("  - parentCommentId: {}", parentCommentId);
-        log.debug("  - baseRequestVO: {}", baseRequestVO);
-        log.debug("  - baseRequestVO.getSource(): {}", baseRequestVO != null ? baseRequestVO.getSource() : "baseRequestVO is null");
-        log.debug("  - baseRequestVO.getCommentType(): {}", baseRequestVO != null ? baseRequestVO.getCommentType() : "baseRequestVO is null");
-        log.debug("  - current: {}", current);
-        log.debug("  - size: {}", size);
-
-        // 🔧 修复：添加baseRequestVO null检查
+        // 参数验证
         if (parentCommentId == null) {
-            log.error("[ERROR] ❌ parentCommentId为null");
+            log.error("parentCommentId为null");
             return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);
         }
 
         if (baseRequestVO == null) {
-            log.error("[ERROR] ❌ baseRequestVO为null");
+            log.error("baseRequestVO为null");
             return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);
         }
 
         if (baseRequestVO.getSource() == null) {
-            log.error("[ERROR] ❌ baseRequestVO.getSource()为null");
+            log.error("baseRequestVO.getSource()为null");
             return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);
         }
 
         if (!StringUtils.hasText(baseRequestVO.getCommentType())) {
-            log.error("[ERROR] ❌ baseRequestVO.getCommentType()为空或null: '{}'", baseRequestVO.getCommentType());
+            log.error("baseRequestVO.getCommentType()为空或null: '{}'", baseRequestVO.getCommentType());
             return PoetryResult.fail(CodeMsg.PARAMETER_ERROR);
         }
 
-        log.debug("[DEBUG] ✅ 参数验证通过");
 
         // 设置默认分页参数
         int pageNum = current != null ? current : 1;
         int pageSize = size != null ? size : 10;
 
-        log.debug("[DEBUG] 🔍 开始查询子评论 - 父评论ID:{}, 页码:{}, 每页:{}", parentCommentId, pageNum, pageSize);
 
-        long queryStartTime = System.currentTimeMillis();
-
-        // 🔧 修复：查询所有嵌套子评论并平铺显示
+        // 查询所有嵌套子评论并平铺显示
         List<Comment> allNestedComments = getAllNestedComments(parentCommentId, baseRequestVO);
 
-        long queryEndTime = System.currentTimeMillis();
-
-        log.debug("[DEBUG] 📊 所有嵌套子评论查询完成 - 父评论ID:{}, 查询到{}条, 耗时:{}ms",
-                 parentCommentId, allNestedComments.size(), queryEndTime - queryStartTime);
-
-        // 🔧 修复：移除全局时间排序，保持深度优先遍历的层级结构
-        // 注释掉原来的全局时间排序，因为getAllNestedComments已经实现了正确的深度优先排序
-        // allNestedComments.sort((a, b) -> a.getCreateTime().compareTo(b.getCreateTime()));
-
-        log.debug("[DEBUG] 🎯 保持深度优先排序结构，不进行全局时间排序");
 
         // 应用分页
         int startIndex = (pageNum - 1) * pageSize;
         int endIndex = Math.min(startIndex + pageSize, allNestedComments.size());
         List<Comment> pagedComments = allNestedComments.subList(startIndex, endIndex);
 
-        log.debug("[DEBUG] 📊 分页处理完成 - 总数:{}, 当前页:{}, 每页:{}, 返回:{}条",
-                 allNestedComments.size(), pageNum, pageSize, pagedComments.size());
-
-        // 🔧 添加详细的数据转换调试
-        log.debug("[DEBUG] 🔄 开始构建CommentVO对象，待转换评论数: {}", pagedComments.size());
 
         List<CommentVO> childCommentVOs = new ArrayList<>();
-        for (int i = 0; i < pagedComments.size(); i++) {
-            Comment comment = pagedComments.get(i);
-            log.debug("[DEBUG] 🔄 转换第{}个评论 - ID:{}, 用户:{}, 内容长度:{}",
-                     i + 1, comment.getId(), comment.getUserId(),
-                     comment.getCommentContent() != null ? comment.getCommentContent().length() : 0);
-
+        for (Comment comment : pagedComments) {
             CommentVO commentVO = buildCommentVO(comment);
             if (commentVO != null) {
                 childCommentVOs.add(commentVO);
-                log.debug("[DEBUG] ✅ 第{}个CommentVO构建成功 - ID:{}, 用户名:{}",
-                         i + 1, commentVO.getId(), commentVO.getUsername());
             } else {
-                log.error("[ERROR] ❌ 第{}个CommentVO构建失败 - 原始评论ID:{}", i + 1, comment.getId());
+                log.error("CommentVO构建失败，原始评论ID: {}", comment.getId());
             }
         }
 
@@ -700,22 +670,8 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         result.setRecords(childCommentVOs);
         result.setTotal(allNestedComments.size());
 
-        log.debug("[DEBUG] 📦 最终结果构建:");
-        log.debug("  - 分页对象 - 当前页:{}, 每页大小:{}, 总记录数:{}", result.getCurrent(), result.getSize(), result.getTotal());
-        log.debug("  - 实际返回记录数: {}", result.getRecords().size());
-        log.debug("  - 记录详情:");
-        for (int i = 0; i < result.getRecords().size(); i++) {
-            CommentVO vo = result.getRecords().get(i);
-            log.debug("    [{}] ID:{}, 用户名:{}, 内容:{}",
-                     i + 1, vo.getId(), vo.getUsername(),
-                     vo.getCommentContent() != null ? vo.getCommentContent().substring(0, Math.min(50, vo.getCommentContent().length())) + "..." : "null");
-        }
 
-        PoetryResult<Page<CommentVO>> poetryResult = PoetryResult.success(result);
-        log.debug("[DEBUG] 🎯 PoetryResult构建完成 - code:{}, message:{}, data不为null:{}",
-                 poetryResult.getCode(), poetryResult.getMessage(), poetryResult.getData() != null);
-
-        return poetryResult;
+        return PoetryResult.success(result);
     }
 
     /**

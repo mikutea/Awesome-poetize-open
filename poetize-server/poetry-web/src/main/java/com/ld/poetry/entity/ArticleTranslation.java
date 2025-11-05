@@ -53,6 +53,12 @@ public class ArticleTranslation implements Serializable {
     private String content;
 
     /**
+     * 文章摘要
+     */
+    @TableField("summary")
+    private String summary;
+
+    /**
      * 创建时间
      */
     @TableField("create_time")

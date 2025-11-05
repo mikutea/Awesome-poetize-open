@@ -177,7 +177,6 @@ public class LocationService {
             }
             
         } catch (Exception e) {
-            log.debug("IP地址格式验证失败: {}", ip);
             return true; // 无法解析的IP认为是无效的
         }
         

@@ -244,8 +244,6 @@ public class SecurityFilter extends OncePerRequestFilter {
         
         if (internalService != null) {
             if (INTERNAL_SERVICES.contains(internalService)) {
-                log.debug("识别到内部服务请求: {} from {}, IP: {}", 
-                         request.getRequestURI(), internalService, getClientIpAddress(request));
                 return true;
             } else {
                 // 记录未知的内部服务标识，可能是恶意伪造
@@ -339,7 +337,6 @@ public class SecurityFilter extends OncePerRequestFilter {
      */
     private void cleanupExpiredRecords() {
         // Redis会自动清理过期的键，无需手动处理
-        log.debug("Redis自动处理过期键，无需手动清理");
     }
     
     /**

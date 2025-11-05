@@ -40,6 +40,7 @@ import 'vfonts/FiraCode.css'
 import './assets/css/index.css'
 import './assets/css/color.css'
 import './assets/css/animation.css'
+import './assets/css/dark-mode.css'
 
 const naive = create({
   components: [NAvatar, NInput, NIcon, NTag, NDivider, NButton,
@@ -95,6 +96,20 @@ router.beforeEach((to, from, next) => {
       // 保存存储类型配置
       if (typeof to.query.defaultStoreType !== "undefined") {
         localStorage.setItem("defaultStoreType", to.query.defaultStoreType);
+      }
+      
+      // 如果URL中包含主题参数，保存到localStorage（与博客前端共享）
+      if (to.query.theme) {
+        console.log('[IM路由] 从URL接收到主题状态:', to.query.theme);
+        localStorage.setItem('theme', to.query.theme);
+        // 立即应用主题（同时操作 body 和 html）
+        if (to.query.theme === 'dark') {
+          document.body.classList.add('dark-mode');
+          document.documentElement.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+          document.documentElement.classList.remove('dark-mode');
+        }
       }
       
       // 如果URL中包含用户信息和系统配置，保存到localStorage（开发环境跨端口）

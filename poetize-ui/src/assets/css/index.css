@@ -16,6 +16,11 @@
   backface-visibility: hidden;
 }
 
+/* 对话框圆角样式 */
+.el-dialog {
+  border-radius: 6px;
+}
+
 /* Message组件单独优化，不使用transform避免影响定位 */
 .el-message {
   will-change: opacity;
@@ -288,6 +293,10 @@ body {
     background: var(--gradualRed);
 }
 
+.el-message--info {
+    background: var(--gradualBlue);
+}
+
 /* 看板娘 */
 #waifu-toggle, #waifu {
     z-index: 100;
@@ -316,16 +325,7 @@ body {
     animation: rotate 2s linear infinite;
 }
 
-/* 树洞留言 */
-.baberrage-item .baberrage-msg {
-    padding-right: 5px;
-}
-
-.baberrage-item .normal .baberrage-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
+/* 树洞留言弹幕样式已迁移到 Danmaku.vue 组件内 */
 
 
 .el-upload.el-upload--picture, .el-upload.el-upload--text {
@@ -466,6 +466,7 @@ body {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+    box-shadow: 0 0 10px 0 #00000020;
 }
 
 .el-dropdown-menu__item:hover {

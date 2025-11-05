@@ -2,13 +2,21 @@
   <div>
     <div class="myAside-container">
       <!-- 网站信息 -->
-      <div v-if="!$common.mobile()" class="card-content1 shadow-box background-opacity">
-        <el-avatar style="margin-top: 20px" class="user-avatar" :size="120" :src="webInfo.avatar"></el-avatar>
+      <div v-if="!$common.mobile()" class="card-content1 shadow-box background-opacity" :style="asideBackgroundStyle">
+        <el-avatar 
+          style="margin-top: 20px; cursor: pointer; transition: transform 0.6s ease;" 
+          class="user-avatar" 
+          :size="120" 
+          :src="$common.getAvatarUrl(webInfo.avatar)"
+          @mouseenter.native="handleAvatarHover"
+          @mouseleave.native="handleAvatarLeave">
+          <img :src="$getDefaultAvatar()" />
+        </el-avatar>
         <div class="web-name">{{webInfo.webName}}</div>
         <div class="web-info">
           <div class="blog-info-box">
             <span>文章</span>
-            <span class="blog-info-num">{{ $store.getters.articleTotal }}</span>
+            <span class="blog-info-num">{{ mainStore.articleTotal }}</span>
           </div>
           <div class="blog-info-box">
             <span>分类</span>
@@ -19,13 +27,64 @@
             <span class="blog-info-num">{{ webInfo.historyAllCount }}</span>
           </div>
         </div>
-        <a class="collection-btn" @click="showTip()">
-          <i class="el-icon-star-off" style="margin-right: 2px"></i>朋友圈
+        <!-- 快捷入口按钮（可自定义） -->
+        <template v-if="quickEntryList && quickEntryList.length > 0">
+          <a 
+            v-for="(quickEntry, index) in quickEntryList" 
+            :key="quickEntry.id"
+            :href="quickEntry.url || 'javascript:void(0)'"
+            :target="quickEntry.url ? '_blank' : '_self'"
+            class="collection-btn" 
+            :class="{'has-contact': (contactList && contactList.length > 0) && (index === quickEntryList.length - 1)}"
+            :style="{
+              width: quickEntry.btnWidth || '65%',
+              height: quickEntry.btnHeight || '35px',
+              lineHeight: quickEntry.btnHeight || '35px',
+              borderRadius: quickEntry.btnRadius || '1rem'
+            }"
+            :title="quickEntry.introduction || removeIconPlaceholder(quickEntry.title)">
+            <span v-html="parseIconPlaceholder(quickEntry.title)"></span>
+          </a>
+        </template>
+        <!-- 默认朋友圈按钮 -->
+        <a v-else class="collection-btn" :class="{'has-contact': contactList && contactList.length > 0}" @click="showTip()">
+          <span v-html="parseIconPlaceholder('[star]朋友圈')"></span>
         </a>
+        
+        <!-- 联系方式小图标 -->
+        <div v-if="contactList && contactList.length > 0" class="contact-container">
+          <a 
+            v-for="contact in contactList" 
+            :key="contact.id" 
+            :href="contact.url || 'javascript:void(0)'"
+            :target="contact.url ? '_blank' : '_self'"
+            class="contact-item"
+            :style="{
+              width: contact.btnWidth || '25px',
+              height: contact.btnHeight || '25px'
+            }"
+            :title="contact.title + (contact.introduction ? ' - ' + contact.introduction : '')">
+            <!-- 有封面时只显示封面，没有封面时才显示文字 -->
+            <template v-if="contact.cover">
+              <img 
+                :src="contact.cover" 
+                :alt="contact.title" 
+                class="contact-icon"
+                :style="{
+                  width: contact.btnWidth || '25px',
+                  height: contact.btnHeight || '25px',
+                  borderRadius: contact.btnRadius || '0'
+                }" />
+            </template>
+            <template v-else>
+              <span class="contact-text">{{ contact.title }}</span>
+            </template>
+          </a>
+        </div>
       </div>
 
       <!-- 搜索 -->
-      <div class="search-container shadow-box background-opacity wow">
+      <div class="search-container shadow-box background-opacity" v-animate>
         <div class="search-title">
           搜索
         </div>
@@ -95,12 +154,12 @@
       <!-- 推荐文章 -->
       <div v-if="!$common.isEmpty(recommendArticles)"
            style="padding: 25px;border-radius: 10px;animation: hideToShow 1s ease-in-out"
-           class="shadow-box background-opacity wow">
+           class="shadow-box background-opacity" v-animate>
         <div class="card-content2-title">
           <span>🔥推荐文章</span>
         </div>
         <div v-for="(article, index) in recommendArticles"
-             :key="index"
+             :key="article.id"
              @click="goToArticle(article)">
           <div class="aside-post-detail">
             <div class="aside-post-image">
@@ -135,7 +194,8 @@
              @click="selectSort(sort)"
              :key="index"
              :style="{background: $constant.sortColor[index % $constant.sortColor.length]}"
-             class="shadow-box-mini background-opacity wow"
+             class="shadow-box-mini background-opacity"
+             v-animate
              style="position: relative;padding: 10px 25px 15px;border-radius: 10px;animation: hideToShow 1s ease-in-out;cursor: pointer;color: var(--white)">
           <div>速览</div>
           <div class="sort-name">
@@ -148,8 +208,9 @@
       </div>
 
       <!-- 分类 -->
-      <div class="shadow-box background-opacity wow"
+      <div class="shadow-box background-opacity"
            v-if="false"
+           v-animate
            style="padding: 25px 25px 5px;border-radius: 10px;animation: hideToShow 1s ease-in-out">
         <div class="card-content2-title">
           <i class="el-icon-folder-opened card-content2-icon"></i>
@@ -166,8 +227,9 @@
       </div>
 
       <!-- 赞赏 -->
-      <div class="shadow-box-mini background-opacity wow admire-box"
-           v-if="!$common.isEmpty(admires) && false">
+      <div class="shadow-box-mini background-opacity admire-box"
+           v-if="!$common.isEmpty(admires) && false"
+           v-animate>
         <div style="font-weight: bold;margin-bottom: 20px">🧨赞赏名单</div>
         <div>
           <vue-seamless-scroll :data="admires" style="height: 200px;overflow: hidden">
@@ -175,7 +237,9 @@
                  style="display: flex;justify-content: space-between"
                  :key="i">
               <div style="display: flex">
-                <el-avatar style="margin-bottom: 10px" :size="36" :src="item.avatar"></el-avatar>
+                <el-avatar style="margin-bottom: 10px" :size="36" :src="$common.getAvatarUrl(item.avatar)">
+                  <img :src="$getDefaultAvatar()" />
+                </el-avatar>
                 <div style="margin-left: 10px;height: 36px;line-height: 36px;overflow: hidden;max-width: 80px">
                   {{ item.username }}
                 </div>
@@ -197,6 +261,7 @@
                :visible.sync="showAdmireDialog"
                width="25%"
                :append-to-body="true"
+               custom-class="centered-dialog"
                destroy-on-close
                center>
       <div>
@@ -212,6 +277,7 @@
 
 <script>
   import vueSeamlessScroll from "vue-seamless-scroll";
+  import { useMainStore } from '@/stores/main';
 
   export default {
     components: {
@@ -230,27 +296,145 @@
         articleSearch: "",
         showSearchTips: false,
         searchTipsTimer: null,
-        recentSearches: []
+        recentSearches: [],
+        contactList: [], // 联系方式（小图标）
+        quickEntryList: [], // 快捷入口（大按钮，可自定义）
+        asideBackgroundImage: '', // 侧边栏主背景
+        asideExtraBackground: '' // 侧边栏额外背景层
       }
     },
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       webInfo() {
-        return this.$store.state.webInfo;
+        return this.mainStore.webInfo;
       },
       sortInfo() {
-        return this.$store.getters.navigationBar;
+        return this.mainStore.navigationBar;
       },
       displayedSearches() {
         // 只显示前8个最近搜索
         return this.recentSearches.slice(0, 8);
+      },
+      asideBackgroundStyle() {
+        if (this.asideBackgroundImage) {
+          const layers = [];
+          
+          // 处理额外背景层（如果有）
+          if (this.asideExtraBackground) {
+            const extraTrimmed = this.asideExtraBackground.trim();
+            if (this.isCssBackground(extraTrimmed)) {
+              layers.push(extraTrimmed);
+            } else {
+              layers.push(`url(${extraTrimmed})`);
+            }
+          }
+          
+          // 处理主背景层
+          const mainTrimmed = this.asideBackgroundImage.trim();
+          if (this.isCssBackground(mainTrimmed)) {
+            layers.push(mainTrimmed);
+          } else {
+            layers.push(`url(${mainTrimmed})`);
+          }
+          
+          // 如果有多层背景，使用逗号连接
+          if (layers.length > 0) {
+            return {
+              background: layers.join(', '),
+              backgroundRepeat: 'no-repeat',
+              backgroundAttachment: 'inherit',
+              backgroundSize: '100%'
+            };
+          }
+        }
+        return {};
       }
     },
     created() {
-      this.getRecommendArticles();
-      this.getAdmire();
+      // 同步操作：加载本地搜索历史
       this.loadRecentSearches();
+      
+      // 异步并行请求所有数据
+      this.fetchAllData();
     },
     methods: {
+      // 头像旋转动画处理
+      handleAvatarHover(event) {
+        event.target.style.transform = 'rotate(360deg)';
+      },
+      handleAvatarLeave(event) {
+        event.target.style.transform = 'rotate(0deg)';
+      },
+      
+      // 异步并行获取所有数据
+      async fetchAllData() {
+        try {
+          await Promise.all([
+            this.getRecommendArticles(),
+            this.getAdmire(),
+            this.getContactList(),
+            this.getAsideBackground()
+          ]);
+        } catch (error) {
+          console.error("获取侧边栏数据失败:", error);
+        }
+      },
+      
+      // 判断是否为CSS背景代码
+      isCssBackground(str) {
+        return str.includes('linear-gradient') || 
+               str.includes('radial-gradient') || 
+               str.includes('repeating-') ||
+               str.startsWith('#') ||
+               str.startsWith('rgb');
+      },
+      
+      // 图标库 - 定义各种图标
+      getIconSvg(iconName) {
+        const icons = {
+          'xiaoche': `<svg class="icon-xiaoche" viewBox="0 0 1024 1024" width="28" height="28">
+            <path d="M766.976 508.736c80.576 0 152.448 32.128 199.232 82.176" fill="#AEBCC3"></path>
+            <path d="M64.704 684.992c10.816 19.2 32.064 32.192 56.576 32.192h784.64c35.84 0 64.832-27.648 64.832-61.76v-17.408h-36.608a15.744 15.744 0 0 1-16.064-15.296V550.912a277.568 277.568 0 0 0-150.144-44.16h1.6l-55.04-0.256c-53.632-115.2-157.504-210.752-294.208-210.752-136.512 0-251.008 89.728-282.176 210.688h-16.832c-35.456 0-56.128 27.392-56.128 61.184" fill="#E8447A"></path>
+            <path d="M64.704 654.464h13.76a39.168 39.168 0 0 0 40.064-38.272v-17.6c0-21.12-17.92-38.208-40.064-38.208h-13.376" fill="#F5BB1D"></path>
+            <path d="M160 684.992a101.632 96.832 0 1 0 203.264 0 101.632 96.832 0 1 0-203.264 0Z" fill="#455963"></path>
+            <path d="M218.88 684.992a42.752 40.768 0 1 0 85.504 0 42.752 40.768 0 1 0-85.504 0Z" fill="#AEBCC3"></path>
+            <path d="M652.032 684.992a101.568 96.832 0 1 0 203.136 0 101.568 96.832 0 1 0-203.136 0Z" fill="#455963"></path>
+            <path d="M710.912 684.992a42.752 40.768 0 1 0 85.504 0 42.752 40.768 0 1 0-85.504 0Z" fill="#AEBCC3"></path>
+            <path d="M966.272 591.104v-0.192a257.92 257.92 0 0 0-48.192-40V622.72c0 8.448 7.232 15.296 16.064 15.296h36.608v-42.304l-4.48-4.608z" fill="#F5BB1D"></path>
+            <path d="M405.568 335.616c-104.896 6.336-191.296 76.8-216.64 170.816h216.64V335.616z" fill="#631536"></path>
+            <path d="M445.696 506.432h216.64c-41.216-86.848-117.12-159.616-216.64-170.048v170.048z" fill="#631536"></path>
+          </svg>`,
+          'star': `<i class="el-icon-star-off icon-star"></i>`,
+          'heart': `<svg class="icon-heart" viewBox="0 0 1024 1024" width="16" height="16">
+            <path d="M512 896L85.333333 469.333333C0 384 0 234.666667 85.333333 149.333333c85.333333-85.333333 234.666667-85.333333 320 0L512 256l106.666667-106.666667c85.333333-85.333333 234.666667-85.333333 320 0 85.333333 85.333333 85.333333 234.666667 0 320L512 896z" fill="#FF6B9D"></path>
+          </svg>`,
+          'rocket': `<svg class="icon-rocket" viewBox="0 0 1024 1024" width="18" height="18">
+            <path d="M928 0C832 192 704 320 512 384c-64-64-128-96-192-96-128 0-256 96-256 256 0 32 32 64 64 64s64-32 64-64c0-96 64-160 128-160 32 0 96 32 128 64-64 192-192 320-384 416 96-192 224-320 416-384 64 192 192 320 384 416-96-192-224-320-384-416C672 288 800 160 992 64L928 0zM256 704c-35.2 0-64 28.8-64 64s28.8 64 64 64 64-28.8 64-64-28.8-64-64-64z" fill="#4A90E2"></path>
+          </svg>`
+        };
+        return icons[iconName] || '';
+      },
+      
+      // 解析图标占位符，如：前往朋友圈[xiaoche] -> 前往朋友圈<svg...>
+      parseIconPlaceholder(text) {
+        if (!text) return '';
+        
+        // 匹配 [iconName] 格式
+        return text.replace(/\[(\w+)\]/g, (match, iconName) => {
+          const iconSvg = this.getIconSvg(iconName);
+          return iconSvg || match; // 如果找不到图标，保留原文
+        });
+      },
+      
+      // 移除图标占位符，如：前往朋友圈[xiaoche] -> 前往朋友圈
+      removeIconPlaceholder(text) {
+        if (!text) return '';
+        // 移除所有 [xxx] 格式的占位符
+        return text.replace(/\[(\w+)\]/g, '');
+      },
+      
       // 跳转到文章页面
       goToArticle(article) {
         // 使用简洁格式跳转到原文
@@ -355,7 +539,7 @@
         localStorage.setItem('recentSearches', JSON.stringify(searches));
       },
       showAdmire() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
@@ -366,35 +550,78 @@
         this.showAdmireDialog = true;
       },
       getAdmire() {
-        this.$http.get(this.$constant.baseURL + "/webInfo/getAdmire")
+        return this.$http.get(this.$constant.baseURL + "/webInfo/getAdmire")
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
               this.admires = res.data;
             }
           })
           .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
-            });
+            console.error("获取赞赏名单失败:", error);
           });
       },
       getRecommendArticles() {
-        this.$http.post(this.$constant.baseURL + "/article/listArticle", this.pagination)
+        return this.$http.post(this.$constant.baseURL + "/article/listArticle", this.pagination)
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
               this.recommendArticles = res.data.records;
             }
           })
           .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
-            });
+            console.error("获取推荐文章失败:", error);
           });
       },
       showTip() {
         this.$router.push({path: '/weiYan'});
+      },
+      getContactList() {
+        // 从资源聚合中获取type为contact和quickEntry且启用的联系方式和快捷入口
+        return Promise.all([
+          this.$http.post(this.$constant.baseURL + "/webInfo/listResourcePath", {
+            current: 1,
+            size: 100,
+            resourceType: "contact",
+            status: true
+          }),
+          this.$http.post(this.$constant.baseURL + "/webInfo/listResourcePath", {
+            current: 1,
+            size: 100,
+            resourceType: "quickEntry",
+            status: true
+          })
+        ])
+          .then((results) => {
+            // 分别存储联系方式和快捷入口
+            if (!this.$common.isEmpty(results[0].data) && !this.$common.isEmpty(results[0].data.records)) {
+              this.contactList = results[0].data.records;
+            }
+            if (!this.$common.isEmpty(results[1].data) && !this.$common.isEmpty(results[1].data.records)) {
+              // 后端已经解析好了快捷入口的按钮样式，直接使用即可
+              this.quickEntryList = results[1].data.records;
+            }
+          })
+          .catch((error) => {
+            console.error("获取联系方式和快捷入口失败:", error);
+          });
+      },
+      getAsideBackground() {
+        // 获取侧边栏背景配置
+        return this.$http.post(this.$constant.baseURL + "/webInfo/listResourcePath", {
+          current: 1,
+          size: 1,
+          resourceType: "asideBackground",
+          status: true
+        })
+          .then((res) => {
+            if (!this.$common.isEmpty(res.data) && !this.$common.isEmpty(res.data.records) && res.data.records.length > 0) {
+              const bgConfig = res.data.records[0];
+              this.asideBackgroundImage = bgConfig.cover; // 主背景
+              this.asideExtraBackground = bgConfig.extraBackground || ''; // 额外背景层（后端已解析）
+            }
+          })
+          .catch((error) => {
+            console.error("获取侧边栏背景失败:", error);
+          });
       },
       clearSearchHistory() {
         this.$confirm('确定要清空搜索历史记录吗?', '提示', {
@@ -442,10 +669,23 @@
     z-index: 10;
   }
 
+  /* 头像旋转动画 */
+  .card-content1 >>> .user-avatar {
+    cursor: pointer;
+    transition: transform 0.6s ease;
+    will-change: transform;
+    transform: translateZ(0);
+  }
+
+  .card-content1 >>> .user-avatar:hover {
+    transform: rotate(360deg);
+  }
+
   .web-name {
     font-size: 30px;
     font-weight: bold;
     margin: 20px 0;
+    color: #333333;
   }
 
   .web-info {
@@ -460,10 +700,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: space-around;
+    color: #333333;
   }
 
   .blog-info-num {
     margin-top: 12px;
+    color: #333333;
   }
 
   .collection-btn {
@@ -479,6 +721,18 @@
     color: var(--white);
     overflow: hidden;
     z-index: 1;
+    margin-bottom: 12px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .collection-btn.has-contact {
+    margin-bottom: 10px;
+  }
+
+  .collection-btn:last-of-type:not(.has-contact) {
     margin-bottom: 25px;
   }
 
@@ -500,6 +754,196 @@
 
   .collection-btn:hover::before {
     transform: scaleX(1);
+  }
+
+  .collection-btn > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+  }
+
+  /* 统一图标样式 */
+  .collection-btn >>> .icon-xiaoche,
+  .collection-btn >>> .icon-star,
+  .collection-btn >>> .icon-heart,
+  .collection-btn >>> .icon-rocket,
+  .collection-btn >>> .el-icon-star-off {
+    margin-left: 4px;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    vertical-align: middle;
+    display: inline-block;
+    -webkit-font-smoothing: antialiased;
+    flex-shrink: 0;
+  }
+
+  .collection-btn >>> .icon-xiaoche {
+    animation: carMove 2s linear infinite;
+  }
+
+  .collection-btn >>> .icon-heart {
+    animation: heartBeat 1.5s ease-in-out infinite;
+  }
+
+  .collection-btn >>> .icon-rocket {
+    animation: rocketFly 2.5s ease-in-out infinite;
+  }
+
+  .contact-container {
+    width: 80%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 20px;
+    z-index: 10;
+  }
+
+  .contact-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: pointer;
+    text-decoration: none;
+    margin: 0px 10px;
+  }
+
+  .contact-item:hover {
+    animation: scaleAndShake 2.5s ease-in-out infinite;
+  }
+
+  @keyframes scaleAndShake {
+    0% {
+      transform: scale(1) rotate(0deg);
+    }
+    10% {
+      transform: scale(1.15) rotate(0deg);
+    }
+    18% {
+      transform: scale(1.15) rotate(-8deg);
+    }
+    26% {
+      transform: scale(1.15) rotate(8deg);
+    }
+    34% {
+      transform: scale(1.15) rotate(-8deg);
+    }
+    42% {
+      transform: scale(1.15) rotate(8deg);
+    }
+    50% {
+      transform: scale(1.15) rotate(0deg);
+    }
+    60% {
+      transform: scale(1) rotate(0deg);
+    }
+    100% {
+      transform: scale(1) rotate(0deg);
+    }
+  }
+
+  .contact-icon {
+    object-fit: cover;
+    display: block;
+  }
+
+  .contact-text {
+    font-size: 0.7em;
+    color: #333;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    text-align: center;
+    padding: 0 2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* 统一联系方式图标样式 */
+  .contact-text >>> .icon-xiaoche,
+  .contact-text >>> .icon-star,
+  .contact-text >>> .icon-heart,
+  .contact-text >>> .icon-rocket,
+  .contact-text >>> .el-icon-star-off {
+    margin-right: 2px;
+    font-family: element-icons !important;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    vertical-align: baseline;
+    display: inline-block;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .contact-text >>> .icon-xiaoche {
+    animation: carMove 2s linear infinite;
+  }
+
+  @keyframes carMove {
+    0% {
+      transform: translateX(-10px);
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+    50% {
+      transform: translateX(0px);
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(20px);
+      opacity: 0;
+    }
+  }
+
+  .contact-text >>> .icon-heart {
+    animation: heartBeat 1.5s ease-in-out infinite;
+  }
+
+  @keyframes heartBeat {
+    0%, 100% {
+      transform: scale(1);
+    }
+    25% {
+      transform: scale(1.1);
+    }
+    50% {
+      transform: scale(1);
+    }
+    75% {
+      transform: scale(1.15);
+    }
+  }
+
+  .contact-text >>> .icon-rocket {
+    animation: rocketFly 2.5s ease-in-out infinite;
+  }
+
+  @keyframes rocketFly {
+    0% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    25% {
+      transform: translateY(-5px) rotate(-5deg);
+    }
+    50% {
+      transform: translateY(0px) rotate(0deg);
+    }
+    75% {
+      transform: translateY(-3px) rotate(5deg);
+    }
+    100% {
+      transform: translateY(0px) rotate(0deg);
+    }
   }
 
   .card-content2-title {
@@ -540,9 +984,12 @@
 
   .aside-post-title {
     width: 60%;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
     overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
   }
 
   .aside-post-date {
@@ -570,7 +1017,7 @@
   .sort-name {
     font-weight: bold;
     font-size: 25px;
-    margin-top: 15px;
+    /* margin-top: 15px; */
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -828,19 +1275,88 @@
     position: relative;
   }
 
+  /* 暗色模式适配 */
+  .dark-mode .search-container {
+    background: rgba(39, 39, 39, 0.8);
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .dark-mode .ais-SearchBox-input {
+    background: rgba(56, 56, 56, 0.8);
+    color: #e0e0e0;
+    border-color: var(--lightGreen);
+  }
+
+  .dark-mode .ais-SearchBox-input::placeholder {
+    color: #888;
+  }
+
+  .dark-mode .ais-SearchBox-submit {
+    background: rgba(56, 56, 56, 0.8);  /* 背景变暗 */
+    border-color: var(--lightGreen);
+  }
+
+  /* 搜索按钮图标颜色保持不变，不添加 svg path fill 样式 */
+
+  .dark-mode .search-tooltip {
+    background: rgba(81, 196, 146, 0.15);
+  }
+
+  .dark-mode .tooltip-text {
+    color: #b0b0b0;
+  }
+
+  .dark-mode .search-keyword {
+    color: var(--lightGreen);
+    background: rgba(81, 196, 146, 0.2);
+  }
+
+  .dark-mode .recent-searches {
+    border-top-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .dark-mode .recent-search-title {
+    color: #b0b0b0;
+  }
+
+  .dark-mode .recent-search-tag {
+    background: rgba(81, 196, 146, 0.15);
+    color: #b0b0b0;
+  }
+
+  .dark-mode .recent-search-tag:hover {
+    background: rgba(81, 196, 146, 0.25);
+    color: var(--lightGreen);
+  }
+
+  .dark-mode .clear-history {
+    color: #888;
+  }
+
+  .dark-mode .clear-history:hover {
+    color: var(--lightGreen);
+  }
+
+  .dark-mode .tooltip-close {
+    color: #888;
+  }
+
+  .dark-mode .tooltip-close:hover {
+    background: rgba(255, 0, 0, 0.2);
+    color: #ff6b81;
+  }
+
 </style>
 
 <!-- 非scoped样式：确保侧边栏头像旋转动画能够正常工作 -->
 <style>
 /* 侧边栏头像旋转动画 */
-.myAside-container .card-content1 .el-avatar.user-avatar {
-  cursor: pointer;
-  transition: transform 0.6s ease;
-  will-change: transform;
-  transform: translateZ(0);
+.user-avatar {
+  cursor: pointer !important;
+  transition: transform 0.4s ease !important;
 }
 
-.myAside-container .card-content1 .el-avatar.user-avatar:hover {
-  transform: rotate(360deg);
+.user-avatar:hover {
+  transform: rotate(360deg) !important;
 }
 </style>

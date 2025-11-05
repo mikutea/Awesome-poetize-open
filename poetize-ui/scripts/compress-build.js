@@ -72,7 +72,7 @@ function generateBrotliFile(filePath) {
 
 // 主函数
 function compressBuildFiles() {
-  console.log('🗜️  开始生成预压缩文件...\n');
+  console.log('开始生成预压缩文件...\n');
   
   if (!fs.existsSync(distDir)) {
     console.error('错误: dist目录不存在！请先运行 npm run build');
@@ -118,11 +118,11 @@ function compressBuildFiles() {
     }
   }
   
-  console.log('\n🎉 压缩完成!');
-  console.log(`📊 统计: ${gzipCount} 个 .gz 文件, ${brotliCount} 个 .br 文件`);
+  console.log('\n压缩完成!');
+  console.log(`统计: ${gzipCount} 个 .gz 文件, ${brotliCount} 个 .br 文件`);
   
   if (!hasBrotli) {
-    console.log('\n💡 提示: 安装 brotli 命令行工具可获得更好的压缩效果:');
+    console.log('\n提示: 安装 brotli 命令行工具可获得更好的压缩效果:');
     console.log('   npm install -g brotli');
   }
 }

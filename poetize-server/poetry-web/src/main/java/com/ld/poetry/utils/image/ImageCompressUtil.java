@@ -11,7 +11,6 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -294,56 +293,164 @@ public class ImageCompressUtil {
     }
     
     /**
-     * 转换为WebP格式
+     * 转换为WebP格式（有损）
+     * 优先使用cwebp命令行工具
      */
     private static byte[] convertToWebP(BufferedImage image) throws IOException {
+        // 优先尝试使用cwebp命令行工具（支持质量控制）
+        try {
+            byte[] webpBytes = convertToWebPUsingCwebp(image, false);
+            if (webpBytes != null && webpBytes.length > 0) {
+                log.info("成功使用cwebp转换为有损WebP格式，转换后大小: {}KB", webpBytes.length / 1024);
+                return webpBytes;
+            }
+        } catch (Exception e) {
+            log.warn("cwebp有损转换失败: {}, 尝试备用方案", e.getMessage());
+        }
+        
+        // 备用方案1：使用ImageIO的WebP编码器
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            // 尝试使用WebP编码器写入图片
             boolean success = ImageIO.write(image, "webp", baos);
             
-            if (!success) {
-                log.warn("WebP转换失败：WebP编码器未找到或不可用，使用备用方案");
-                // 备用方案：使用高质量JPEG压缩
-                return compressJPEG(image, 0.9f);
+            if (success && baos.size() > 0) {
+                byte[] webpData = baos.toByteArray();
+                log.info("使用ImageIO转换为WebP格式，转换后大小: {}KB", webpData.length / 1024);
+                return webpData;
             }
-            
-            byte[] webpData = baos.toByteArray();
-            log.info("成功将图片转换为WebP格式，转换后大小: {}KB", webpData.length / 1024);
-            return webpData;
         } catch (Exception e) {
-            log.error("WebP转换过程中出错: {}, 使用备用压缩方案", e.getMessage());
-            // 出错时使用备用方案：JPEG压缩
-            return compressJPEG(image, 0.9f);
+            log.warn("ImageIO WebP转换失败: {}", e.getMessage());
         }
+        
+        // 备用方案2：使用高质量JPEG压缩
+        log.info("WebP转换失败，使用JPEG格式");
+        return compressJPEG(image, 0.9f);
     }
 
     /**
      * 转换为无损WebP格式
+     * 使用cwebp命令行工具实现真正的无损转换
      */
     private static byte[] convertToLosslessWebP(BufferedImage image) throws IOException {
-        // 目前我们的WebP转换实现已经可以工作，只是无法指定是有损还是无损模式
-        // 在当前实现下，我们使用相同的WebP转换方法，但备用方案改为PNG（无损格式）
+        // 优先尝试使用cwebp命令行工具（支持真正的无损压缩）
+        try {
+            byte[] webpBytes = convertToWebPUsingCwebp(image, true);
+            if (webpBytes != null && webpBytes.length > 0) {
+                log.info("成功使用cwebp转换为无损WebP格式，转换后大小: {}KB", webpBytes.length / 1024);
+                return webpBytes;
+            }
+        } catch (Exception e) {
+            log.warn("cwebp无损转换失败: {}, 尝试备用方案", e.getMessage());
+        }
+        
+        // 备用方案1：尝试使用ImageIO的WebP编码器（但无法保证无损）
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            // 尝试使用WebP编码器写入图片
             boolean success = ImageIO.write(image, "webp", baos);
             
-            if (!success) {
-                log.warn("无损WebP转换失败：WebP编码器未找到或不可用，使用备用方案");
-                // 备用方案：使用PNG格式（无损）
-                ByteArrayOutputStream pngBaos = new ByteArrayOutputStream();
-                ImageIO.write(image, "png", pngBaos);
-                return pngBaos.toByteArray();
+            if (success && baos.size() > 0) {
+                byte[] webpData = baos.toByteArray();
+                log.warn("使用ImageIO转换为WebP格式(可能为有损)，转换后大小: {}KB", webpData.length / 1024);
+                return webpData;
+            }
+        } catch (Exception e) {
+            log.warn("ImageIO WebP转换失败: {}", e.getMessage());
+        }
+        
+        // 备用方案2：使用PNG格式（真正的无损）
+        log.info("WebP转换失败，使用PNG格式(真正无损)");
+        ByteArrayOutputStream pngBaos = new ByteArrayOutputStream();
+        ImageIO.write(image, "png", pngBaos);
+        return pngBaos.toByteArray();
+    }
+
+    /**
+     * 使用cwebp命令行工具转换图片
+     * @param image 图片对象
+     * @param lossless 是否无损压缩
+     * @return WebP格式的字节数组，失败返回null
+     */
+    private static byte[] convertToWebPUsingCwebp(BufferedImage image, boolean lossless) throws IOException {
+        java.io.File tempInputFile = null;
+        java.io.File tempOutputFile = null;
+        
+        try {
+            // 创建临时文件
+            tempInputFile = java.io.File.createTempFile("img_input_", ".png");
+            tempOutputFile = java.io.File.createTempFile("img_output_", ".webp");
+            
+            // 将BufferedImage保存为临时PNG文件
+            ImageIO.write(image, "png", tempInputFile);
+            
+            // 构建cwebp命令
+            ProcessBuilder processBuilder;
+            if (lossless) {
+                // 无损模式：-lossless -z 9 (最高压缩比)
+                processBuilder = new ProcessBuilder(
+                    "cwebp",
+                    "-lossless",
+                    "-z", "9",          // 压缩级别0-9，9为最高
+                    "-m", "6",          // 压缩方法0-6，6为最慢但最优
+                    "-mt",              // 多线程
+                    tempInputFile.getAbsolutePath(),
+                    "-o", tempOutputFile.getAbsolutePath()
+                );
+            } else {
+                // 有损模式：质量85
+                processBuilder = new ProcessBuilder(
+                    "cwebp",
+                    "-q", "85",         // 质量0-100
+                    "-m", "6",          // 压缩方法
+                    "-mt",              // 多线程
+                    tempInputFile.getAbsolutePath(),
+                    "-o", tempOutputFile.getAbsolutePath()
+                );
             }
             
-            byte[] webpData = baos.toByteArray();
-            log.info("成功将图片转换为WebP格式(无损模式)，转换后大小: {}KB", webpData.length / 1024);
+            // 执行命令
+            processBuilder.redirectErrorStream(true);
+            Process process = processBuilder.start();
+            
+            // 读取命令输出（用于日志）
+            StringBuilder output = new StringBuilder();
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+            
+            // 等待命令完成
+            int exitCode = process.waitFor();
+            
+            if (exitCode != 0) {
+                log.warn("cwebp命令执行失败，退出代码: {}, 输出: {}", exitCode, output);
+                return null;
+            }
+            
+            // 读取输出文件
+            if (!tempOutputFile.exists() || tempOutputFile.length() == 0) {
+                log.warn("cwebp未生成输出文件或文件为空");
+                return null;
+            }
+            
+            byte[] webpData = java.nio.file.Files.readAllBytes(tempOutputFile.toPath());
+            
             return webpData;
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("cwebp命令执行被中断", e);
+            return null;
         } catch (Exception e) {
-            log.error("无损WebP转换过程中出错: {}, 使用备用压缩方案", e.getMessage());
-            // 出错时使用备用方案：PNG格式
-            ByteArrayOutputStream pngBaos = new ByteArrayOutputStream();
-            ImageIO.write(image, "png", pngBaos);
-            return pngBaos.toByteArray();
+            return null;
+        } finally {
+            // 清理临时文件
+            if (tempInputFile != null && tempInputFile.exists()) {
+                tempInputFile.delete();
+            }
+            if (tempOutputFile != null && tempOutputFile.exists()) {
+                tempOutputFile.delete();
+            }
         }
     }
 

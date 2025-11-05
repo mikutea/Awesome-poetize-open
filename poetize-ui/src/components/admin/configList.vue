@@ -30,6 +30,7 @@
     <el-dialog title="配置"
                :visible.sync="configDialog"
                width="30%"
+               custom-class="centered-dialog"
                :before-close="handleClose"
                :append-to-body="true"
                destroy-on-close
@@ -61,6 +62,8 @@
 </template>
 
 <script>
+  import { useMainStore } from '@/stores/main';
+
 export default {
   data() {
     return {
@@ -76,7 +79,10 @@ export default {
     }
   },
 
-  computed: {},
+  computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
   watch: {},
 
@@ -190,8 +196,7 @@ export default {
         .then((res) => {
           if (!this.$common.isEmpty(res.data)) {
             // 更新Vuex中的系统配置
-            this.$store.commit("loadSysConfig", res.data);
-            console.log("系统配置已刷新");
+            this.mainStore.loadSysConfig( res.data);
             
             // 触发全局事件，通知其他组件系统配置已更新
             this.$bus.$emit('sysConfigUpdated', res.data);

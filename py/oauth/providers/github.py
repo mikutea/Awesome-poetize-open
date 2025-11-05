@@ -33,14 +33,14 @@ class GitHubProvider(OAuth2Provider):
             access_token = token_data.get("access_token")
             
             if not access_token:
-                raise TokenError("GitHub未返回访问令牌", "no_token", "github")
+                raise TokenError("未返回访问令牌", "no_token", "github")
             
             return access_token
             
         except Exception as e:
             if isinstance(e, TokenError):
                 raise
-            raise TokenError(f"获取GitHub访问令牌失败: {str(e)}", "token_request_failed", "github")
+            raise TokenError(f"获取访问令牌失败: {str(e)}", "token_request_failed", "github")
     
     async def get_user_info(self, access_token: str) -> Dict[str, Any]:
         """获取GitHub用户信息"""
@@ -85,4 +85,4 @@ class GitHubProvider(OAuth2Provider):
         except Exception as e:
             if isinstance(e, UserInfoError):
                 raise
-            raise UserInfoError(f"获取GitHub用户信息失败: {str(e)}", "user_info_failed", "github")
+            raise UserInfoError(f"获取用户信息失败: {str(e)}", "user_info_failed", "github")

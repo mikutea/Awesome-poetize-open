@@ -263,7 +263,7 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
-                    <jvmArguments>-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005</jvmArguments>
+                    <jvmArguments>-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=*:5005 --enable-preview</jvmArguments>
                     <skip>false</skip>
                 </configuration>
                 <executions>
@@ -295,10 +295,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.13.0</version>
                 <configuration>
-                    <source>21</source>
-                    <target>21</target>
+                    <source>25</source>
+                    <target>25</target>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -309,6 +309,7 @@
                     <compilerArgs>
                         <arg>-Xlint:deprecation</arg>
                         <arg>-parameters</arg>
+                        <arg>--enable-preview</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>

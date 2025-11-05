@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.StructuredTaskScope;
 
 /**
  * 调用 prerender-worker 的简易客户端
@@ -313,14 +314,36 @@ public class PrerenderClient {
      * 渲染主要页面（首页和三个百宝箱子页面）
      */
     public void renderMainPages() {
-        try {
-            renderHomePage();
-            Thread.sleep(500); // 避免并发过高
-            renderFriendsPage();
-            Thread.sleep(500);
-            renderMusicPage();
-            Thread.sleep(500);
-            renderFavoritesPage();
+        try (var scope = StructuredTaskScope.open()) {
+            // 并行渲染所有主要页面
+            scope.fork(() -> {
+                renderHomePage();
+                return "home-done";
+            });
+            
+            scope.fork(() -> {
+                renderFriendsPage();
+                return "friends-done";
+            });
+            
+            scope.fork(() -> {
+                renderMusicPage();
+                return "music-done";
+            });
+            
+            scope.fork(() -> {
+                renderFavoritesPage();
+                return "favorites-done";
+            });
+            
+            // 等待所有页面渲染完成
+            scope.join();
+            
+            log.info("主要页面渲染请求已全部发送");
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("主要页面渲染被中断: {}", e.getMessage());
         } catch (Exception e) {
             log.warn("渲染主要页面失败: {}", e.getMessage());
         }
@@ -344,42 +367,70 @@ public class PrerenderClient {
      * 渲染所有静态页面（一键预渲染）
      */
     public void renderAllStaticPages() {
-        try {
+        try (var scope = StructuredTaskScope.open()) {
             log.info("开始批量预渲染所有静态页面");
             
-            renderHomePage();
-            Thread.sleep(500); // 避免并发过高
+            // 并行渲染所有静态页面
+            scope.fork(() -> {
+                renderHomePage();
+                return "home-done";
+            });
             
-            renderFriendsPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderFriendsPage();
+                return "friends-done";
+            });
             
-            renderMusicPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderMusicPage();
+                return "music-done";
+            });
             
-            renderFavoritesPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderFavoritesPage();
+                return "favorites-done";
+            });
             
-            renderAboutPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderAboutPage();
+                return "about-done";
+            });
             
-            renderMessagePage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderMessagePage();
+                return "message-done";
+            });
             
-            renderWeiYanPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderWeiYanPage();
+                return "weiyan-done";
+            });
             
-            renderLovePage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderLovePage();
+                return "love-done";
+            });
             
-            renderTravelPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderTravelPage();
+                return "travel-done";
+            });
             
-            renderPrivacyPage();
-            Thread.sleep(500);
+            scope.fork(() -> {
+                renderPrivacyPage();
+                return "privacy-done";
+            });
             
-            renderLetterPage();
+            scope.fork(() -> {
+                renderLetterPage();
+                return "letter-done";
+            });
+            
+            // 等待所有页面渲染完成
+            scope.join();
             
             log.info("所有静态页面预渲染请求已发送");
+            
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("静态页面预渲染被中断: {}", e.getMessage());

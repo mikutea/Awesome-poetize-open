@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
-import store from '../store'
+import { useMainStore } from '../stores/main'
 import constant from '../utils/constant'
 import common from '../utils/common'
 import { handleTokenExpire, isLoggedIn, getValidToken } from '../utils/tokenExpireHandler'
@@ -240,7 +240,6 @@ router.beforeEach((to, from, next) => {
       const isAdminLoggedIn = isLoggedIn(true);
 
       if (!adminToken || !isAdminLoggedIn) {
-        console.log('管理员token无效或过期，重定向到登录页');
         handleTokenExpire(true, to.fullPath, { showMessage: false });
         return;
       }
@@ -253,7 +252,6 @@ router.beforeEach((to, from, next) => {
         const isUserLoggedIn = isLoggedIn(false);
 
         if (!userToken || !isUserLoggedIn) {
-          console.log('用户token无效或过期，重定向到登录页');
           handleTokenExpire(false, to.fullPath, { showMessage: false });
           return;
         }
@@ -263,14 +261,9 @@ router.beforeEach((to, from, next) => {
 
   // 处理OAuth登录回调token
   if (to.query.userToken) {
-    console.log('检测到OAuth回调token，开始处理登录...');
     const userToken = to.query.userToken;
     const emailCollectionNeeded = to.query.emailCollectionNeeded === 'true';
 
-    console.log('OAuth回调参数:', {
-      userToken: userToken ? userToken.substring(0, 20) + '...' : null,
-      emailCollectionNeeded: emailCollectionNeeded
-    });
 
     // 使用同步XMLHttpRequest验证token（与poetize-im-ui保持一致）
     try {
@@ -280,27 +273,20 @@ router.beforeEach((to, from, next) => {
 
       // 对token进行AES加密，因为后端期望接收加密的token
       const encryptedToken = common.encrypt(userToken);
-      console.log('原始token长度:', userToken.length, '加密后token长度:', encryptedToken.length);
 
       xhr.open('post', baseURL + "/user/token", false);
       xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
       xhr.send("userToken=" + encryptedToken);
 
-      console.log('Token验证请求状态:', xhr.status, xhr.statusText);
-      console.log('Token验证响应:', xhr.responseText);
 
       if (xhr.status === 200) {
         const result = JSON.parse(xhr.responseText);
         if (result && result.code === 200) {
-          console.log('OAuth登录成功，用户信息:', result.data);
-          console.log('OAuth响应消息:', result.message);
 
           // 检查是否需要邮箱收集（通过URL参数或响应消息）
           const needsEmailCollection = emailCollectionNeeded || result.message === 'EMAIL_COLLECTION_NEEDED';
 
           if (needsEmailCollection) {
-            console.log('✅ 检测到需要邮箱收集，准备显示邮箱收集模态框');
-            console.log('邮箱收集触发方式:', emailCollectionNeeded ? 'URL参数' : '响应消息');
 
             // 存储临时的用户信息和token
             // 尝试从用户数据中获取provider，如果没有则从URL参数获取
@@ -316,10 +302,8 @@ router.beforeEach((to, from, next) => {
             localStorage.setItem("adminToken", result.data.accessToken);
             localStorage.setItem("tempUserData", JSON.stringify(tempUserData));
 
-            console.log('已存储临时用户数据:', tempUserData);
 
             // 重定向到首页，首页会检测到需要邮箱收集并显示模态框
-            console.log('重定向到首页并显示邮箱收集模态框');
             next({
               path: '/',
               query: { showEmailCollection: 'true' },
@@ -335,8 +319,9 @@ router.beforeEach((to, from, next) => {
 
           localStorage.setItem("userToken", result.data.accessToken);
           localStorage.setItem("adminToken", result.data.accessToken);
-          store.commit("loadCurrentUser", result.data);
-          store.commit("loadCurrentAdmin", result.data);
+          const mainStore = useMainStore();
+          mainStore.loadCurrentUser(result.data);
+          mainStore.loadCurrentAdmin(result.data);
 
           // 清除URL中的token参数并重定向到首页
           const cleanPath = to.path === '/' ? '/' : to.path;
@@ -380,7 +365,8 @@ router.beforeEach((to, from, next) => {
       });
     } else {
       // 如果有管理员token，检查用户类型
-      const currentAdmin = store.state.currentAdmin;
+      const mainStore = useMainStore();
+      const currentAdmin = mainStore.currentAdmin;
       if (currentAdmin && (currentAdmin.userType === 0 || currentAdmin.userType === 1)) {
         next();
       } else {

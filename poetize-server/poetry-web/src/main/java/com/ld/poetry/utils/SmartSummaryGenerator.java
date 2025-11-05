@@ -66,12 +66,10 @@ public class SmartSummaryGenerator {
             
             // 检查TextRank结果质量
             if (StringUtils.hasText(textRankSummary) && isQualitySummary(textRankSummary)) {
-                log.debug("使用TextRank算法生成摘要，长度: {}", textRankSummary.length());
                 return textRankSummary;
             }
             
             // 如果TextRank效果不好，回退到原来的规则方法
-            log.debug("TextRank质量不达标，回退到规则方法");
             return generateSummary(content, targetLength);
             
         } catch (Exception e) {
@@ -108,7 +106,6 @@ public class SmartSummaryGenerator {
             // 步骤5：质量检查
             if (!isQualitySummary(summary)) {
                 // 如果质量不达标，回退到简单策略
-                log.debug("摘要质量不达标，使用简单策略");
                 summary = simpleFallbackSummary(content, targetLength);
             }
             

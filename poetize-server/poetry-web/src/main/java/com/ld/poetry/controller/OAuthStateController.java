@@ -128,7 +128,6 @@ public class OAuthStateController {
     @GetMapping("/stats")
     public PoetryResult<Map<String, Object>> getOAuthStateStats() {
         try {
-            log.debug("获取OAuth状态统计信息");
 
             // 返回基本统计信息
             return PoetryResult.success(Map.of(

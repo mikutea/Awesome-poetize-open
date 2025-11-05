@@ -47,7 +47,6 @@ public class SaveCheckAspect {
                 } else {
                     // 增加保存计数
                     cacheService.set(saveCountKey, currentCount + 1, CommonConst.SAVE_EXPIRE);
-                    log.debug("用户保存计数更新：userId={}, 次数：{}", user.getId(), currentCount + 1);
                 }
             }
         } catch (Exception e) {
@@ -68,7 +67,6 @@ public class SaveCheckAspect {
             } else {
                 // 增加IP保存计数
                 cacheService.set(ipCountKey, currentIpCount + 1, CommonConst.SAVE_EXPIRE);
-                log.debug("IP保存计数更新：ip={}, 次数：{}", ip, currentIpCount + 1);
             }
         } catch (Exception e) {
             log.error("检查IP保存频率限制时发生错误", e);

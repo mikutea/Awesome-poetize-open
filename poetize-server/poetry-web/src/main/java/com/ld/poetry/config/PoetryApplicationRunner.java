@@ -70,6 +70,9 @@ public class PoetryApplicationRunner implements ApplicationRunner {
     @Autowired
     private TranslationService translationService;
 
+    @Autowired
+    private com.ld.poetry.service.SysAiConfigService sysAiConfigService;
+
     @Value("${prerender.startup.enabled:true}")
     private boolean prerenderStartupEnabled;
 
@@ -196,8 +199,8 @@ public class PoetryApplicationRunner implements ApplicationRunner {
      * 执行完整预渲染任务（可被外部调用）
      */
     public void executeFullPrerender() {
-        // 异步执行预渲染，避免阻塞应用启动
-        new Thread(() -> {
+        // 使用虚拟线程异步执行预渲染，避免阻塞应用启动
+        Thread.ofVirtual().name("startup-prerender-virtual").start(() -> {
             try {
                 // 延迟执行，确保应用完全启动
                 Thread.sleep(prerenderStartupDelay * 1000L);
@@ -227,7 +230,7 @@ public class PoetryApplicationRunner implements ApplicationRunner {
             } catch (Exception e) {
                 log.error("启动时预渲染任务执行失败: {}", e.getMessage(), e);
             }
-        }, "startup-prerender-thread").start();
+        });
     }
 
     /**
@@ -381,8 +384,9 @@ public class PoetryApplicationRunner implements ApplicationRunner {
                 
                 if (!translationLanguages.isEmpty()) {
                     // 如果有翻译语言，需要构建完整的渲染语言列表（源语言 + 翻译语言）
-                    Map<String, String> languageConfig = translationService.getTranslationLanguageConfig();
-                    String sourceLanguage = languageConfig.get("source");
+                    Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+                    String sourceLanguage = defaultLangs != null ? 
+                        (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
                     
                     // 构建完整的渲染语言列表
                     List<String> allLanguagesToRender = new ArrayList<>();

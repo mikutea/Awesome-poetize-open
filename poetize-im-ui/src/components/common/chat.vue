@@ -2,6 +2,13 @@
   <div class="chat-wrapper">
     <!-- title -->
     <div class="chat-header">
+      <!-- 移动端返回按钮 -->
+      <div class="mobile-back-btn" v-if="showMobileBackBtn" @click="$emit('backToList')">
+        <svg viewBox="0 0 1024 1024" width="20" height="20">
+          <path d="M724 218.3V141c0-6.7-7.7-10.4-12.9-6.3L260.3 486.8a31.86 31.86 0 0 0 0 50.3l450.8 352.1c5.3 4.1 12.9 0.4 12.9-6.3v-77.3c0-4.9-2.3-9.6-6.1-12.6l-360-281 360-281.1c3.8-3 6.1-7.7 6.1-12.6z" fill="currentColor"/>
+        </svg>
+      </div>
+      
       <template v-if="!$common.isEmpty(currentChatFriendId)">
         <span class="chat-title">
           {{friends[currentChatFriendId].remark}}
@@ -30,7 +37,8 @@
                       lazy
                       style="cursor: pointer"
                       @click="openFriendCircle(item.fromId, item.avatar)"
-                      :src="item.avatar"/>
+                      :src="$common.getAvatarUrl(item.avatar)"
+                      :fallback-src="$common.getDefaultAvatar()"/>
           </div>
 
           <!-- 文本消息 -->
@@ -54,7 +62,8 @@
                       lazy
                       style="cursor: pointer"
                       @click="openFriendCircle(item.fromId, item.avatar, item.username)"
-                      :src="item.avatar"/>
+                      :src="$common.getAvatarUrl(item.avatar)"
+                      :fallback-src="$common.getDefaultAvatar()"/>
           </div>
 
           <!-- 文本消息 -->
@@ -412,6 +421,10 @@
       },
       imageList: {
         type: Array
+      },
+      showMobileBackBtn: {
+        type: Boolean,
+        default: false
       }
     },
     setup(props, context) {
@@ -663,6 +676,28 @@
     align-items: center;
     padding: 0 20px;
   }
+  
+  .mobile-back-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-right: 10px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    color: var(--blue);
+  }
+  
+  .mobile-back-btn:hover {
+    background-color: var(--lightGray);
+  }
+  
+  .mobile-back-btn:active {
+    transform: scale(0.95);
+    background-color: var(--imBG);
+  }
 
   .chat-title {
     font-size: 18px;
@@ -683,6 +718,9 @@
   .chat-input-area {
     height: 180px;
     flex-shrink: 0;
+    /* 移动端底部安全区域 */
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
   }
 
   .msg-one {

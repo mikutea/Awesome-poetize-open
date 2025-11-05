@@ -55,8 +55,6 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - ./poetize-ui:/app/src
-      - poetize_node_modules:/app/src/node_modules
       - poetize_ui_dist:/app/dist
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -64,38 +62,6 @@ services:
       poetize-network:
         ipv4_address: 172.28.147.3
     restart: "no"
-    working_dir: /app/src
-    command: ["sh", "-c", "echo '=== 构建博客前端 (Vue 2) ===' && \
-                           npm config set registry https://registry.npmmirror.com && \
-                           echo '=== 清理npm缓存 ===' && \
-                           npm cache clean --force && \
-                           npm cache verify && \
-                           echo '=== 清理node_modules目录以避免ENOTEMPTY错误 ===' && \
-                           rm -rf node_modules/.package-lock.json 2>/dev/null || true && \
-                           rm -rf node_modules/.staging 2>/dev/null || true && \
-                           find node_modules -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true && \
-                           echo '=== 安装依赖 ===' && \
-                           npm install --force --legacy-peer-deps --no-fund --no-audit --prefer-offline --maxsockets 1 --network-timeout=300000 && \
-                           echo '=== 安装Brotli压缩工具 ===' && \
-                           (npm install -g brotli --no-fund --no-audit --maxsockets 1 || echo '警告: brotli安装失败，将跳过.br文件生成') && \
-                           echo '=== 运行构建 ===' && \
-                           npm run build && \
-                           echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
-                           cp -rf dist/* /app/dist/ && \
-                           echo '=== 处理静态资源 ===' && \
-                           if [ -d \"dist/static\" ]; then \
-                             echo '从dist/static复制静态资源' && \
-                             mkdir -p /app/dist/static && \
-                             cp -rf dist/static/* /app/dist/static/ 2>/dev/null || true; \
-                           elif [ -d \"public/static\" ]; then \
-                             echo '从public/static复制静态资源' && \
-                             mkdir -p /app/dist/static && \
-                             cp -rf public/static/* /app/dist/static/ 2>/dev/null || true; \
-                           else \
-                             echo '未找到静态资源目录'; \
-                           fi && \
-                           echo '主站构建完成' && \
-                           touch /app/dist/.ui_ready"]
 
   # 聊天室前端（Vue 3）
   poetize-im-ui:
@@ -108,42 +74,14 @@ services:
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - ./poetize-im-ui:/app/src
-      - im_node_modules:/app/src/node_modules
+      # 输出到 /app/dist，与 nginx 的挂载点一致
       - poetize_im_dist:/app/dist
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     networks:
       poetize-network:
         ipv4_address: 172.28.147.4
-    # depends_on:
-    #   poetize-ui:
-    #     condition: service_completed_successfully
     restart: "no"
-    working_dir: /app/src
-    command: ["sh", "-c", "echo '=== 构建聊天室前端 (Vue 3) ===' && \
-                           npm config set registry https://registry.npmmirror.com && \
-                           echo '=== 清理node_modules目录以避免ENOTEMPTY错误 ===' && \
-                           rm -rf node_modules/.package-lock.json 2>/dev/null || true && \
-                           rm -rf node_modules/.staging 2>/dev/null || true && \
-                           find node_modules -name '.git' -type d -exec rm -rf {} + 2>/dev/null || true && \
-                           echo '=== 安装依赖 ===' && \
-                           if [ -f package-lock.json ]; then \
-                             echo '使用npm ci安装依赖' && \
-                             npm ci --prefer-offline --no-audit --no-fund --maxsockets 1 --network-timeout=300000 || \
-                             (echo '使用npm ci失败，回退到npm install' && \
-                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1 --network-timeout=300000); \
-                           else \
-                             echo '无package-lock.json，使用npm install' && \
-                             npm install --prefer-offline --no-audit --no-fund --legacy-peer-deps --maxsockets 1 --network-timeout=300000; \
-                           fi && \
-                           echo '=== 安装Brotli压缩工具 ===' && \
-                           npm install -g brotli --no-fund --no-audit --maxsockets 1 2>/dev/null || echo '警告: brotli安装失败，将跳过.br文件生成' && \
-                           echo '=== 运行构建 ===' && \
-                           npm run build && \
-                           echo '=== 构建完成，复制dist目录内容到挂载点 ===' && \
-                           cp -rf dist/* /app/dist/ && \
-                           echo '聊天室构建完成'"]
 
   certbot:
     image: certbot/certbot
@@ -267,7 +205,6 @@ services:
       - LOCAL_ENABLE=true
       - LOCAL_UPLOADURL=/app/static
       - LOCAL_DOWNLOADURL=/static
-      - OLLAMA_MODEL_NAME=qwen3:0.6b
       - PRERENDER_URL=http://poetize-prerender:4000/render
       - PRERENDER_PAGES_URL=http://poetize-prerender:4000/render/pages
       - SITE_URL=http://example.com
@@ -285,6 +222,10 @@ services:
       - TOKEN_SECRET_KEY=your_super_secure_random_key_here_at_least_32_chars
       # OAuth代理配置
       - OAUTH_PROXY_DOMAIN=${OAUTH_PROXY_DOMAIN:-}
+      # Druid连接池配置
+      - SPRING_DATASOURCE_DRUID_INITIAL_SIZE=5
+      - SPRING_DATASOURCE_DRUID_MIN_IDLE=5
+      - SPRING_DATASOURCE_DRUID_MAX_ACTIVE=64
     networks:
       poetize-network:
         ipv4_address: 172.28.147.7
@@ -382,8 +323,8 @@ services:
       - SITE_URL=http://example.com
       - NODE_ENV=production
     volumes:
+      # 从 volume 读取前端构建产物，写入预渲染结果
       - poetize_ui_dist:/app/dist
-      - ./poetize-ui:/app/poetize-ui
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     networks:
@@ -416,8 +357,6 @@ volumes:
   certbot-etc:
   certbot-var:
   web-root:
-  poetize_node_modules:
-  im_node_modules:
   poetize_ui_dist:
   poetize_im_dist:
   poetize_uploads:

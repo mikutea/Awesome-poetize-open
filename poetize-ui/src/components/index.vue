@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="index-page-container">
     <loader :loading="loading">
       <!-- 加载页面 -->
       <template slot="loader">
@@ -13,14 +13,14 @@
         <el-image :style="bannerStyle"
                   class="background-image-index"
                   lazy
-                  :src="!$common.isEmpty($store.state.webInfo.backgroundImage) ? $store.state.webInfo.backgroundImage : (!$common.isEmpty($store.state.webInfo.randomCover) && $store.state.webInfo.randomCover.length > 0 ? $store.state.webInfo.randomCover[Math.floor(Math.random() * $store.state.webInfo.randomCover.length)] : './assets/backgroundPicture.jpg')"
+                  :src="!$common.isEmpty(mainStore.webInfo.backgroundImage) ? mainStore.webInfo.backgroundImage : (!$common.isEmpty(mainStore.webInfo.randomCover) && mainStore.webInfo.randomCover.length > 0 ? mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)] : './assets/backgroundPicture.jpg')"
                   fit="cover">
           <div slot="error" class="image-slot background-image-index-error" :style="bannerStyle"></div>
         </el-image>
         <!-- 首页文字 -->
         <div class="signature-wall myCenter my-animation-hideToShow" :style="bannerStyle">
           <h1 class="playful">
-            {{$store.state.webInfo.webTitle}}
+            {{mainStore.webInfo.webTitle}}
           </h1>
           <div class="printer" @click="getGuShi()">
             <printer :printerInfo="printerInfo">
@@ -85,7 +85,7 @@
               <div v-show="indexType === 2">
                 <articleList :articleList="articles" :searchKey="pagination.articleSearch"></articleList>
                 <div class="pagination-wrap">
-                  <div @click="pageArticles()" class="pagination" v-if="pagination.total !== articles.length">
+                  <div @click="pageArticles()" class="pagination" v-if="articles.length < pagination.total">
                     下一页
                   </div>
                   <div v-else style="user-select: none">
@@ -107,6 +107,7 @@
                :visible.sync="pushDialogVisible"
                width="60%"
                :append-to-body="true"
+               custom-class="centered-dialog"
                :close-on-click-modal="false"
                class="index-push"
                center>
@@ -171,6 +172,8 @@
   </div>
 </template>
 <script>
+  import { useMainStore } from '@/stores/main';
+
   const loader = () => import( "./common/loader");
   const zombie = () => import( "./common/zombie");
   const printer = () => import( "./common/printer");
@@ -243,14 +246,18 @@
     beforeDestroy() {
       // 移除全局事件监听器
       this.$root.$off('articleSaved');
+      this.$root.$off('resetIndexPage');
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       sortInfo() {
-        return this.$store.state.sortInfo;
+        return this.mainStore.sortInfo;
       },
       bannerStyle() {
-        const height = this.$store.state.webInfo.homePagePullUpHeight;
+        const height = this.mainStore.webInfo.homePagePullUpHeight;
         let finalHeight = '50vh';
 
         if (typeof height === 'number' && height >= 0 && height <= 100) {
@@ -270,25 +277,27 @@
 
       // 监听文章保存成功事件，自动刷新文章列表
       this.$root.$on('articleSaved', () => {
-        console.log('收到文章保存成功事件，准备刷新首页文章列表');
         
         // 先清除本地缓存
         this.sortArticles = {};
         
         // 添加延迟，确保后端缓存清除完成
         setTimeout(() => {
-          console.log('延迟后开始刷新首页文章列表');
           this.getSortArticles();
         }, 1000); // 延迟1秒
+      });
+      
+      // 监听首页重置事件
+      this.$root.$on('resetIndexPage', () => {
+        this.resetToHomePage();
       });
 
       setTimeout(() => {
         try {
           // 安全地获取网站信息和通知数据
-          const webInfo = this.$store.state.webInfo;
+          const webInfo = this.mainStore.webInfo;
           const notices = webInfo && webInfo.notices ? webInfo.notices : null;
 
-          console.log('获取推送通知数据:', notices);
 
           this.push = this.$common.pushNotification(notices, false);
           if(!this.$common.isEmpty(this.push)) {
@@ -307,11 +316,49 @@
 
     methods: {
       /**
+       * 重置到首页状态
+       */
+      resetToHomePage() {
+        // 重置 indexType 为 1（正常首页模式）
+        this.indexType = 1;
+        
+        // 重置分页数据
+        this.pagination = {
+          current: 1,
+          size: 10,
+          total: 0,
+          searchKey: "",
+          sortId: null,
+          articleSearch: ""
+        };
+        
+        // 清空文章列表
+        this.articles = [];
+        
+        // 恢复公告栏样式
+        this.$nextTick(() => {
+          try {
+            const announcementEl = document.querySelector('.announcement');
+            if (announcementEl) {
+              announcementEl.style.maxWidth = '';
+            }
+          } catch (error) {
+          }
+          
+          // 滚动到顶部
+          window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+          });
+        });
+      },
+      
+      /**
        * 安全地获取通知列表
        */
       getNotifications() {
         try {
-          const webInfo = this.$store.state.webInfo;
+          const webInfo = this.mainStore.webInfo;
           const notices = webInfo && webInfo.notices ? webInfo.notices : null;
           return this.$common.pushNotification(notices, true);
         } catch (error) {
@@ -341,7 +388,6 @@
               announcementEl.style.maxWidth = '780px';
             }
           } catch (error) {
-            console.warn('设置公告栏样式失败:', error);
           }
           
           // 安全地滚动到内容区域
@@ -355,7 +401,6 @@
               });
             }
           } catch (error) {
-            console.warn('滚动到内容区域失败:', error);
           }
         });
       },
@@ -382,7 +427,6 @@
                 announcementEl.style.maxWidth = '';
               }
             } catch (error) {
-              console.warn('恢复公告栏样式失败:', error);
             }
           });
           return;
@@ -408,7 +452,6 @@
               announcementEl.style.maxWidth = '780px';
             }
           } catch (error) {
-            console.warn('设置公告栏样式失败:', error);
           }
           
           // 安全地滚动到内容区域
@@ -422,7 +465,6 @@
               });
             }
           } catch (error) {
-            console.warn('滚动到内容区域失败:', error);
           }
         });
       },
@@ -447,7 +489,6 @@
           });
       },
       getSortArticles() {
-        console.log('开始获取分类文章列表...');
         
         // 添加时间戳参数，避免浏览器缓存
         const timestamp = Date.now();
@@ -455,12 +496,9 @@
         
         this.$http.get(url)
           .then((res) => {
-            console.log('获取分类文章列表成功:', res);
             if (!this.$common.isEmpty(res.data)) {
               this.sortArticles = res.data;
-              console.log('更新后的分类文章数据:', this.sortArticles);
             } else {
-              console.log('返回的分类文章数据为空');
             }
           })
           .catch((error) => {
@@ -496,44 +534,34 @@
 
       // 邮箱收集相关方法
       checkEmailCollectionNeeded() {
-        console.log('🔍 检查邮箱收集需求...');
-        console.log('URL查询参数:', this.$route.query);
 
         // 检查URL参数
         if (this.$route.query.showEmailCollection === 'true') {
-          console.log('✅ 检测到showEmailCollection参数');
 
           const tempUserDataStr = localStorage.getItem('tempUserData');
-          console.log('localStorage中的tempUserData:', tempUserDataStr);
 
           if (tempUserDataStr) {
             try {
               this.tempUserData = JSON.parse(tempUserDataStr);
-              console.log('解析后的临时用户数据:', this.tempUserData);
 
               if (this.tempUserData.needsEmailCollection) {
-                console.log('✅ 需要邮箱收集，显示模态框');
                 this.showEmailCollectionModal = true;
 
                 // 清除URL参数
                 this.$router.replace({ path: '/', query: {} });
               } else {
-                console.log('⚠️ 临时用户数据中needsEmailCollection为false');
               }
             } catch (error) {
-              console.error('❌ 解析临时用户数据失败:', error);
+              console.error('解析临时用户数据失败:', error);
               localStorage.removeItem('tempUserData');
             }
           } else {
-            console.log('⚠️ localStorage中没有tempUserData');
           }
         } else {
-          console.log('⚠️ URL中没有showEmailCollection参数');
         }
       },
 
       async handleEmailCollectionComplete(result) {
-        console.log('邮箱收集完成:', result);
 
         try {
           // 隐藏模态框
@@ -545,8 +573,8 @@
           }
 
           // 完成登录流程
-          this.$store.commit("loadCurrentUser", this.tempUserData);
-          this.$store.commit("loadCurrentAdmin", this.tempUserData);
+          this.mainStore.loadCurrentUser( this.tempUserData);
+          this.mainStore.loadCurrentAdmin( this.tempUserData);
 
           // 清除临时数据
           localStorage.removeItem('tempUserData');
@@ -564,8 +592,8 @@
           this.$message.error('登录过程中出现问题，但您已成功登录');
 
           // 即使出错也要完成基本的登录流程
-          this.$store.commit("loadCurrentUser", this.tempUserData);
-          this.$store.commit("loadCurrentAdmin", this.tempUserData);
+          this.mainStore.loadCurrentUser( this.tempUserData);
+          this.mainStore.loadCurrentAdmin( this.tempUserData);
           localStorage.removeItem('tempUserData');
         }
       },

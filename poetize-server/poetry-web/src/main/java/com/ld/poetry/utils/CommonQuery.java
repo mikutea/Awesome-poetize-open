@@ -20,7 +20,6 @@ import org.springframework.util.StringUtils;
 
 import jakarta.annotation.PostConstruct;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -56,6 +55,9 @@ public class CommonQuery {
     @Autowired
     private CacheService cacheService;
 
+    @Autowired
+    private LockManager lockManager;
+
     private Searcher searcher;
 
     @PostConstruct
@@ -70,48 +72,43 @@ public class CommonQuery {
         try {
             // 过滤无效IP，避免记录Docker内部IP和无效地址
             if (ip == null || ip.isEmpty() || "unknown".equals(ip) || isInvalidIP(ip)) {
-                log.debug("[saveHistory] 过滤无效IP: {}", ip);
                 return;
             }
             
-            log.debug("[saveHistory] 处理有效IP: {}", ip);
             
             Integer userId = PoetryUtil.getUserId();
             String ipUser = ip + (userId != null ? "_" + userId.toString() : "");
-            log.debug("[saveHistory] 用户标识: {}", ipUser);
     
-            // 记录每次访问
-            synchronized (ipUser.intern()) {
+            // 记录每次访问 - 使用 LockManager 替代 String.intern()，避免内存泄漏
+            lockManager.executeWithLock("saveHistory:" + ipUser, () -> {
                 log.info("[saveHistory] 记录访问到Redis: {}", ipUser);
                 
                 // 解析IP地理位置信息
                 String nation = null, province = null, city = null;
-                        if (searcher != null) {
-                            try {
-                                String search = searcher.search(ip);
-                                String[] region = search.split("\\|");
-                                if (!"0".equals(region[0])) {
-                                    nation = region[0];
-                                }
-                                if (region.length > 2 && !"0".equals(region[2])) {
-                                    province = region[2];
-                                }
-                                if (region.length > 3 && !"0".equals(region[3])) {
-                                    city = region[3];
-                                }
-                                log.debug("[saveHistory] IP地理位置解析成功: {}", search);
-                            } catch (Exception e) {
-                                log.warn("[saveHistory] IP地理位置解析失败: {}, 错误: {}", ip, e.getMessage());
-                            }
-                        } else {
-                            log.debug("[saveHistory] IP地理位置解析器为null，跳过解析");
+                if (searcher != null) {
+                    try {
+                        String search = searcher.search(ip);
+                        String[] region = search.split("\\|");
+                        if (!"0".equals(region[0])) {
+                            nation = region[0];
                         }
-                        
-                        // 记录访问信息到Redis（不立即写数据库）
-                        cacheService.recordVisitToRedis(ip, userId, nation, province, city);
-                        
+                        if (region.length > 2 && !"0".equals(region[2])) {
+                            province = region[2];
+                        }
+                        if (region.length > 3 && !"0".equals(region[3])) {
+                            city = region[3];
+                        }
+                    } catch (Exception e) {
+                        log.warn("[saveHistory] IP地理位置解析失败: {}, 错误: {}", ip, e.getMessage());
+                    }
+                } else {
+                }
+                
+                // 记录访问信息到Redis（不立即写数据库）
+                cacheService.recordVisitToRedis(ip, userId, nation, province, city);
+                
                 log.info("[saveHistory] 访问记录已保存到Redis缓存，等待定时同步到数据库: {}", ipUser);
-            }
+            });
         } catch (Exception e) {
             log.error("[saveHistory] 保存访问记录时发生异常: {}", e.getMessage(), e);
         }
@@ -227,13 +224,16 @@ public class CommonQuery {
     public List<User> getAdmire() {
         // 使用Redis缓存替换PoetryCache
         String cacheKey = CacheConstants.CACHE_PREFIX + "admire:list";
+        
+        // 先使用读锁尝试获取缓存（允许多个线程并发读取）
         @SuppressWarnings("unchecked")
         List<User> admire = (List<User>) cacheService.get(cacheKey);
         if (admire != null) {
             return admire;
         }
 
-        synchronized (CommonConst.ADMIRE.intern()) {
+        // 缓存未命中，使用写锁更新缓存（独占访问）
+        return lockManager.executeWithWriteLock("cache:" + CommonConst.ADMIRE, () -> {
             // 双重检查锁定
             @SuppressWarnings("unchecked")
             List<User> cachedAdmire = (List<User>) cacheService.get(cacheKey);
@@ -246,19 +246,22 @@ public class CommonQuery {
 
                 return users;
             }
-        }
+        });
     }
 
     public List<FamilyVO> getFamilyList() {
         // 使用Redis缓存替换PoetryCache
         String cacheKey = CacheConstants.CACHE_PREFIX + "family:list";
+        
+        // 先尝试获取缓存（无需锁）
         @SuppressWarnings("unchecked")
         List<FamilyVO> familyVOList = (List<FamilyVO>) cacheService.get(cacheKey);
         if (familyVOList != null) {
             return familyVOList;
         }
 
-        synchronized (CommonConst.FAMILY_LIST.intern()) {
+        // 缓存未命中，使用写锁更新缓存
+        return lockManager.executeWithWriteLock("cache:" + CommonConst.FAMILY_LIST, () -> {
             // 双重检查锁定
             @SuppressWarnings("unchecked")
             List<FamilyVO> cachedFamilyVOList = (List<FamilyVO>) cacheService.get(cacheKey);
@@ -267,20 +270,21 @@ public class CommonQuery {
             } else {
                 LambdaQueryChainWrapper<Family> queryChainWrapper = new LambdaQueryChainWrapper<>(familyMapper);
                 List<Family> familyList = queryChainWrapper.eq(Family::getStatus, Boolean.TRUE).list();
+                List<FamilyVO> result;
                 if (!CollectionUtils.isEmpty(familyList)) {
-                    familyVOList = familyList.stream().map(family -> {
+                    result = familyList.stream().map(family -> {
                         FamilyVO familyVO = new FamilyVO();
                         BeanUtils.copyProperties(family, familyVO);
                         return familyVO;
                     }).collect(Collectors.toList());
                 } else {
-                    familyVOList = new ArrayList<>();
+                    result = new ArrayList<>();
                 }
 
-                cacheService.set(cacheKey, familyVOList, CacheConstants.LONG_EXPIRE_TIME);
-                return familyVOList;
+                cacheService.set(cacheKey, result, CacheConstants.LONG_EXPIRE_TIME);
+                return result;
             }
-        }
+        });
     }
 
     public Integer getCommentCount(Integer source, String type) {
@@ -302,13 +306,16 @@ public class CommonQuery {
     public List<Integer> getUserArticleIds(Integer userId) {
         // 使用Redis缓存替换PoetryCache
         String cacheKey = CacheConstants.CACHE_PREFIX + "user:article:list:" + userId;
+        
+        // 先尝试获取缓存（无需锁）
         @SuppressWarnings("unchecked")
         List<Integer> ids = (List<Integer>) cacheService.get(cacheKey);
         if (ids != null) {
             return ids;
         }
 
-        synchronized ((CommonConst.USER_ARTICLE_LIST + userId.toString()).intern()) {
+        // 缓存未命中，使用写锁更新缓存
+        return lockManager.executeWithWriteLock("cache:" + CommonConst.USER_ARTICLE_LIST + ":" + userId, () -> {
             // 双重检查锁定
             @SuppressWarnings("unchecked")
             List<Integer> cachedIds = (List<Integer>) cacheService.get(cacheKey);
@@ -321,7 +328,7 @@ public class CommonQuery {
                 cacheService.set(cacheKey, collect, CacheConstants.LONG_EXPIRE_TIME);
                 return collect;
             }
-        }
+        });
     }
 
     public List<List<Integer>> getArticleIds(String searchText) {

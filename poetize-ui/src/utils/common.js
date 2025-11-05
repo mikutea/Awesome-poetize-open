@@ -1,9 +1,20 @@
 import constant from "./constant";
 import CryptoJS from 'crypto-js';
-import store from '../store';
+import { useMainStore } from '../stores/main';
 import { redirectToLogin } from './tokenExpireHandler';
+import { getDefaultAvatar, getAvatarUrl } from './default-avatar';
 
 export default {
+  /**
+   * 获取默认头像
+   */
+  getDefaultAvatar,
+  
+  /**
+   * 获取头像URL（带默认头像回退）
+   */
+  getAvatarUrl,
+  
   pushNotification(notices, isNotification) {
     // 统一的空值检查，防止null/undefined错误
     if (this.isEmpty(notices)) {
@@ -12,7 +23,6 @@ export default {
 
     // 确保notices是数组类型
     if (!Array.isArray(notices)) {
-      console.warn('pushNotification: notices应该是数组类型，实际类型:', typeof notices, notices);
       return isNotification ? [] : {};
     }
 
@@ -92,7 +102,8 @@ export default {
     content = content.replace(/\[[^\[^\]]+\]/g, (word) => {
       let index = constant.emojiList.indexOf(word.replace("[", "").replace("]", ""));
       if (index > -1) {
-        let url = store.state.sysConfig['webStaticResourcePrefix'] + "emoji/q" + (index + 1) + ".gif";
+        const mainStore = useMainStore();
+        let url = mainStore.sysConfig['webStaticResourcePrefix'] + "emoji/q" + (index + 1) + ".gif";
         return '<img loading="lazy" style="vertical-align: middle;width: 32px;height: 32px" src="' + url + '" title="' + word + '"/>';
       } else {
         return word;
@@ -173,7 +184,6 @@ export default {
         const innerImg = document.getElementById('innerImg');
         
         if (!bigImg || !outerImg || !innerImg) {
-          console.warn('图片放大所需的DOM元素不存在');
           return;
         }
         

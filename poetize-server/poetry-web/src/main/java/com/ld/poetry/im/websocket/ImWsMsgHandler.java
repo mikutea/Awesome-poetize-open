@@ -11,7 +11,9 @@ import com.ld.poetry.im.http.entity.ImChatUserGroupMessage;
 import com.ld.poetry.im.http.entity.ImChatUserMessage;
 import com.ld.poetry.im.http.service.ImChatGroupUserService;
 import com.ld.poetry.im.http.service.ImChatUserMessageService;
+import com.ld.poetry.im.http.service.ImChatUserGroupMessageService;
 import com.ld.poetry.im.http.service.ImChatLastReadService;
+import com.ld.poetry.im.http.vo.LastMessageVO;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.CommonQuery;
 import com.ld.poetry.utils.StringUtil;
@@ -34,16 +36,28 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
+import java.util.concurrent.Semaphore;
 
 @Component
 @Slf4j
 public class ImWsMsgHandler implements IWsMsgHandler {
+    
+    // 限制IM并发查询数量，避免耗尽数据库连接池
+    // 无论连接池多大，IM功能限制在35个并发查询，为其他功能（REST API、定时任务）预留连接
+    private static final int MAX_CONCURRENT_DB_QUERIES = 35;
+    private final Semaphore dbQuerySemaphore = new Semaphore(MAX_CONCURRENT_DB_QUERIES);
 
     @Autowired
     private ImChatGroupUserService imChatGroupUserService;
 
     @Autowired
     private ImChatUserMessageService imChatUserMessageService;
+
+    @Autowired
+    private ImChatUserGroupMessageService imChatUserGroupMessageService;
 
     @Autowired
     private ImChatLastReadService imChatLastReadService;
@@ -115,7 +129,7 @@ public class ImWsMsgHandler implements IWsMsgHandler {
     @Override
     public void onAfterHandshaked(HttpRequest httpRequest, HttpResponse httpResponse, ChannelContext channelContext) {
         String token = httpRequest.getParam("token");
-        User user = null;
+        final User user;
 
         try {
             // 使用SecureTokenGenerator验证token（与握手阶段保持一致）
@@ -129,17 +143,18 @@ public class ImWsMsgHandler implements IWsMsgHandler {
 
             Integer userId = validationResult.getUserId();
             if (userId != null) {
-                user = cacheService.getCachedUser(userId);
-                if (user == null) {
+                User tempUser = cacheService.getCachedUser(userId);
+                if (tempUser == null) {
                     // 如果缓存中没有用户信息，尝试从数据库获取
-                    user = commonQuery.getUser(userId);
-                    if (user != null) {
+                    tempUser = commonQuery.getUser(userId);
+                    if (tempUser != null) {
                         // 缓存用户信息
-                        cacheService.cacheUser(user);
+                        cacheService.cacheUser(tempUser);
                     }
                 }
                 
-                if (user != null) {
+                if (tempUser != null) {
+                    user = tempUser;
                     // 关闭该用户的其他连接，确保单点登录
                     Tio.closeUser(channelContext.tioConfig, user.getId().toString(), null);
                     // 绑定用户到当前连接
@@ -203,31 +218,100 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             List<ImChatGroupUser> groupUsers = lambdaQuery.list();
             if (!CollectionUtils.isEmpty(groupUsers)) {
                 groupUsers.forEach(groupUser -> Tio.bindGroup(channelContext, groupUser.getGroupId().toString()));
-                log.debug("绑定用户群组成功 - userId: {}, 群组数量: {}", user.getId(), groupUsers.size());
             }
         } catch (Exception e) {
             log.error("绑定用户群组时发生错误 - userId: {}", user.getId(), e);
         }
 
         // 推送聊天列表、私聊和群聊的未读消息数
-        try {
-            List<Integer> friendChatList = imChatLastReadService.getFriendChatList(user.getId());
-            List<Integer> groupChatList = imChatLastReadService.getGroupChatList(user.getId());
-            Map<Integer, Integer> friendUnreadCounts = imChatLastReadService.getFriendUnreadCounts(user.getId());
-            Map<Integer, Integer> groupUnreadCounts = imChatLastReadService.getGroupUnreadCounts(user.getId());
+        try (var scope = StructuredTaskScope.open()) {
+            // 并行获取聊天列表和未读数
+            Subtask<List<Integer>> friendChatListTask = scope.fork(() -> 
+                imChatLastReadService.getFriendChatList(user.getId())
+            );
             
-            // 确保集合不为null
-            if (friendChatList == null) {
-                friendChatList = new ArrayList<>();
-            }
-            if (groupChatList == null) {
-                groupChatList = new ArrayList<>();
-            }
-            if (friendUnreadCounts == null) {
-                friendUnreadCounts = new HashMap<>();
-            }
-            if (groupUnreadCounts == null) {
-                groupUnreadCounts = new HashMap<>();
+            Subtask<List<Integer>> groupChatListTask = scope.fork(() -> 
+                imChatLastReadService.getGroupChatList(user.getId())
+            );
+            
+            Subtask<Map<Integer, Integer>> friendUnreadCountsTask = scope.fork(() -> 
+                imChatLastReadService.getFriendUnreadCounts(user.getId())
+            );
+            
+            Subtask<Map<Integer, Integer>> groupUnreadCountsTask = scope.fork(() -> 
+                imChatLastReadService.getGroupUnreadCounts(user.getId())
+            );
+            
+            // 等待所有基础数据获取完成
+            scope.join();
+            
+            // 获取结果并确保不为null
+            List<Integer> friendChatList = (friendChatListTask.state() == Subtask.State.SUCCESS && friendChatListTask.get() != null) 
+                ? friendChatListTask.get() : new ArrayList<>();
+            List<Integer> groupChatList = (groupChatListTask.state() == Subtask.State.SUCCESS && groupChatListTask.get() != null) 
+                ? groupChatListTask.get() : new ArrayList<>();
+            Map<Integer, Integer> friendUnreadCounts = (friendUnreadCountsTask.state() == Subtask.State.SUCCESS && friendUnreadCountsTask.get() != null) 
+                ? friendUnreadCountsTask.get() : new HashMap<>();
+            Map<Integer, Integer> groupUnreadCounts = (groupUnreadCountsTask.state() == Subtask.State.SUCCESS && groupUnreadCountsTask.get() != null) 
+                ? groupUnreadCountsTask.get() : new HashMap<>();
+            
+            // 并行获取所有好友和群组的最后一条消息（限制并发数，避免耗尽连接池）
+            Map<String, LastMessageVO> friendLastMessages = new ConcurrentHashMap<>();
+            Map<String, LastMessageVO> groupLastMessages = new ConcurrentHashMap<>();
+            
+            try (var msgScope = StructuredTaskScope.open()) {
+                // 为每个好友创建并行任务获取最后一条消息
+                for (Integer friendId : friendChatList) {
+                    msgScope.fork(() -> {
+                        try {
+                            // 获取信号量许可，限制并发数
+                            dbQuerySemaphore.acquire();
+                            try {
+                                LastMessageVO lastMsg = imChatUserMessageService.getLastMessageWithFriend(user.getId(), friendId);
+                                if (lastMsg != null) {
+                                    friendLastMessages.put(friendId.toString(), lastMsg);
+                                }
+                            } finally {
+                                // 释放信号量
+                                dbQuerySemaphore.release();
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            log.warn("获取好友 {} 的最后一条消息被中断", friendId);
+                        } catch (Exception e) {
+                            log.error("获取好友 {} 的最后一条消息失败: {}", friendId, e.getMessage());
+                        }
+                        return null;
+                    });
+                }
+                
+                // 为每个群组创建并行任务获取最后一条消息
+                for (Integer groupId : groupChatList) {
+                    msgScope.fork(() -> {
+                        try {
+                            // 获取信号量许可，限制并发数
+                            dbQuerySemaphore.acquire();
+                            try {
+                                LastMessageVO lastMsg = imChatUserGroupMessageService.getLastGroupMessage(groupId);
+                                if (lastMsg != null) {
+                                    groupLastMessages.put(groupId.toString(), lastMsg);
+                                }
+                            } finally {
+                                // 释放信号量
+                                dbQuerySemaphore.release();
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            log.warn("获取群组 {} 的最后一条消息被中断", groupId);
+                        } catch (Exception e) {
+                            log.error("获取群组 {} 的最后一条消息失败: {}", groupId, e.getMessage());
+                        }
+                        return null;
+                    });
+                }
+                
+                // 等待所有消息获取完成
+                msgScope.join();
             }
             
             // 构造未读数和聊天列表消息
@@ -237,6 +321,8 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             syncMessage.put("groupChatList", groupChatList);
             syncMessage.put("friendUnreadCounts", friendUnreadCounts);
             syncMessage.put("groupUnreadCounts", groupUnreadCounts);
+            syncMessage.put("friendLastMessages", friendLastMessages);  // ✅ 新增：好友最后一条消息
+            syncMessage.put("groupLastMessages", groupLastMessages);    // ✅ 新增：群聊最后一条消息
             
             // 使用更安全的序列化配置，确保正确处理特殊字符和空值
             String jsonString = JSON.toJSONString(syncMessage, 
@@ -247,15 +333,16 @@ public class ImWsMsgHandler implements IWsMsgHandler {
             
             WsResponse wsResponse = WsResponse.fromText(jsonString, ImConfigConst.CHARSET);
             Tio.sendToUser(channelContext.tioConfig, user.getId().toString(), wsResponse);
-            log.debug("推送聊天数据成功 - userId: {}, 好友列表: {}, 群聊列表: {}, 好友未读: {}, 群聊未读: {}", 
-                user.getId(), friendChatList, groupChatList, friendUnreadCounts, groupUnreadCounts);
+                
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("推送聊天数据被中断 - userId: {}", user.getId(), e);
         } catch (Exception e) {
             log.error("推送聊天数据失败 - userId: {}, 错误信息: {}", user.getId(), e.getMessage(), e);
         }
         
-        // 延迟广播在线用户数（等待旧连接完全关闭）
-        final User finalUser = user;
-        new Thread(() -> {
+        // 延迟广播在线用户数（使用虚拟线程，等待旧连接完全关闭）
+        Thread.ofVirtual().start(() -> {
             try {
                 // 延迟200ms，确保 closeUser 执行完成
                 Thread.sleep(200);
@@ -276,14 +363,13 @@ public class ImWsMsgHandler implements IWsMsgHandler {
                             WsResponse onlineWs = WsResponse.fromText(imMessage.toJsonString(), CommonConst.CHARSET_NAME);
                             Tio.sendToGroup(tioWebsocketStarter.getServerTioConfig(), groupId, onlineWs);
                             
-                            log.debug("延迟广播群组{}在线用户数: {}", groupId, onlineCount);
                         }
                     }
                 }
             } catch (Exception e) {
-                log.error("延迟广播在线用户数失败 - userId: {}", finalUser.getId(), e);
+                log.error("延迟广播在线用户数失败 - userId: {}", user.getId(), e);
             }
-        }).start();
+        });
     }
 
     @Override

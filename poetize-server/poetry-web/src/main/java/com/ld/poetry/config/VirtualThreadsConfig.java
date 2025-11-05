@@ -17,7 +17,7 @@ import java.util.concurrent.Executor;
 /**
  * Java 21 虚拟线程配置
  * 
- * @author LeapYa Team
+ * @author LeapYa
  * @since 3.0-LeapYa
  */
 @Configuration

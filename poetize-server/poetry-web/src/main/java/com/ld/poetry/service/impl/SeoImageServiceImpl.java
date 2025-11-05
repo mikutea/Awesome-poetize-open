@@ -15,14 +15,17 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * <p>
  * SEO图像处理服务实现类
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-25
  */
 @Service
 @Slf4j
@@ -82,8 +85,6 @@ public class SeoImageServiceImpl implements SeoImageService {
             result.put("info", imageInfo);
             result.put("base64_data", Base64.getEncoder().encodeToString(processedData));
 
-            log.info("图片处理成功: {}字节 -> {}字节, 压缩率{:.1f}%", 
-                originalData.length, processedData.length, compressionRatio);
 
             return createSuccessResult("图片处理成功", result);
 
@@ -105,32 +106,54 @@ public class SeoImageServiceImpl implements SeoImageService {
             }
 
             byte[] originalData = imageFile.getBytes();
-            Map<String, Object> results = new HashMap<>();
+            Map<String, Object> results = new ConcurrentHashMap<>();
             
-            for (String iconType : iconTypes) {
-                try {
-                    IconConfig config = ICON_CONFIGS.get(iconType);
-                    if (config == null) {
-                        log.warn("未知的图标类型: {}", iconType);
-                        continue;
-                    }
+            // 使用并行处理所有图标类型
+            try (var scope = StructuredTaskScope.open()) {
+                Map<String, Subtask<Map<String, Object>>> iconTasks = new HashMap<>();
+                
+                // 为每种图标类型创建并行任务
+                for (String iconType : iconTypes) {
+                    iconTasks.put(iconType, scope.fork(() -> {
+                        IconConfig config = ICON_CONFIGS.get(iconType);
+                        if (config == null) {
+                            return Map.of("error", "未知的图标类型");
+                        }
 
-                    byte[] processedData = processImageData(originalData, config, config.format);
-                    Map<String, Object> iconInfo = analyzeImageData(processedData);
-                    
-                    Map<String, Object> iconResult = new HashMap<>();
-                    iconResult.put("size", processedData.length);
-                    iconResult.put("format", config.format);
-                    iconResult.put("dimensions", config.width + "x" + config.height);
-                    iconResult.put("info", iconInfo);
-                    iconResult.put("base64_data", Base64.getEncoder().encodeToString(processedData));
-                    
-                    results.put(iconType, iconResult);
-                    
-                } catch (Exception e) {
-                    log.error("处理图标类型{}失败", iconType, e);
-                    results.put(iconType, Map.of("error", "处理失败: " + e.getMessage()));
+                        byte[] processedData = processImageData(originalData, config, config.format);
+                        Map<String, Object> iconInfo = analyzeImageData(processedData);
+                        
+                        Map<String, Object> iconResult = new HashMap<>();
+                        iconResult.put("size", processedData.length);
+                        iconResult.put("format", config.format);
+                        iconResult.put("dimensions", config.width + "x" + config.height);
+                        iconResult.put("info", iconInfo);
+                        iconResult.put("base64_data", Base64.getEncoder().encodeToString(processedData));
+                        
+                        return iconResult;
+                    }));
                 }
+                
+                // 等待所有图标处理完成
+                scope.join();
+                
+                // 收集结果
+                for (Map.Entry<String, Subtask<Map<String, Object>>> entry : iconTasks.entrySet()) {
+                    String iconType = entry.getKey();
+                    Subtask<Map<String, Object>> task = entry.getValue();
+                    
+                    if (task.state() == Subtask.State.SUCCESS) {
+                        results.put(iconType, task.get());
+                    } else {
+                        log.error("处理图标失败 - 类型: {}", iconType);
+                        results.put(iconType, Map.of("error", "处理失败"));
+                    }
+                }
+                
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("图标批量处理被中断", e);
+                return createErrorResult("批量处理被中断");
             }
 
             Map<String, Object> batchResult = new HashMap<>();
@@ -138,7 +161,6 @@ public class SeoImageServiceImpl implements SeoImageService {
             batchResult.put("processed_count", results.size());
             batchResult.put("icons", results);
 
-            log.info("批量图标处理完成: 生成{}个图标", results.size());
 
             return createSuccessResult("批量处理成功", batchResult);
 
@@ -330,7 +352,6 @@ public class SeoImageServiceImpl implements SeoImageService {
                 return "png"; // 默认
             }
         } catch (Exception e) {
-            log.warn("识别图片格式失败", e);
         }
         return null;
     }

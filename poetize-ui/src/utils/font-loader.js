@@ -41,7 +41,6 @@ export async function loadFonts(sysConfig) {
   
   // 如果需要从远程加载Unicode范围
   if (loadUnicodeFromRemote && !useSingleFont) {
-    console.log('尝试从远程JSON加载Unicode范围...');
     try {
       // 加载JSON文件
       const unicodeRanges = await fetchJson(unicodeJsonPath);
@@ -53,16 +52,13 @@ export async function loadFonts(sysConfig) {
         if (unicodeRanges.level2) level2Range = unicodeRanges.level2.join(',');
         if (unicodeRanges.other) otherRange = unicodeRanges.other.join(',');
         
-        console.log('远程Unicode范围JSON加载完成');
       } else {
-        console.warn('Unicode范围JSON为空或格式不正确，使用默认值');
       }
     } catch (error) {
       console.error('加载远程Unicode范围失败，使用默认值', error);
     }
   } else if (!loadUnicodeFromRemote && !useSingleFont) {
     // 从本地加载Unicode范围
-    console.log('尝试从本地JSON加载Unicode范围...');
     const localUnicodeJsonPath = '/static/assets/font_chunks/unicode_ranges.json';
     try {
       // 加载本地JSON文件
@@ -75,9 +71,7 @@ export async function loadFonts(sysConfig) {
         if (unicodeRanges.level2) level2Range = unicodeRanges.level2.join(',');
         if (unicodeRanges.other) otherRange = unicodeRanges.other.join(',');
         
-        console.log('本地Unicode范围JSON加载完成');
       } else {
-        console.warn('本地Unicode范围JSON为空或格式不正确，使用默认值');
       }
     } catch (error) {
       console.error('加载本地Unicode范围失败，使用默认值', error);
@@ -109,7 +103,6 @@ export async function loadFonts(sysConfig) {
         font-display: swap;
       }
     `;
-    console.log(`使用单一字体文件: ${fontCdnBaseUrl}${singleFontName}`);
   } else {
     // 使用分块字体文件
     css = `
@@ -149,7 +142,6 @@ export async function loadFonts(sysConfig) {
         unicode-range: ${otherRange};
       }
     `;
-    console.log(`使用分块字体文件，基础路径: ${fontCdnBaseUrl}`);
   }
   
   // 设置样式内容并添加到文档
@@ -160,7 +152,6 @@ export async function loadFonts(sysConfig) {
     if (document.head && document.head.nodeType === Node.ELEMENT_NODE) {
       document.head.appendChild(style);
     } else {
-      console.warn('无法添加字体样式 - document.head不是元素节点');
     }
   } catch (error) {
     console.error('添加字体样式失败:', error);
@@ -169,7 +160,6 @@ export async function loadFonts(sysConfig) {
       const head = document.querySelector('head');
       if (head && head.nodeType === Node.ELEMENT_NODE) {
         head.appendChild(style);
-        console.log('使用备用方法成功添加字体样式');
       }
     } catch (fallbackError) {
       console.error('备用方法也失败了:', fallbackError);

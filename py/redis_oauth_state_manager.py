@@ -25,7 +25,6 @@ class RedisOAuthStateManager:
     def __init__(self):
         """初始化Redis OAuth状态管理器"""
         self.redis_client = get_redis_client()
-        logger.info("Redis OAuth状态管理器初始化完成")
     
     def generate_state(self, provider: str, session_id: str = None) -> str:
         """生成并存储OAuth状态token"""
@@ -48,7 +47,6 @@ class RedisOAuthStateManager:
             success = self.redis_client.set(key, value, ex=600)
             
             if success:
-                logger.info(f"生成OAuth状态: provider={provider}, state={state_token}, session_id={session_id}")
                 
                 # 尝试存储到数据库（作为备份）
                 try:
@@ -69,7 +67,7 @@ class RedisOAuthStateManager:
         """验证并消费OAuth状态token"""
         try:
             if not state_token:
-                logger.warning("OAuth状态token为空")
+                logger.warning("状态token为空")
                 return None
 
             # 从Redis获取状态数据
@@ -78,23 +76,22 @@ class RedisOAuthStateManager:
             state_data = json.loads(value) if value else None
 
             if not state_data:
-                logger.warning(f"OAuth状态不存在或已过期: {state_token}")
+                logger.warning(f"状态不存在或已过期: {state_token}")
                 return None
 
             # 验证provider
             if state_data.get('provider') != provider:
-                logger.warning(f"OAuth provider不匹配: 期望={provider}, 实际={state_data.get('provider')}")
+                logger.warning(f"provider不匹配: 期望={provider}, 实际={state_data.get('provider')}")
                 return None
 
             # 删除已使用的状态（一次性使用）
             delete_key = f"poetize:python:oauth:state:{state_token}"
             self.redis_client.delete(delete_key)
 
-            logger.info(f"OAuth状态验证成功: provider={provider}, state={state_token}")
             return state_data
 
         except Exception as e:
-            logger.error(f"验证OAuth状态失败: {e}")
+            logger.error(f"验证状态失败: {e}")
             return None
 
     def validate_state(self, state_token: str, provider: str, session_id: str = None) -> bool:
@@ -103,7 +100,7 @@ class RedisOAuthStateManager:
             state_data = self.verify_and_consume_state(state_token, provider)
             return state_data is not None
         except Exception as e:
-            logger.error(f"验证OAuth状态失败: {e}")
+            logger.error(f"验证状态失败: {e}")
             return False
     
     def get_state_info(self, state_token: str) -> Optional[Dict[str, Any]]:
@@ -115,18 +112,14 @@ class RedisOAuthStateManager:
             key = f"poetize:python:oauth:state:{state_token}"
             value = self.redis_client.get(key)
             state_data = json.loads(value) if value else None
-            if state_data:
-                logger.debug(f"获取OAuth状态信息: {state_token}")
-            
             return state_data
             
         except Exception as e:
-            logger.error(f"获取OAuth状态信息失败: {e}")
+            logger.error(f"获取状态信息失败: {e}")
             return None
     
     def cleanup_expired_states(self):
         """清理过期状态（Redis自动处理，此方法保持兼容性）"""
-        logger.debug("Redis自动处理过期状态，无需手动清理")
         return True
     
     def _store_to_database(self, state_token: str, state_data: Dict[str, Any]):
@@ -144,10 +137,9 @@ class RedisOAuthStateManager:
             with httpx.Client(timeout=5.0) as client:
                 response = client.post(store_url, json=payload)
                 if response.status_code == 200:
-                    logger.debug(f"OAuth状态已备份到数据库: {state_token}")
+                    pass
                 else:
                     logger.warning(f"数据库备份失败: {response.status_code}")
-                    
         except Exception as e:
             logger.warning(f"数据库备份异常: {e}")
     
@@ -161,10 +153,8 @@ class RedisOAuthStateManager:
                 response = client.get(retrieve_url, params=params)
                 if response.status_code == 200:
                     data = response.json()
-                    logger.debug(f"从数据库恢复OAuth状态: {state_token}")
                     return data
                 else:
-                    logger.debug(f"数据库中未找到状态: {state_token}")
                     return None
                     
         except Exception as e:
@@ -223,7 +213,6 @@ def get_session_id(request) -> Optional[str]:
         
         # 生成新的session ID
         new_session_id = secrets.token_urlsafe(16)
-        logger.debug(f"生成新的session ID: {new_session_id}")
         return new_session_id
         
     except Exception as e:

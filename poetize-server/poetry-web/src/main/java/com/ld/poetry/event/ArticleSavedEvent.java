@@ -29,4 +29,9 @@ public class ArticleSavedEvent {
      * 操作类型：CREATE, UPDATE, DELETE
      */
     private String operationType;
+    
+    /**
+     * 是否提交到搜索引擎
+     */
+    private Boolean submitToSearchEngine;
 } 

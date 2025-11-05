@@ -13,7 +13,7 @@
 
 <script>
 import CaptchaWrapper from './CaptchaWrapper.vue';
-import { mapState, mapMutations } from 'vuex';
+import { useMainStore } from '@/stores/main';
 
 export default {
   name: 'CaptchaContainer',
@@ -21,33 +21,35 @@ export default {
     CaptchaWrapper
   },
   computed: {
-    ...mapState({
-      visible: state => state.captcha.show,
-      captchaAction: state => state.captcha.action,
-      captchaParams: state => state.captcha.params,
-      isReplyComment: state => state.captcha.isReplyComment
-    })
+    mainStore() {
+      return useMainStore();
+    },
+    visible() {
+      return this.mainStore.captcha.show;
+    },
+    captchaAction() {
+      return this.mainStore.captcha.action;
+    },
+    captchaParams() {
+      return this.mainStore.captcha.params;
+    },
+    isReplyComment() {
+      return this.mainStore.captcha.isReplyComment;
+    }
   },
   methods: {
-    ...mapMutations([
-      'showCaptcha',
-      'executeCaptchaCallback'
-    ]),
-    
     // 验证码成功回调
     onCaptchaSuccess(token) {
-      console.log("验证码验证成功，令牌:", token);
-      this.executeCaptchaCallback(token);
+      this.mainStore.executeCaptchaCallback(token);
     },
     
     // 验证码失败回调
     onCaptchaFail() {
-      console.log("验证码验证失败");
     },
     
     // 关闭验证码
     onCaptchaClose() {
-      this.showCaptcha(false);
+      this.mainStore.showCaptcha(false);
     }
   }
 }

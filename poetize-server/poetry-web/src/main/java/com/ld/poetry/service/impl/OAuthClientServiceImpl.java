@@ -70,11 +70,9 @@ public class OAuthClientServiceImpl implements OAuthClientService {
             addPlatformSpecificParams(platformType, builder);
             
             String finalUrl = builder.build().toUriString();
-            log.info("构建OAuth授权URL: platformType={}, url={}", platformType, finalUrl);
-            
             return finalUrl;
         } catch (Exception e) {
-            log.error("构建OAuth授权URL失败: platformType={}", platformType, e);
+            log.error("构建授权URL失败: platform={}", platformType, e);
             throw new RuntimeException("构建授权URL失败", e);
         }
     }
@@ -90,8 +88,6 @@ public class OAuthClientServiceImpl implements OAuthClientService {
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                log.info("🕐 开始获取访问令牌: platformType={}, attempt={}/{}, timestamp={}",
-                        platformType, attempt, maxRetries, System.currentTimeMillis());
 
                 ThirdPartyOauthConfig config = configService.getByPlatformType(platformType);
                 if (config == null) {
@@ -120,25 +116,12 @@ public class OAuthClientServiceImpl implements OAuthClientService {
             
             HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
             
-            // 发送请求 - 添加详细的请求参数日志
-            log.info("🚀 发送OAuth token请求详情:");
-            log.info("   - URL: {}", tokenUrl);
-            log.info("   - Platform: {}", platformType);
-            log.info("   - Grant Type: {}", params.getFirst("grant_type"));
-            log.info("   - Client ID: {}", params.getFirst("client_id"));
-            log.info("   - Client Secret: {}***",
-                    params.getFirst("client_secret") != null ?
-                    params.getFirst("client_secret").substring(0, Math.min(8, params.getFirst("client_secret").length())) : "null");
-            log.info("   - Redirect URI: {}", params.getFirst("redirect_uri"));
-            log.info("   - Code Length: {}", code != null ? code.length() : 0);
-            log.info("   - Code: {}***", code != null ? code.substring(0, Math.min(8, code.length())) : "null");
-            log.info("   - Headers: {}", headers);
+            // 发送请求
 
             ResponseEntity<String> response = restTemplate.postForEntity(tokenUrl, request, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 String responseBody = response.getBody();
-                log.info("OAuth token响应原始数据: platformType={}, responseBody={}", platformType, responseBody);
 
                 Map<String, Object> tokenData;
 
@@ -147,30 +130,17 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> jsonData = objectMapper.readValue(responseBody, Map.class);
                     tokenData = jsonData;
-                    log.info("OAuth token解析为JSON成功: platformType={}, tokenData={}", platformType, tokenData);
                 } catch (Exception jsonException) {
-                    log.info("OAuth token不是JSON格式，尝试解析URL编码格式: platformType={}", platformType);
-
-                    // 尝试解析URL编码格式（GitHub可能返回这种格式）
+                    // 尝试解析URL编码格式
                     tokenData = parseUrlEncodedResponse(responseBody);
-                    log.info("OAuth token解析为URL编码成功: platformType={}, tokenData={}", platformType, tokenData);
                 }
 
                 // 检查响应中是否包含错误信息
                 if (tokenData.containsKey("error")) {
                     String error = (String) tokenData.get("error");
                     String errorDescription = (String) tokenData.get("error_description");
-                    String errorUri = (String) tokenData.get("error_uri");
 
-                    log.error("❌ OAuth token请求返回错误: platformType={}, error={}, description={}, uri={}",
-                             platformType, error, errorDescription, errorUri);
-
-                    // 特别处理授权码相关错误
-                    if ("bad_verification_code".equals(error)) {
-                        log.error("🔍 授权码错误详情: code长度={}, error_description={}",
-                                code != null ? code.length() : 0, errorDescription);
-                        log.error("🔍 这可能是因为: 1)授权码已被使用过 2)授权码已过期 3)授权码格式错误");
-                    }
+                    log.warn("访问令牌请求失败: platform={}, error={}", platformType, error);
 
                     // 根据错误类型提供更友好的错误信息
                     String userFriendlyMessage = getOAuthErrorMessage(error, errorDescription);
@@ -180,27 +150,21 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 // 检查是否包含access_token
                 String accessToken = (String) tokenData.get("access_token");
                 if (accessToken == null || accessToken.trim().isEmpty()) {
-                    log.error("OAuth token响应中缺少access_token: platformType={}, tokenData={}", platformType, tokenData);
-                    throw new RuntimeException("OAuth服务器响应格式错误，缺少访问令牌");
+                    log.error("访问令牌响应格式错误: platform={}", platformType);
+                    throw new RuntimeException("服务器响应格式错误，缺少访问令牌");
                 }
 
-                long endTime = System.currentTimeMillis();
-                long elapsedTime = endTime - startTime;
-                log.info("🕐 获取访问令牌成功: platformType={}, attempt={}, 耗时={}ms, timestamp={}",
-                        platformType, attempt, elapsedTime, endTime);
                 return tokenData;
             } else {
-                log.error("获取访问令牌HTTP错误: platformType={}, attempt={}, statusCode={}, responseBody={}",
-                         platformType, attempt, response.getStatusCode(), response.getBody());
+                log.warn("访问令牌请求失败: platform={}, statusCode={}, attempt={}/{}", 
+                         platformType, response.getStatusCode(), attempt, maxRetries);
                 throw new RuntimeException("获取访问令牌失败: HTTP " + response.getStatusCode());
             }
         } catch (ResourceAccessException e) {
             // 网络连接异常（超时、连接被拒绝等）
-            log.error("OAuth token请求网络连接失败: platformType={}, attempt={}, url={}, error={}",
-                     platformType, attempt, tokenUrl, e.getMessage());
+            log.warn("网络连接失败: platform={}, attempt={}/{}", platformType, attempt, maxRetries);
 
             if (attempt < maxRetries) {
-                log.info("⏳ 网络连接失败，{}ms后进行第{}次重试", retryDelay, attempt + 1);
                 try {
                     Thread.sleep(retryDelay);
                 } catch (InterruptedException ie) {
@@ -213,12 +177,10 @@ public class OAuthClientServiceImpl implements OAuthClientService {
             }
         } catch (RestClientException e) {
             // 其他REST客户端异常
-            log.error("OAuth token请求客户端错误: platformType={}, attempt={}, url={}, error={}",
-                     platformType, attempt, tokenUrl, e.getMessage());
+            log.error("请求客户端错误: platform={}, attempt={}/{}", platformType, attempt, maxRetries);
             throw new RuntimeException("请求失败: " + e.getMessage(), e);
         } catch (Exception e) {
-            log.error("获取访问令牌失败: platformType={}, attempt={}, code={}, url={}",
-                     platformType, attempt, code, tokenUrl, e);
+            log.error("获取访问令牌失败: platform={}, attempt={}/{}", platformType, attempt, maxRetries, e);
             throw new RuntimeException("获取访问令牌失败: " + e.getMessage(), e);
         }
         }
@@ -248,7 +210,6 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                 }
             }
         } catch (Exception e) {
-            log.error("解析URL编码响应失败: responseBody={}", responseBody, e);
         }
 
         return result;
@@ -306,7 +267,6 @@ public class OAuthClientServiceImpl implements OAuthClientService {
             HttpEntity<String> request = new HttpEntity<>(headers);
 
             // 发送请求
-            log.info("发送OAuth用户信息请求: url={}, platformType={}", userInfoUrl, platformType);
             ResponseEntity<String> response = restTemplate.exchange(userInfoUrl, HttpMethod.GET, request, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
@@ -315,25 +275,21 @@ public class OAuthClientServiceImpl implements OAuthClientService {
 
                 // 标准化用户信息
                 Map<String, Object> userInfo = normalizeUserInfo(platformType, rawUserInfo);
-                log.info("获取用户信息成功: platformType={}, uid={}", platformType, userInfo.get("uid"));
                 return userInfo;
             } else {
-                log.error("获取用户信息HTTP错误: platformType={}, statusCode={}, responseBody={}",
-                         platformType, response.getStatusCode(), response.getBody());
+                log.warn("用户信息请求失败: platform={}, statusCode={}", platformType, response.getStatusCode());
                 throw new RuntimeException("获取用户信息失败: HTTP " + response.getStatusCode());
             }
         } catch (ResourceAccessException e) {
             // 网络连接异常（超时、连接被拒绝等）
-            log.error("OAuth用户信息请求网络连接失败: platformType={}, url={}, error={}",
-                     platformType, userInfoUrl, e.getMessage(), e);
+            log.warn("用户信息请求网络连接失败: platform={}", platformType);
             throw new RuntimeException("网络连接失败，请检查网络设置或稍后重试: " + e.getMessage(), e);
         } catch (RestClientException e) {
             // 其他REST客户端异常
-            log.error("OAuth用户信息请求客户端错误: platformType={}, url={}, error={}",
-                     platformType, userInfoUrl, e.getMessage(), e);
+            log.error("用户信息请求客户端错误: platform={}", platformType, e);
             throw new RuntimeException("请求失败: " + e.getMessage(), e);
         } catch (Exception e) {
-            log.error("获取用户信息失败: platformType={}, url={}", platformType, userInfoUrl, e);
+            log.error("获取用户信息失败: platform={}", platformType, e);
             throw new RuntimeException("获取用户信息失败: " + e.getMessage(), e);
         }
     }
@@ -357,7 +313,6 @@ public class OAuthClientServiceImpl implements OAuthClientService {
                        StringUtils.hasText(config.getRedirectUri());
             }
         } catch (Exception e) {
-            log.error("检查平台配置失败: platformType={}", platformType, e);
             return false;
         }
     }

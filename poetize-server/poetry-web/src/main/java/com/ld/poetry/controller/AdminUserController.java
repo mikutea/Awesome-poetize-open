@@ -86,7 +86,6 @@ public class AdminUserController {
         // 使用CacheService清理点赞缓存
         try {
             cacheService.deleteKey(CacheConstants.ADMIRE_LIST_KEY);
-            log.debug("清理点赞缓存成功: userId={}", userId);
         } catch (Exception e) {
             log.error("清理点赞缓存失败: userId={}", userId, e);
         }
@@ -124,7 +123,6 @@ public class AdminUserController {
             TioWebsocketStarter tioWebsocketStarter = TioUtil.getTio();
             if (tioWebsocketStarter != null) {
                 Tio.removeUser(tioWebsocketStarter.getServerTioConfig(), String.valueOf(userId), "管理员强制下线");
-                log.debug("断开用户WebSocket连接: userId={}", userId);
             }
 
             log.info("用户强制下线完成: userId={}", userId);

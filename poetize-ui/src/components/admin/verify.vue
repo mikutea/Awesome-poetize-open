@@ -2,7 +2,9 @@
   <div class="myCenter verify-container">
     <div class="verify-content">
       <div>
-        <el-avatar :size="50" :src="$store.state.webInfo.avatar"></el-avatar>
+        <el-avatar :size="50" :src="$common.getAvatarUrl(mainStore.webInfo.avatar)">
+          <img :src="$getDefaultAvatar()" />
+        </el-avatar>
       </div>
       <div>
         <el-input v-model="account">
@@ -10,7 +12,7 @@
         </el-input>
       </div>
       <div>
-        <el-input v-model="password" type="password">
+        <el-input v-model="password" type="password" @keyup.enter.native="login">
           <template slot="prepend">密码</template>
         </el-input>
       </div>
@@ -26,7 +28,9 @@
 </template>
 
 <script>
-  const proButton = () => import( "../common/proButton");
+    import { useMainStore } from '@/stores/main';
+
+const proButton = () => import( "../common/proButton");
 
   import { handleLoginRedirect } from '../../utils/tokenExpireHandler';
 
@@ -41,7 +45,10 @@
         password: ""
       }
     },
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
     created() {
 
     },
@@ -73,8 +80,8 @@
               localStorage.setItem("adminToken", res.data.accessToken);
 
               // 更新Store状态
-              this.$store.commit("loadCurrentUser", res.data);
-              this.$store.commit("loadCurrentAdmin", res.data);
+              this.mainStore.loadCurrentUser( res.data);
+              this.mainStore.loadCurrentAdmin( res.data);
 
               this.account = "";
               this.password = "";
@@ -87,7 +94,7 @@
               }
 
               // 使用统一的重定向处理逻辑
-              console.log('🔍 管理员登录成功，准备重定向，当前路由信息:', {
+              console.log({
                 path: this.$route.path,
                 fullPath: this.$route.fullPath,
                 query: this.$route.query

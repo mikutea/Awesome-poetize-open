@@ -13,6 +13,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @SuppressWarnings("unchecked")
 @Component
@@ -25,9 +29,6 @@ public class ScheduleTask {
 
     @Autowired
     private CacheService cacheService;
-    
-    @Autowired
-    private com.ld.poetry.service.SitemapService sitemapService;
 
     /**
      * 每天凌晨执行的完整清理和统计任务
@@ -64,7 +65,6 @@ public class ScheduleTask {
                 log.warn("统计缓存为空，重新生成统计数据");
                 refreshStatisticsCache();
             } else {
-                log.debug("统计缓存已存在");
             }
         } catch (Exception e) {
             log.error("检查统计缓存时出错，初始化默认数据", e);
@@ -76,12 +76,39 @@ public class ScheduleTask {
      * 刷新统计缓存（仅基于数据库数据，无Redis实时计数）
      */
     private void refreshStatisticsCache() {
-        try {
-            // 获取数据库统计数据
-            List<Map<String, Object>> provinceStats = historyInfoMapper.getHistoryByProvince();
-            List<Map<String, Object>> ipStats = historyInfoMapper.getHistoryByIp();
-            List<Map<String, Object>> hourStats = historyInfoMapper.getHistoryBy24Hour();
-            Long totalCount = historyInfoMapper.getHistoryCount();
+        try (var scope = StructuredTaskScope.open()) {
+            // Fork 省份统计查询
+            Subtask<List<Map<String, Object>>> provinceTask = scope.fork(() -> 
+                historyInfoMapper.getHistoryByProvince()
+            );
+            
+            // Fork IP统计查询
+            Subtask<List<Map<String, Object>>> ipTask = scope.fork(() -> 
+                historyInfoMapper.getHistoryByIp()
+            );
+            
+            // Fork 小时统计查询
+            Subtask<List<Map<String, Object>>> hourTask = scope.fork(() -> 
+                historyInfoMapper.getHistoryBy24Hour()
+            );
+            
+            // Fork 总数查询
+            Subtask<Long> countTask = scope.fork(() -> 
+                historyInfoMapper.getHistoryCount()
+            );
+            
+            // 等待所有查询完成
+            scope.join();
+            
+            // 获取查询结果
+            List<Map<String, Object>> provinceStats = 
+                (provinceTask.state() == Subtask.State.SUCCESS) ? provinceTask.get() : new ArrayList<>();
+            List<Map<String, Object>> ipStats = 
+                (ipTask.state() == Subtask.State.SUCCESS) ? ipTask.get() : new ArrayList<>();
+            List<Map<String, Object>> hourStats = 
+                (hourTask.state() == Subtask.State.SUCCESS) ? hourTask.get() : new ArrayList<>();
+            Long totalCount = 
+                (countTask.state() == Subtask.State.SUCCESS) ? countTask.get() : 0L;
 
             // 构建统计数据
             Map<String, Object> stats = new HashMap<>();
@@ -94,6 +121,10 @@ public class ScheduleTask {
             cacheService.cacheIpHistoryStatistics(stats);
             log.info("统计缓存刷新成功，数据库总访问量: {}", totalCount);
 
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("统计缓存刷新被中断", e);
+            initializeDefaultStatistics();
         } catch (Exception e) {
             log.error("刷新统计缓存失败，使用默认数据", e);
             initializeDefaultStatistics();
@@ -124,52 +155,6 @@ public class ScheduleTask {
     public void initializeCacheOnStartup() {
         log.info("应用启动，初始化统计缓存");
         ensureStatisticsCache();
-    }
-    
-    /**
-     * 每小时清理sitemap缓存，确保sitemap数据新鲜度
-     * 在每小时的第30分钟执行，避免与其他任务冲突
-     */
-    @Scheduled(cron = "0 30 * * * ?")
-    public void refreshSitemapCache() {
-        try {
-            log.info("====================开始执行定期sitemap缓存清理任务====================");
-            
-            if (sitemapService != null) {
-                sitemapService.clearSitemapCache();
-                log.info("定期sitemap缓存清理完成，下次访问时将重新生成");
-            }
-            
-        } catch (Exception e) {
-            log.error("定期sitemap缓存清理任务执行失败", e);
-        }
-    }
-    
-    /**
-     * 每天凌晨2点强制刷新sitemap，确保数据完整性
-     * 在系统负载较低的时间执行完整的sitemap重新生成
-     */
-    @Scheduled(cron = "0 0 2 * * ?")
-    public void dailySitemapRefresh() {
-        try {
-            log.info("====================开始执行每日sitemap完整刷新任务====================");
-            
-            if (sitemapService != null) {
-                // 清除缓存并通过带缓存的方法预热sitemap，避免访问空窗
-                sitemapService.clearSitemapCache();
-                String sitemap = sitemapService.generateSitemap();
-                
-                if (sitemap != null) {
-                    int urlCount = sitemap.split("<url>").length - 1;
-                    log.info("每日sitemap完整刷新成功，包含 {} 个URL", urlCount);
-                } else {
-                    log.warn("每日sitemap完整刷新失败");
-                }
-            }
-            
-        } catch (Exception e) {
-            log.error("每日sitemap完整刷新任务执行失败", e);
-        }
     }
     
     /**
@@ -226,39 +211,70 @@ public class ScheduleTask {
             }
             
             // 真正的批量插入
-            int successCount = 0;
+            AtomicInteger successCount = new AtomicInteger(0);
             int failCount = 0;
-            List<Map<String, Object>> successfullyInsertedRecords = new java.util.ArrayList<>();
+            Map<Integer, List<Map<String, Object>>> successfulBatches = new ConcurrentHashMap<>();
             
             if (!historyInfoList.isEmpty()) {
-                try {
+                try (var scope = StructuredTaskScope.open()) {
                     // 分批插入，避免单次插入数据量过大
                     int batchSize = 500; // 每批插入500条
+                    List<Subtask<Integer>> insertTasks = new ArrayList<>();
+                    
                     for (int i = 0; i < historyInfoList.size(); i += batchSize) {
-                        int endIndex = Math.min(i + batchSize, historyInfoList.size());
-                        List<com.ld.poetry.entity.HistoryInfo> batch = historyInfoList.subList(i, endIndex);
-                        List<Map<String, Object>> batchRecords = validRecords.subList(i, endIndex);
+                        final int batchIndex = i / batchSize;
+                        final int startIdx = i;
+                        final int endIdx = Math.min(i + batchSize, historyInfoList.size());
                         
-                        int insertedCount = historyInfoMapper.batchInsert(batch);
-                        successCount += insertedCount;
-                        
-                        // 记录成功插入的记录数
-                        if (insertedCount > 0) {
-                            successfullyInsertedRecords.addAll(batchRecords.subList(0, insertedCount));
-                        }
-                        
-                        log.info("批量插入第{}批访问记录: {} 条", (i / batchSize + 1), insertedCount);
+                        // Fork 并行插入任务
+                        insertTasks.add(scope.fork(() -> {
+                            List<com.ld.poetry.entity.HistoryInfo> batch = historyInfoList.subList(startIdx, endIdx);
+                            List<Map<String, Object>> batchRecords = validRecords.subList(startIdx, endIdx);
+                            
+                            int insertedCount = historyInfoMapper.batchInsert(batch);
+                            
+                            // 记录成功插入的批次
+                            if (insertedCount > 0) {
+                                successfulBatches.put(batchIndex, batchRecords.subList(0, insertedCount));
+                            }
+                            
+                            log.info("批量插入第{}批访问记录: {} 条", batchIndex + 1, insertedCount);
+                            return insertedCount;
+                        }));
                     }
+                    
+                    // 等待所有批次插入完成
+                    scope.join();
+                    
+                    // 统计成功数量
+                    for (Subtask<Integer> task : insertTasks) {
+                        if (task.state() == Subtask.State.SUCCESS) {
+                            successCount.addAndGet(task.get());
+                        }
+                    }
+                    
+                    failCount = historyInfoList.size() - successCount.get();
+                    
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.error("批量插入被中断", e);
+                    failCount = historyInfoList.size() - successCount.get();
                 } catch (Exception e) {
                     log.error("批量插入访问记录失败", e);
-                    failCount = historyInfoList.size() - successCount;
+                    failCount = historyInfoList.size() - successCount.get();
                 }
             }
             
-            log.info("{}的访问记录同步完成: 成功{}, 失败{}", yesterday, successCount, failCount);
+            // 合并所有成功插入的记录
+            List<Map<String, Object>> successfullyInsertedRecords = new java.util.ArrayList<>();
+            successfulBatches.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> successfullyInsertedRecords.addAll(entry.getValue()));
+            
+            log.info("{}的访问记录同步完成: 成功{}, 失败{}", yesterday, successCount.get(), failCount);
             
             // 标记成功同步的记录，并清空昨天的缓存（因为昨天已经过去了）
-            if (successCount > 0) {
+            if (successCount.get() > 0) {
                 // 先标记已同步
                 cacheService.markVisitRecordsAsSynced(yesterday, successfullyInsertedRecords);
                 // 清空昨天的缓存（定时任务可以清空昨天的缓存）

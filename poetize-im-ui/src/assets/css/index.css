@@ -34,6 +34,11 @@ body {
     display: none;
 }
 
+/* 对话框圆角样式 */
+.el-dialog {
+    border-radius: 6px;
+}
+
 /* el弹出框样式 */
 .el-message {
     top: 80px !important;

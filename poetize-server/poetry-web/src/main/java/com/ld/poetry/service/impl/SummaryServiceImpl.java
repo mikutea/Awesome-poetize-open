@@ -1,8 +1,12 @@
 package com.ld.poetry.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.ld.poetry.dao.ArticleTranslationMapper;
 import com.ld.poetry.entity.Article;
+import com.ld.poetry.entity.ArticleTranslation;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.SummaryService;
+import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.utils.SmartSummaryGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,13 +14,12 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.*;
 
 /**
  * 异步摘要生成服务实现
@@ -30,79 +33,110 @@ public class SummaryServiceImpl implements SummaryService {
     private ArticleService articleService;
     
     @Autowired
+    private ArticleTranslationMapper articleTranslationMapper;
+    
+    @Autowired
+    @Lazy
+    private TranslationService translationService;
+    
+    @Autowired
+    private com.ld.poetry.service.SysAiConfigService sysAiConfigService;
+    
+    @Autowired
     private RestTemplate restTemplate;
 
     @Override
-    @Async
-    public void generateAndSaveSummaryAsync(Integer articleId) {
-        long startTime = System.currentTimeMillis();
-        log.info("【异步摘要】开始为文章{}生成摘要", articleId);
+    public void generateAndSaveSummary(Integer articleId) {
         
         try {
             // 获取文章内容
             Article article = articleService.getById(articleId);
             if (article == null) {
-                log.warn("【异步摘要】文章{}不存在，跳过摘要生成", articleId);
+                log.warn("文章{}不存在，跳过摘要生成", articleId);
                 return;
             }
             
-            // 如果已经有摘要，跳过生成
-            if (StringUtils.hasText(article.getSummary())) {
-                log.info("【异步摘要】文章{}已有摘要，跳过生成", articleId);
+            // 检查文章内容是否为空
+            if (!StringUtils.hasText(article.getArticleContent())) {
+                log.warn("文章{}内容为空，跳过摘要生成", articleId);
                 return;
             }
             
-            // 生成摘要
-            if (StringUtils.hasText(article.getArticleContent())) {
-                String summary = generateSummarySync(article.getArticleContent());
-                
-                // 更新数据库
-                articleService.lambdaUpdate()
-                    .eq(Article::getId, articleId)
-                    .set(Article::getSummary, summary)
-                    .update();
-                
-                long endTime = System.currentTimeMillis();
-                log.info("【异步摘要】文章{}摘要生成完成，耗时: {}ms，摘要: {}", 
-                    articleId, endTime - startTime, summary.length() > 50 ? summary.substring(0, 50) + "..." : summary);
-            } else {
-                log.warn("【异步摘要】文章{}内容为空，跳过摘要生成", articleId);
+            // 获取源语言配置
+            Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+            String sourceLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
+            
+            // 收集所有语言的内容
+            Map<String, Map<String, String>> languageContents = collectArticleLanguageContents(
+                articleId, article, sourceLanguage);
+            
+            if (languageContents.isEmpty()) {
+                log.warn("文章{}没有任何语言内容，跳过摘要生成", articleId);
+                return;
             }
+            
+            // 生成多语言摘要
+            Map<String, String> summaries = generateMultiLangSummarySync(
+                articleId, languageContents);
+            
+            if (summaries == null || summaries.isEmpty()) {
+                log.error("文章{}摘要生成失败，返回空结果", articleId);
+                return;
+            }
+            
+            // 保存摘要到数据库
+            saveMultiLangSummaries(articleId, summaries, sourceLanguage);
+            
         } catch (Exception e) {
-            long endTime = System.currentTimeMillis();
-            log.error("【异步摘要】文章{}摘要生成失败，耗时: {}ms，错误: {}", 
-                articleId, endTime - startTime, e.getMessage(), e);
+            log.error("文章{}摘要生成失败，错误: {}", articleId, e.getMessage(), e);
         }
     }
 
     @Override
-    @Async
-    public void updateSummaryAsync(Integer articleId, String content) {
-        long startTime = System.currentTimeMillis();
-        log.info("【异步摘要】开始更新文章{}的摘要", articleId);
+    public void updateSummary(Integer articleId, String content) {
         
         try {
             if (!StringUtils.hasText(content)) {
-                log.warn("【异步摘要】文章{}内容为空，跳过摘要更新", articleId);
+                log.warn("文章{}内容为空，跳过摘要更新", articleId);
                 return;
             }
             
-            // 生成新摘要
-            String summary = generateSummarySync(content);
+            // 获取文章
+            Article article = articleService.getById(articleId);
+            if (article == null) {
+                log.warn("文章{}不存在，跳过摘要更新", articleId);
+                return;
+            }
             
-            // 更新数据库
-            articleService.lambdaUpdate()
-                .eq(Article::getId, articleId)
-                .set(Article::getSummary, summary)
-                .update();
+            // 获取源语言配置
+            Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+            String sourceLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
+            
+            // 收集所有语言的内容
+            Map<String, Map<String, String>> languageContents = collectArticleLanguageContents(
+                articleId, article, sourceLanguage);
+            
+            if (languageContents.isEmpty()) {
+                log.warn("文章{}没有任何语言内容，跳过摘要更新", articleId);
+                return;
+            }
+            
+            // 生成多语言摘要
+            Map<String, String> summaries = generateMultiLangSummarySync(
+                articleId, languageContents);
+            
+            if (summaries == null || summaries.isEmpty()) {
+                log.error("文章{}摘要更新失败，返回空结果", articleId);
+                return;
+            }
+            
+            // 保存摘要到数据库
+            saveMultiLangSummaries(articleId, summaries, sourceLanguage);
                 
-            long endTime = System.currentTimeMillis();
-            log.info("【异步摘要】文章{}摘要更新完成，耗时: {}ms，摘要: {}", 
-                articleId, endTime - startTime, summary.length() > 50 ? summary.substring(0, 50) + "..." : summary);
         } catch (Exception e) {
-            long endTime = System.currentTimeMillis();
-            log.error("【异步摘要】文章{}摘要更新失败，耗时: {}ms，错误: {}", 
-                articleId, endTime - startTime, e.getMessage(), e);
+            log.error("文章{}摘要更新失败，错误: {}", articleId, e.getMessage(), e);
         }
     }
 
@@ -112,30 +146,19 @@ public class SummaryServiceImpl implements SummaryService {
             return "";
         }
         
-        // 1. 首先尝试AI摘要生成
-        try {
-            String aiSummary = callPythonAiSummary(content);
-            if (StringUtils.hasText(aiSummary)) {
-                log.info("【摘要生成】AI摘要生成成功，长度: {}", aiSummary.length());
-                return aiSummary;
-            }
-        } catch (Exception e) {
-            log.warn("【摘要生成】AI摘要生成失败，回退到本地算法: {}", e.getMessage());
-        }
+        log.warn("generateSummarySync方法已废弃，建议使用异步多语言摘要生成");
         
-        // 2. 回退到本地智能摘要生成器
+        // 简单回退：使用本地算法生成单语言摘要
         try {
             String smartSummary = SmartSummaryGenerator.generateAdvancedSummary(content, 150);
             if (StringUtils.hasText(smartSummary)) {
-                log.info("【摘要生成】本地算法摘要生成成功，长度: {}", smartSummary.length());
                 return smartSummary;
             }
         } catch (Exception e) {
-            log.error("【摘要生成】本地算法摘要生成失败: {}", e.getMessage());
+            log.error("本地算法摘要生成失败: {}", e.getMessage());
         }
         
-        // 3. 最后的简单回退
-        log.warn("【摘要生成】所有摘要生成方法都失败，使用简单截取");
+        // 最后的简单回退
         String fallback = content.replaceAll("[#>`*\\[\\]()]", "")
                                .replaceAll("\\s+", " ")
                                .trim();
@@ -143,18 +166,103 @@ public class SummaryServiceImpl implements SummaryService {
     }
     
     /**
-     * 调用Python端的AI摘要生成服务
-     * @param content 文章内容
-     * @return AI生成的摘要，失败时返回null
+     * 收集文章的所有语言内容
+     * @param articleId 文章ID
+     * @param article 文章对象
+     * @param sourceLanguage 源语言代码
+     * @return 语言代码 -> {title, content} 映射（使用LinkedHashMap保证源语言在第一位）
      */
-    private String callPythonAiSummary(String content) {
+    private Map<String, Map<String, String>> collectArticleLanguageContents(
+            Integer articleId, Article article, String sourceLanguage) {
+        Map<String, Map<String, String>> languageContents = new LinkedHashMap<>();
+        
+        // 添加源语言内容
+        if (StringUtils.hasText(article.getArticleContent())) {
+            Map<String, String> sourceContent = new HashMap<>();
+            sourceContent.put("title", article.getArticleTitle());
+            sourceContent.put("content", article.getArticleContent());
+            languageContents.put(sourceLanguage, sourceContent);
+        }
+        
+        // 查询所有翻译内容
+        LambdaQueryWrapper<ArticleTranslation> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ArticleTranslation::getArticleId, articleId);
+        List<ArticleTranslation> translations = articleTranslationMapper.selectList(queryWrapper);
+        
+        if (translations != null && !translations.isEmpty()) {
+            for (ArticleTranslation translation : translations) {
+                if (StringUtils.hasText(translation.getContent())) {
+                    Map<String, String> translationContent = new HashMap<>();
+                    translationContent.put("title", translation.getTitle());
+                    translationContent.put("content", translation.getContent());
+                    languageContents.put(translation.getLanguage(), translationContent);
+                }
+            }
+        }
+        
+        return languageContents;
+    }
+    
+    /**
+     * 生成多语言摘要
+     * @param articleId 文章ID
+     * @param languageContents 各语言内容
+     * @return 语言代码 -> 摘要 映射
+     */
+    private Map<String, String> generateMultiLangSummarySync(
+            Integer articleId, Map<String, Map<String, String>> languageContents) {
+        
+        // 1. 首先尝试调用Python AI服务生成多语言摘要
+        try {
+            Map<String, String> aiSummaries = callPythonMultiLangSummary(articleId, languageContents);
+            if (aiSummaries != null && !aiSummaries.isEmpty()) {
+                return aiSummaries;
+            }
+        } catch (Exception e) {
+            log.warn("AI多语言摘要生成失败，回退到本地算法: {}", e.getMessage());
+        }
+        
+        // 2. 回退到本地算法：对每个语言分别生成摘要
+        Map<String, String> localSummaries = new HashMap<>();
+        for (Map.Entry<String, Map<String, String>> entry : languageContents.entrySet()) {
+            String langCode = entry.getKey();
+            String content = entry.getValue().get("content");
+            
+            try {
+                String summary = SmartSummaryGenerator.generateAdvancedSummary(content, 150);
+                if (StringUtils.hasText(summary)) {
+                    localSummaries.put(langCode, summary);
+                }
+            } catch (Exception e) {
+                log.error("本地算法生成{}语言摘要失败: {}", langCode, e.getMessage());
+            }
+        }
+        
+        return localSummaries;
+    }
+    
+    /**
+     * 调用Python端的多语言AI摘要生成服务
+     * @param articleId 文章ID
+     * @param languageContents 各语言内容
+     * @return 多语言摘要JSON映射，失败时返回null
+     */
+    private Map<String, String> callPythonMultiLangSummary(
+            Integer articleId, Map<String, Map<String, String>> languageContents) {
         try {
             String pythonServerUrl = System.getenv().getOrDefault("PYTHON_SERVICE_URL", "http://localhost:5000");
             String pythonApiUrl = pythonServerUrl + "/api/translation/generate-summary";
             
+            // 构建各语言的纯内容映射
+            Map<String, String> languages = new HashMap<>();
+            for (Map.Entry<String, Map<String, String>> entry : languageContents.entrySet()) {
+                languages.put(entry.getKey(), entry.getValue().get("content"));
+            }
+            
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("content", content);
+            requestBody.put("article_id", articleId);
+            requestBody.put("languages", languages);
             requestBody.put("max_length", 150);
             requestBody.put("style", "concise");
             
@@ -162,6 +270,7 @@ public class SummaryServiceImpl implements SummaryService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Internal-Service", "poetize-java");
+            headers.set("X-Admin-Request", "true");
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             
@@ -172,20 +281,63 @@ public class SummaryServiceImpl implements SummaryService {
             if (response != null && "200".equals(String.valueOf(response.get("code")))) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> data = (Map<String, Object>) response.get("data");
-                if (data != null && data.get("summary") != null) {
-                    String summary = data.get("summary").toString();
+                if (data != null && data.get("summaries") != null) {
+                    // 解析多语言摘要JSON
+                    @SuppressWarnings("unchecked")
+                    Map<String, String> summaries = (Map<String, String>) data.get("summaries");
                     String method = data.get("method") != null ? data.get("method").toString() : "unknown";
-                    log.info("【摘要生成】AI摘要生成成功，使用方法: {}, 摘要长度: {}", method, summary.length());
-                    return summary;
+                    return summaries;
                 }
             } else {
                 String message = response != null ? String.valueOf(response.get("message")) : "Unknown error";
-                log.warn("【摘要生成】Python AI摘要服务返回错误: {}", message);
+                log.warn("Python AI摘要服务返回错误: {}", message);
             }
         } catch (Exception e) {
-            log.warn("【摘要生成】调用Python AI摘要服务失败: {}", e.getMessage());
+            log.warn("调用Python AI摘要服务失败: {}", e.getMessage());
         }
         
         return null;
+    }
+    
+    /**
+     * 保存多语言摘要到数据库
+     * @param articleId 文章ID
+     * @param summaries 多语言摘要映射
+     * @param sourceLanguage 源语言代码
+     */
+    private void saveMultiLangSummaries(Integer articleId, Map<String, String> summaries, String sourceLanguage) {
+        // 保存源语言摘要到article表
+        if (summaries.containsKey(sourceLanguage)) {
+            String sourceSummary = summaries.get(sourceLanguage);
+            articleService.lambdaUpdate()
+                .eq(Article::getId, articleId)
+                .set(Article::getSummary, sourceSummary)
+                .update();
+        }
+        
+        // 保存其他语言摘要到article_translation表
+        for (Map.Entry<String, String> entry : summaries.entrySet()) {
+            String langCode = entry.getKey();
+            String summary = entry.getValue();
+            
+            // 跳过源语言（已在article表中保存）
+            if (langCode.equals(sourceLanguage)) {
+                continue;
+            }
+            
+            // 查找对应的翻译记录
+            LambdaQueryWrapper<ArticleTranslation> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.eq(ArticleTranslation::getArticleId, articleId)
+                       .eq(ArticleTranslation::getLanguage, langCode);
+            
+            ArticleTranslation translation = articleTranslationMapper.selectOne(queryWrapper);
+            if (translation != null) {
+                translation.setSummary(summary);
+                translation.setUpdateTime(LocalDateTime.now());
+                articleTranslationMapper.updateById(translation);
+            } else {
+                log.warn("未找到文章{}的{}语言翻译记录，跳过摘要保存", articleId, langCode);
+            }
+        }
     }
 }

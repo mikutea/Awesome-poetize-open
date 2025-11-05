@@ -1,26 +1,28 @@
 <template>
   <div class="myFooter-wrap" v-show="showFooter">
     <div class="myFooter" :class="{ 'has-bg-image': hasBgImage, 'minimal': isMinimalFooter }" :style="footerStyle">
-      <div class="footer-title font" :style="textStyle" v-if="!isMinimalFooter && $store.state.webInfo.footer">{{$store.state.webInfo.footer}}</div>
-      <div class="icp font" :style="textStyle" v-if="$store.state.sysConfig.beian || $store.state.sysConfig.policeBeian">
-        <a href="http://beian.miit.gov.cn/" target="_blank" v-if="$store.state.sysConfig.beian">{{ $store.state.sysConfig.beian }}</a>
-        <a href="http://www.beian.gov.cn/portal/registerSystemInfo" target="_blank" v-if="$store.state.sysConfig.policeBeian">
+      <div class="footer-title font" :style="textStyle" v-if="!isMinimalFooter && mainStore.webInfo.footer">{{mainStore.webInfo.footer}}</div>
+      <div class="icp font" :style="textStyle" v-if="mainStore.sysConfig.beian || mainStore.sysConfig.policeBeian">
+        <a href="http://beian.miit.gov.cn/" target="_blank" v-if="mainStore.sysConfig.beian">{{ mainStore.sysConfig.beian }}</a>
+        <a href="http://www.beian.gov.cn/portal/registerSystemInfo" target="_blank" v-if="mainStore.sysConfig.policeBeian">
           <img src="/static/assets/gonganbei.svg" alt="公安备案" style="margin-left: 10px; width: 14px; height: 14px;">
-          {{ $store.state.sysConfig.policeBeian }}
+          {{ mainStore.sysConfig.policeBeian }}
         </a>
       </div>
       <div class="copyright font" :style="textStyle">
-        <span class="copyright-left">© 2025 {{ $store.state.webInfo.webName }}</span>
+        <span class="copyright-left">© 2025 {{ mainStore.webInfo.webName }}</span>
         <span class="copyright-center">保留所有权利</span>
         <span class="copyright-right"><a href="/privacy" class="policy-link">隐私政策</a></span>
       </div>
-      <div class="contact font" :style="textStyle" v-if="!isMinimalFooter">本站内容均为原创或合法转载，如有侵权请通过邮箱：{{ $store.state.webInfo.email || 'admin@poetize.cn' }} 与我们联系，确认后将立即删除</div>
+      <div class="contact font" :style="textStyle" v-if="!isMinimalFooter">本站内容均为原创或合法转载，如有侵权请通过邮箱：{{ mainStore.webInfo.email || 'admin@poetize.cn' }} 与我们联系，确认后将立即删除</div>
     </div>
   </div>
 </template>
 
 <script>
-  export default {
+    import { useMainStore } from '@/stores/main';
+
+export default {
     props: {
       showFooter: {
         type: Boolean,
@@ -34,14 +36,17 @@
       };
     },
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       hasBgImage() {
-        const img = this.$store.state.webInfo.footerBackgroundImage;
+        const img = this.mainStore.webInfo.footerBackgroundImage;
         if (!img) return false;
         const val = String(img).trim().toLowerCase();
         return val !== '' && val !== 'null' && val !== 'undefined';
       },
       isMinimalFooter() {
-        const flag = this.$store.state.webInfo && this.$store.state.webInfo.minimalFooter;
+        const flag = this.mainStore.webInfo && this.mainStore.webInfo.minimalFooter;
         if (flag === true) return true;
         if (typeof flag === 'string') {
           return flag.toLowerCase() === 'true';
@@ -49,7 +54,7 @@
         return false;
       },
       footerStyle() {
-        const webInfo = this.$store.state.webInfo;
+        const webInfo = this.mainStore.webInfo;
         // 基础公共样式
         const baseStyle = {
           borderRadius: '1.5rem 1.5rem 0 0',
@@ -58,8 +63,8 @@
           // 根据设备宽度动态调整高度：移动端更紧凑
           minHeight: (() => {
             const isMobile = this.viewportWidth <= 768;
-            const hasFooterTitle = this.$store.state.webInfo && this.$store.state.webInfo.footer;
-            const hasBeianInfo = this.$store.state.sysConfig && (this.$store.state.sysConfig.beian || this.$store.state.sysConfig.policeBeian);
+            const hasFooterTitle = this.mainStore.webInfo && this.mainStore.webInfo.footer;
+            const hasBeianInfo = this.mainStore.sysConfig && (this.mainStore.sysConfig.beian || this.mainStore.sysConfig.policeBeian);
             
             if (this.isMinimalFooter) {
               if (hasBeianInfo) {
@@ -133,7 +138,7 @@
         };
       },
       textStyle() {
-        const webInfo = this.$store.state.webInfo;
+        const webInfo = this.mainStore.webInfo;
         let style = {
           color: 'var(--white)',
           position: 'relative',

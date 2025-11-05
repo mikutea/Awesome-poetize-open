@@ -4,7 +4,6 @@ import com.ld.poetry.entity.WebInfo;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Update;
 
 /**
  * <p>
@@ -30,6 +29,7 @@ public interface WebInfoMapper extends BaseMapper<WebInfo> {
                          @Param("waifuJson") String waifuJson,
                          @Param("status") Boolean status,
                          @Param("enableWaifu") Boolean enableWaifu,
+                         @Param("waifuDisplayMode") String waifuDisplayMode,
                          @Param("homePagePullUpHeight") Integer homePagePullUpHeight,
                          @Param("apiEnabled") Boolean apiEnabled,
                          @Param("apiKey") String apiKey,

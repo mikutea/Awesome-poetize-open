@@ -43,7 +43,6 @@ public class TencentLbsProvider implements IpLocationProvider {
     @Override
     public String resolveLocation(String ipAddress) {
         if (!isAvailable()) {
-            log.debug("腾讯位置服务不可用，API Key未配置");
             return "未知";
         }
         
@@ -61,7 +60,6 @@ public class TencentLbsProvider implements IpLocationProvider {
                 
                 if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
                     long sleepTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-                    log.debug("腾讯位置服务限流等待: {}ms, IP: {}", sleepTime, ipAddress);
                     Thread.sleep(sleepTime);
                 }
                 

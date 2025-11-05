@@ -32,7 +32,6 @@ public class RobotsServiceImpl implements RobotsService {
     @Override
     public String generateRobots() {
         try {
-            log.debug("开始生成robots.txt");
             
             // 复用searchEnginePushService获取SEO配置
             Map<String, Object> seoConfig = searchEnginePushService.getSeoConfig();
@@ -59,12 +58,10 @@ public class RobotsServiceImpl implements RobotsService {
             String siteAddress = mailUtil.getSiteUrl();
             if (StringUtils.hasText(siteAddress)) {
                 robotsTemplate = robotsTemplate.replace("{site_address}", siteAddress);
-                log.debug("已替换 robots.txt 中的网站地址: {}", siteAddress);
             } else {
                 log.warn("无法获取网站地址，保留占位符");
             }
 
-            log.debug("robots.txt生成成功，长度: {}", robotsTemplate.length());
             return robotsTemplate;
             
         } catch (Exception e) {
@@ -79,7 +76,6 @@ public class RobotsServiceImpl implements RobotsService {
             // 先尝试从缓存获取
             String cachedRobots = (String) cacheService.get(ROBOTS_CACHE_KEY);
             if (StringUtils.hasText(cachedRobots)) {
-                log.debug("从缓存获取robots.txt");
                 return cachedRobots;
             }
 
@@ -88,7 +84,6 @@ public class RobotsServiceImpl implements RobotsService {
             if (StringUtils.hasText(robots)) {
                 // 缓存生成结果
                 cacheService.set(ROBOTS_CACHE_KEY, robots, ROBOTS_CACHE_EXPIRE_TIME);
-                log.debug("robots.txt已缓存，长度: {}", robots.length());
                 return robots;
             }
 

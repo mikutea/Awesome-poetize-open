@@ -26,8 +26,6 @@ export async function getBrowserFingerprint() {
     const fp = await initFingerprint()
     const result = await fp.get()
     
-    console.log('浏览器指纹生成成功:', result.visitorId)
-    console.log('指纹组件:', result.components)
     
     return result.visitorId
   } catch (error) {

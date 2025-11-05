@@ -5,7 +5,7 @@
       ref="upload"
       multiple
       drag
-      :action="$store.state.sysConfig.qiniuUrl"
+      :action="mainStore.sysConfig.qiniuUrl"
       :on-change="handleChange"
       :before-upload="beforeUpload"
       :on-success="handleSuccess"
@@ -49,7 +49,9 @@
 </template>
 
 <script>
-  import upload from '../../utils/ajaxUpload';
+    import { useMainStore } from '@/stores/main';
+
+import upload from '../../utils/ajaxUpload';
 
   export default {
     props: {
@@ -91,6 +93,9 @@
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       // 计算属性：获取当前存储类型
       currentStoreType() {
         // 优先使用props传入的storeType
@@ -104,8 +109,8 @@
         }
         
         // 最后使用Vuex中的配置
-        return this.$store.state.sysConfig && this.$store.state.sysConfig['store.type'] 
-          ? this.$store.state.sysConfig['store.type'] 
+        return this.mainStore.sysConfig && this.mainStore.sysConfig['store.type'] 
+          ? this.mainStore.sysConfig['store.type'] 
           : "local";
       }
     },
@@ -131,7 +136,6 @@
       handleSysConfigUpdate(config) {
         if (config && config['store.type']) {
           this.localStoreType = config['store.type'];
-          console.log("上传组件收到系统配置更新，存储类型更新为:", this.localStoreType);
         }
       },
     
@@ -145,7 +149,7 @@
           suffix = options.file.name.substring(options.file.name.lastIndexOf('.'));
         }
 
-        let key = this.prefix + "/" + (!this.$common.isEmpty(this.$store.state.currentUser.username) ? (this.$store.state.currentUser.username.replace(/[^a-zA-Z]/g, '') + this.$store.state.currentUser.id) : (this.$store.state.currentAdmin.username.replace(/[^a-zA-Z]/g, '') + this.$store.state.currentAdmin.id)) + new Date().getTime() + Math.floor(Math.random() * 1000) + suffix;
+        let key = this.prefix + "/" + (!this.$common.isEmpty(this.mainStore.currentUser.username) ? (this.mainStore.currentUser.username.replace(/[^a-zA-Z]/g, '') + this.mainStore.currentUser.id) : (this.mainStore.currentAdmin.username.replace(/[^a-zA-Z]/g, '') + this.mainStore.currentAdmin.id)) + new Date().getTime() + Math.floor(Math.random() * 1000) + suffix;
 
         if (this.currentStoreType === "local") {
           let fd = new FormData();
@@ -202,7 +206,7 @@
         if (this.currentStoreType === "local") {
           url = response.data;
         } else if (this.currentStoreType === "qiniu") {
-          url = this.$store.state.sysConfig['qiniu.downloadUrl'] + response.key;
+          url = this.mainStore.sysConfig['qiniu.downloadUrl'] + response.key;
           this.$common.saveResource(this, this.prefix, url, file.size, file.raw.type, file.name, "qiniu", this.isAdmin);
         } else if (this.currentStoreType === "lsky" || this.currentStoreType === "easyimage") {
           url = response.data;

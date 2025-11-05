@@ -33,8 +33,10 @@ public class FileStorageService implements ApplicationContextAware {
         if (!CollectionUtils.isEmpty(consumeService)) {
             for (StoreService value : consumeService.values()) {
                 storeServiceMap.put(value.getStoreName(), value);
+                log.info("注册存储服务: {} -> {}", value.getStoreName(), value.getClass().getSimpleName());
             }
         }
+        log.info("存储服务初始化完成，可用服务: {}", storeServiceMap.keySet());
     }
 
     /**
@@ -52,11 +54,15 @@ public class FileStorageService implements ApplicationContextAware {
      * 获取对应的存储平台，如果没有指定则使用默认值
      */
     public StoreService getFileStorage(String storeType) {
+        log.info("getFileStorage 被调用 - 传入的 storeType: {}, defaultType: {}", storeType, defaultType);
         if (!StringUtils.hasText(storeType)) {
             storeType = defaultType;
+            log.info("storeType 为空，使用默认值: {}", storeType);
         }
 
+        log.info("当前可用的存储服务: {}", storeServiceMap.keySet());
         if (!storeServiceMap.containsKey(storeType)) {
+            log.error("没有找到存储平台: {}, 可用的服务: {}", storeType, storeServiceMap.keySet());
             throw new PoetryRuntimeException("没有找到对应的存储平台：" + storeType);
         }
 

@@ -58,12 +58,10 @@ public class SitemapServiceImpl implements SitemapService {
 
     @Override
     public String generateSitemap() {
-        log.debug("开始生成sitemap，首先尝试从缓存获取");
         
         // 尝试从缓存获取
         Object cachedSitemap = cacheService.get(CacheConstants.SITEMAP_KEY);
         if (cachedSitemap instanceof String) {
-            log.debug("从缓存获取sitemap成功");
             return (String) cachedSitemap;
         }
         
@@ -73,7 +71,6 @@ public class SitemapServiceImpl implements SitemapService {
         // 缓存sitemap（1小时有效期）
         if (sitemap != null) {
             cacheService.set(CacheConstants.SITEMAP_KEY, sitemap, CacheConstants.SITEMAP_EXPIRE_TIME);
-            log.debug("sitemap已缓存，有效期：{} 秒", CacheConstants.SITEMAP_EXPIRE_TIME);
         }
         
         return sitemap;
@@ -158,7 +155,6 @@ public class SitemapServiceImpl implements SitemapService {
                 .lastMod(getTodayDate())
                 .build();
         wsg.addUrl(url);
-        log.debug("添加首页URL: {}", siteUrl + "/");
     }
 
     /**
@@ -189,7 +185,6 @@ public class SitemapServiceImpl implements SitemapService {
             
             // 检查是否在排除列表中
             if (isPageExcluded(page)) {
-                log.debug("页面 {} 在排除列表中，跳过", page);
                 continue;
             }
             
@@ -202,7 +197,6 @@ public class SitemapServiceImpl implements SitemapService {
                     .lastMod(today)
                     .build();
             wsg.addUrl(url);
-            log.debug("添加静态页面URL: {} (优先级: {})", siteUrl + page, priority);
         }
     }
     
@@ -254,7 +248,6 @@ public class SitemapServiceImpl implements SitemapService {
                     .lastMod(today)
                     .build();
             wsg.addUrl(url);
-            log.debug("添加分类页面URL: {} (分类: {})", sortUrl, sort.getSortName());
         }
         
         log.info("添加了 {} 个分类页面到sitemap", sortList.size());
@@ -297,7 +290,6 @@ public class SitemapServiceImpl implements SitemapService {
             }
             
             wsg.addUrl(originalUrlOptions.build());
-            log.debug("添加原文章URL: {} (标题: {})", originalArticleUrl, article.getArticleTitle());
             originalUrlCount++;
             totalUrlCount++;
             
@@ -307,7 +299,6 @@ public class SitemapServiceImpl implements SitemapService {
                 List<String> translationLanguages = translationService.getArticleAvailableLanguages(article.getId());
                 
                 if (!CollectionUtils.isEmpty(translationLanguages)) {
-                    log.debug("文章 {} 有 {} 种翻译语言: {}", article.getId(), translationLanguages.size(), translationLanguages);
                     
                     for (String language : translationLanguages) {
                         // 生成翻译文章的URL格式：/article/语言代码/文章ID
@@ -322,14 +313,11 @@ public class SitemapServiceImpl implements SitemapService {
                         }
                         
                         wsg.addUrl(translatedUrlOptions.build());
-                        log.debug("添加翻译文章URL: {} (语言: {}, 标题: {})", translatedArticleUrl, language, article.getArticleTitle());
                         translationUrlCount++;
                         totalUrlCount++;
                     }
                     
-                    log.debug("文章 {} 添加了 {} 个翻译URL", article.getId(), translationLanguages.size());
                 } else {
-                    log.debug("文章 {} 没有翻译版本", article.getId());
                 }
                 
             } catch (Exception e) {
@@ -362,9 +350,9 @@ public class SitemapServiceImpl implements SitemapService {
                 // 缓存新的sitemap
                 cacheService.set(CacheConstants.SITEMAP_KEY, sitemap, CacheConstants.SITEMAP_EXPIRE_TIME);
                 
-                // 推送到搜索引擎（异步执行，避免阻塞）
+                // 推送到搜索引擎（使用虚拟线程异步执行，避免阻塞）
                 if (searchEnginePushService.isPushEnabled()) {
-                    new Thread(() -> {
+                    Thread.ofVirtual().name("sitemap-push").start(() -> {
                         try {
                             log.info("内容变化，开始推送sitemap到所有启用的搜索引擎，原因: {}", reason);
                             Map<String, Object> pushResult = searchEnginePushService.pushSitemapToAllEngines();
@@ -379,9 +367,8 @@ public class SitemapServiceImpl implements SitemapService {
                         } catch (Exception e) {
                             log.warn("内容变化推送sitemap时发生错误，原因: {}", reason, e);
                         }
-                    }, "sitemap-content-change-push-thread").start();
+                    });
                 } else {
-                    log.debug("搜索引擎推送功能已禁用，跳过推送，原因: {}", reason);
                 }
                 
                 int urlCount = countUrls(sitemap);
@@ -397,7 +384,6 @@ public class SitemapServiceImpl implements SitemapService {
     @Override
     public void clearSitemapCache() {
         cacheService.deleteKey(CacheConstants.SITEMAP_KEY);
-        log.debug("Sitemap缓存已清除");
     }
 
     @Override
@@ -408,7 +394,6 @@ public class SitemapServiceImpl implements SitemapService {
                     .orderByDesc(Article::getUpdateTime); // 按更新时间降序排列
         
         List<Article> articles = articleMapper.selectList(queryWrapper);
-        log.debug("获取到 {} 个可见文章", articles.size());
         
         return articles;
     }
@@ -420,7 +405,6 @@ public class SitemapServiceImpl implements SitemapService {
         try {
             String siteUrl = mailUtil.getSiteUrl();
             if (StringUtils.hasText(siteUrl)) {
-                log.debug("获取网站基础URL: {}", siteUrl);
                 return siteUrl;
             }
         } catch (Exception e) {
@@ -447,14 +431,12 @@ public class SitemapServiceImpl implements SitemapService {
             Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
             if (seoConfig != null) {
                 excludeList = (String) seoConfig.get("sitemap_exclude");
-                log.debug("从Java SEO配置获取排除路径: {}", excludeList);
             }
         } catch (Exception e) {
             log.warn("从Java SEO配置获取排除路径失败: {}", e.getMessage());
         }
         
         if (!StringUtils.hasText(excludeList)) {
-            log.debug("未配置sitemap排除路径");
             return false;
         }
         
@@ -469,7 +451,6 @@ public class SitemapServiceImpl implements SitemapService {
             
             // 检查是否匹配排除路径
             if (isPathMatched(page, excludePath)) {
-                log.debug("页面 {} 匹配排除路径 {}", page, excludePath);
                 return true;
             }
         }
@@ -514,7 +495,6 @@ public class SitemapServiceImpl implements SitemapService {
                 if (StringUtils.hasText(priority)) {
                     try {
                         double value = Double.parseDouble(priority);
-                        log.debug("从SEO配置获取文章优先级: {}", value);
                         return value;
                     } catch (NumberFormatException e) {
                         log.warn("无效的sitemap优先级配置: {}, 使用默认值0.7", priority);
@@ -540,7 +520,6 @@ public class SitemapServiceImpl implements SitemapService {
                 if (StringUtils.hasText(changeFrequency)) {
                     try {
                         ChangeFreq freq = ChangeFreq.valueOf(changeFrequency.toUpperCase());
-                        log.debug("从SEO配置获取文章更新频率: {}", freq);
                         return freq;
                     } catch (IllegalArgumentException e) {
                         log.warn("无效的sitemap更新频率配置: {}, 使用默认值WEEKLY", changeFrequency);

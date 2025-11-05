@@ -82,7 +82,6 @@ public class PasswordService {
         }
         
         String encoded = bCryptPasswordEncoder.encode(rawPassword);
-        log.debug("密码已使用BCrypt加密");
         return encoded;
     }
 
@@ -119,7 +118,6 @@ public class PasswordService {
         if (securityPolicy.isLogPasswordFormat()) {
             String format = isBCryptPassword(encodedPassword) ? "BCrypt" :
                            (isMD5Password(encodedPassword) ? "MD5" : "Unknown");
-            log.debug("密码验证 - 格式: {}, 部署场景: {}", format, securityPolicy.getDeploymentScenario());
         }
 
         if (isBCryptPassword(encodedPassword)) {
@@ -141,7 +139,6 @@ public class PasswordService {
         try {
             boolean matches = bCryptPasswordEncoder.matches(rawPassword, encodedPassword);
             if (securityPolicy.isLogPasswordFormat()) {
-                log.debug("BCrypt密码验证结果: {}", matches);
             }
             return matches;
         } catch (Exception e) {
@@ -166,7 +163,6 @@ public class PasswordService {
             boolean matches = md5Hash.equals(encodedPassword);
 
             if (securityPolicy.isLogPasswordFormat()) {
-                log.debug("MD5密码验证结果: {} (兼容模式)", matches);
             }
 
             // 如果是迁移模式且MD5支持已过期，记录警告
@@ -235,7 +231,6 @@ public class PasswordService {
      */
     public String upgradePassword(String rawPassword, String oldEncodedPassword) {
         if (!needsUpgrade(oldEncodedPassword)) {
-            log.debug("密码无需升级");
             return oldEncodedPassword;
         }
         

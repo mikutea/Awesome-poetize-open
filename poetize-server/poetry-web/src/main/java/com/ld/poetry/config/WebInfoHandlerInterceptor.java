@@ -45,12 +45,10 @@ public class WebInfoHandlerInterceptor implements HandlerInterceptor {
 
             // 检查网站状态
             if (!webInfo.getStatus()) {
-                log.debug("网站维护中，拦截请求: {}", request.getRequestURI());
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write(JSON.toJSONString(PoetryResult.fail(CodeMsg.SYSTEM_REPAIR.getCode(), CodeMsg.SYSTEM_REPAIR.getMsg())));
                 return false;
             } else {
-                log.debug("网站信息验证通过，允许请求: {}", request.getRequestURI());
                 return true;
             }
         } catch (Exception e) {

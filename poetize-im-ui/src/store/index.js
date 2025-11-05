@@ -75,7 +75,8 @@ export default createStore({
     imMessages: safeParseJSON("imMessages", {}),     // 私聊消息（临时缓存）
     groupMessages: safeParseJSON("groupMessages", {}), // 群聊消息（临时缓存）
     imMessageBadge: {},    // 私聊未读数（从后端同步）
-    groupMessageBadge: {}  // 群聊未读数（从后端同步）
+    groupMessageBadge: {}, // 群聊未读数（从后端同步）
+    lastMessagePreviews: {}  // 最后一条消息预览 {chatId: {content, createTime}}
   },
   getters: {},
   mutations: {
@@ -145,6 +146,14 @@ export default createStore({
       };
     },
     
+    // 最后消息预览相关mutations
+    updateLastMessagePreview(state, {chatId, preview}) {
+      state.lastMessagePreviews = {
+        ...state.lastMessagePreviews,
+        [chatId]: preview
+      };
+    },
+    
     // 清空所有聊天数据（聊天列表和未读数从后端获取，只清理消息缓存）
     clearAllChatData(state) {
       state.imChats = [];
@@ -153,6 +162,7 @@ export default createStore({
       state.groupMessages = {};
       state.imMessageBadge = {};
       state.groupMessageBadge = {};
+      state.lastMessagePreviews = {};
       
       // 只清除消息缓存的localStorage
       const keysToRemove = ['imMessages', 'groupMessages'];

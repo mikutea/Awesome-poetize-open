@@ -55,10 +55,9 @@ class RedisClient:
             
             # 测试连接
             self.client.ping()
-            logger.info(f"Redis连接成功: {REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
             
         except Exception as e:
-            logger.error(f"Redis连接失败: {e}")
+            logger.error(f"连接失败: {e}")
             # 在连接失败时使用空操作，避免程序崩溃
             self.client = None
     
@@ -69,13 +68,13 @@ class RedisClient:
                 self.client.ping()
                 return True
         except Exception as e:
-            logger.error(f"Redis连接检查失败: {e}")
+            logger.error(f"连接检查失败: {e}")
         return False
     
     def _ensure_connection(self):
         """确保Redis连接可用"""
         if not self.is_connected():
-            logger.warning("Redis连接不可用，尝试重新连接...")
+            logger.warning("连接不可用，尝试重新连接...")
             self._initialize_connection()
     
     # ================================ 基础操作 ================================
@@ -94,10 +93,9 @@ class RedisClient:
                 value = str(value)
             
             result = self.client.set(key, value, ex=ex)
-            logger.debug(f"Redis SET: {key} = {value} (ex={ex})")
             return bool(result)
         except Exception as e:
-            logger.error(f"Redis SET失败: {key} - {e}")
+            logger.error(f"SET失败: {key} - {e}")
             return False
     
     def get(self, key: str) -> Optional[Any]:
@@ -117,7 +115,7 @@ class RedisClient:
             except (json.JSONDecodeError, TypeError):
                 return value
         except Exception as e:
-            logger.error(f"Redis GET失败: {key} - {e}")
+            logger.error(f"GET失败: {key} - {e}")
             return None
     
     def delete(self, *keys: str) -> int:
@@ -128,10 +126,9 @@ class RedisClient:
                 return 0
             
             result = self.client.delete(*keys)
-            logger.debug(f"Redis DELETE: {keys}")
             return result
         except Exception as e:
-            logger.error(f"Redis DELETE失败: {keys} - {e}")
+            logger.error(f"DELETE失败: {keys} - {e}")
             return 0
     
     def exists(self, key: str) -> bool:
@@ -143,7 +140,7 @@ class RedisClient:
             
             return bool(self.client.exists(key))
         except Exception as e:
-            logger.error(f"Redis EXISTS失败: {key} - {e}")
+            logger.error(f"EXISTS失败: {key} - {e}")
             return False
     
     def expire(self, key: str, seconds: int) -> bool:
@@ -154,10 +151,9 @@ class RedisClient:
                 return False
             
             result = self.client.expire(key, seconds)
-            logger.debug(f"Redis EXPIRE: {key} = {seconds}s")
             return bool(result)
         except Exception as e:
-            logger.error(f"Redis EXPIRE失败: {key} - {e}")
+            logger.error(f"EXPIRE失败: {key} - {e}")
             return False
     
     def ttl(self, key: str) -> int:
@@ -169,7 +165,7 @@ class RedisClient:
             
             return self.client.ttl(key)
         except Exception as e:
-            logger.error(f"Redis TTL失败: {key} - {e}")
+            logger.error(f"TTL失败: {key} - {e}")
             return -1
     
     # ================================ 计数器操作 ================================
@@ -182,10 +178,9 @@ class RedisClient:
                 return 0
             
             result = self.client.incr(key, amount)
-            logger.debug(f"Redis INCR: {key} + {amount} = {result}")
             return result
         except Exception as e:
-            logger.error(f"Redis INCR失败: {key} - {e}")
+            logger.error(f"INCR失败: {key} - {e}")
             return 0
     
     def decr(self, key: str, amount: int = 1) -> int:
@@ -196,10 +191,9 @@ class RedisClient:
                 return 0
             
             result = self.client.decr(key, amount)
-            logger.debug(f"Redis DECR: {key} - {amount} = {result}")
             return result
         except Exception as e:
-            logger.error(f"Redis DECR失败: {key} - {e}")
+            logger.error(f"DECR失败: {key} - {e}")
             return 0
     
     # ================================ 哈希操作 ================================
@@ -215,10 +209,9 @@ class RedisClient:
                 value = json.dumps(value, ensure_ascii=False)
             
             result = self.client.hset(name, key, value)
-            logger.debug(f"Redis HSET: {name}.{key} = {value}")
             return bool(result)
         except Exception as e:
-            logger.error(f"Redis HSET失败: {name}.{key} - {e}")
+            logger.error(f"HSET失败: {name}.{key} - {e}")
             return False
     
     def hget(self, name: str, key: str) -> Optional[Any]:
@@ -237,7 +230,7 @@ class RedisClient:
             except (json.JSONDecodeError, TypeError):
                 return value
         except Exception as e:
-            logger.error(f"Redis HGET失败: {name}.{key} - {e}")
+            logger.error(f"HGET失败: {name}.{key} - {e}")
             return None
     
     def hgetall(self, name: str) -> Dict[str, Any]:
@@ -256,7 +249,7 @@ class RedisClient:
                     pass
             return result
         except Exception as e:
-            logger.error(f"Redis HGETALL失败: {name} - {e}")
+            logger.error(f"HGETALL失败: {name} - {e}")
             return {}
     
     def hdel(self, name: str, *keys: str) -> int:
@@ -267,10 +260,9 @@ class RedisClient:
                 return 0
             
             result = self.client.hdel(name, *keys)
-            logger.debug(f"Redis HDEL: {name}.{keys}")
             return result
         except Exception as e:
-            logger.error(f"Redis HDEL失败: {name}.{keys} - {e}")
+            logger.error(f"HDEL失败: {name}.{keys} - {e}")
             return 0
     
     # ================================ 列表操作 ================================
@@ -291,10 +283,9 @@ class RedisClient:
                     serialized_values.append(str(value))
             
             result = self.client.lpush(name, *serialized_values)
-            logger.debug(f"Redis LPUSH: {name} <- {values}")
             return result
         except Exception as e:
-            logger.error(f"Redis LPUSH失败: {name} - {e}")
+            logger.error(f"LPUSH失败: {name} - {e}")
             return 0
     
     def rpop(self, name: str) -> Optional[Any]:
@@ -313,7 +304,7 @@ class RedisClient:
             except (json.JSONDecodeError, TypeError):
                 return value
         except Exception as e:
-            logger.error(f"Redis RPOP失败: {name} - {e}")
+            logger.error(f"RPOP失败: {name} - {e}")
             return None
     
     def lrange(self, name: str, start: int, end: int) -> List[Any]:
@@ -332,7 +323,7 @@ class RedisClient:
                     result.append(value)
             return result
         except Exception as e:
-            logger.error(f"Redis LRANGE失败: {name} - {e}")
+            logger.error(f"LRANGE失败: {name} - {e}")
             return []
     
     # ================================ 工具方法 ================================
@@ -355,7 +346,7 @@ class RedisClient:
 
             return self.client.scan(cursor=cursor, match=match, count=count)
         except Exception as e:
-            logger.error(f"Redis SCAN操作失败: {e}")
+            logger.error(f"SCAN操作失败: {e}")
             return 0, []
 
     def close(self):
@@ -363,9 +354,8 @@ class RedisClient:
         try:
             if self.pool:
                 self.pool.disconnect()
-                logger.info("Redis连接池已关闭")
         except Exception as e:
-            logger.error(f"关闭Redis连接失败: {e}")
+            logger.error(f"关闭连接失败: {e}")
 
 # 全局Redis客户端实例
 redis_client = RedisClient()

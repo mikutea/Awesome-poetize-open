@@ -8,7 +8,7 @@
     <div style="background: var(--background);animation: hideToShow 2.5s">
       <div>
         <treeHole :treeHoleList="treeHoleList"
-                  :avatar="!$common.isEmpty($store.state.currentUser)?$store.state.currentUser.avatar:$store.state.webInfo.avatar"
+                  :avatar="!$common.isEmpty(mainStore.currentUser) ? $common.getAvatarUrl(mainStore.currentUser.avatar) : $common.getAvatarUrl(mainStore.webInfo.avatar)"
                   @launch="launch"
                   @deleteTreeHole="deleteTreeHole">
         </treeHole>
@@ -30,6 +30,7 @@
                width="40%"
                :before-close="handleClose"
                :append-to-body="true"
+               custom-class="centered-dialog"
                destroy-on-close
                :close-on-click-modal="false"
                center>
@@ -49,7 +50,9 @@
 </template>
 
 <script>
-  const twoPoem = () => import( "./common/twoPoem");
+    import { useMainStore } from '@/stores/main';
+
+const twoPoem = () => import( "./common/twoPoem");
   const myFooter = () => import( "./common/myFooter");
   const treeHole = () => import( "./common/treeHole");
   const proPage = () => import( "./common/proPage");
@@ -78,7 +81,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -100,11 +106,11 @@
         this.getWeiYan();
       },
       launch() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
+          // 使用统一的登录跳转函数
+          this.$common.redirectToLogin(this.$router, {
+            message: '请先登录！'
+          }, this);
           return;
         }
 
@@ -132,11 +138,11 @@
         this.handleClose();
       },
       deleteTreeHole(id) {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
+          // 使用统一的登录跳转函数
+          this.$common.redirectToLogin(this.$router, {
+            message: '请先登录！'
+          }, this);
           return;
         }
 

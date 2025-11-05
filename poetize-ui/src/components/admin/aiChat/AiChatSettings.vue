@@ -74,7 +74,7 @@ export default {
     value: {
       type: Object,
       default: () => ({
-        systemPrompt: "你是一个友善的AI助手，请用中文回答问题。",
+        systemPrompt: "AI assistant. Respond in Chinese naturally.",
         welcomeMessage: "你好！有什么可以帮助你的吗？",
         historyCount: 10,
         rateLimit: 20,
@@ -95,14 +95,18 @@ export default {
   watch: {
     value: {
       handler(newVal) {
-        this.chatConfig = { ...newVal };
+        if (JSON.stringify(newVal) !== JSON.stringify(this.chatConfig)) {
+          this.chatConfig = { ...newVal };
+        }
       },
       deep: true
     },
     
     chatConfig: {
       handler(newVal) {
-        this.$emit('input', newVal);
+        if (JSON.stringify(newVal) !== JSON.stringify(this.value)) {
+          this.$emit('input', newVal);
+        }
       },
       deep: true
     }
@@ -111,11 +115,90 @@ export default {
 </script>
 
 <style scoped>
+.ai-chat-settings {
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 10px;
+}
+
+/* 移动端对话框中不限制高度 */
+@media screen and (max-width: 768px) {
+  .ai-chat-settings {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 .help-text {
   color: #909399;
   font-size: 12px;
   line-height: 1.4;
   margin-top: 5px;
   display: block;
+}
+
+/* PC端样式 - 768px以上 */
+@media screen and (min-width: 769px) {
+  ::v-deep .el-form-item__label {
+    float: left !important;
+  }
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .ai-chat-settings {
+    padding: 0;
+  }
+
+  .ai-chat-settings .el-form-item {
+    margin-bottom: 15px;
+  }
+
+  /* 标签适配 - 垂直布局 */
+  .ai-chat-settings .el-form-item__label {
+    float: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 8px !important;
+    padding-bottom: 0 !important;
+  }
+
+  .ai-chat-settings .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* 帮助文本字号优化 */
+  .help-text {
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 3px;
+  }
+
+  /* 文本域 */
+  .ai-chat-settings .el-textarea__inner {
+    font-size: 13px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .ai-chat-settings .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .ai-chat-settings .el-form-item__label {
+    font-size: 12px;
+  }
+
+  .help-text {
+    font-size: 10px;
+  }
+
+  .ai-chat-settings .el-textarea__inner {
+    font-size: 12px;
+  }
 }
 </style> 

@@ -77,7 +77,7 @@ export default function () {
       const updatedGroupChats = currentGroupChats.filter(chatGroupId => chatGroupId !== groupId);
       store.commit('updateGroupChats', updatedGroupChats);
       
-      console.log(`✅ 已从列表移除群聊 ${groupId}`);
+      console.log(`已从列表移除群聊 ${groupId}`);
     } catch (error) {
       console.error('移除群聊失败:', error);
     }

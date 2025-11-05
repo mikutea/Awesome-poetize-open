@@ -7,11 +7,9 @@ const CACHE_NAME = 'poetize-pwa-v1.0.0';
 const PRECACHE_RESOURCES = [
   '/',
   '/static/css/inline-styles.css',
-  '/libs/css/animate.min.css',
   '/libs/css/highlight.min.css',
   '/libs/js/anime.min.js',
   '/libs/js/highlight.min.js',
-  '/libs/js/wow.min.js',
   '/poetize.jpg'
 ];
 

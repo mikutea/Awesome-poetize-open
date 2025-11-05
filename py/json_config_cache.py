@@ -83,7 +83,6 @@ class JsonConfigCache:
                     cached_config = None
                 
                 if cached_config:
-                    logger.debug(f"从缓存获取JSON配置: {config_name}")
                     return cached_config
 
             # 缓存不存在，从文件读取
@@ -107,7 +106,6 @@ class JsonConfigCache:
             # 建立永久缓存
             self.redis_client.set(cache_key, json.dumps(config, ensure_ascii=False))
 
-            logger.debug(f"读取文件并建立缓存: {config_name}")
             return config
 
         except Exception as e:

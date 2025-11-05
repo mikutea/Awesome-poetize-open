@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-09-25
+## 修改时间: 2025-10-23
 ## 描述: Poetize 博客系统全局管理命令
-## 版本: 1.5.2
+## 版本: 1.6.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -402,8 +402,9 @@ uninstall_all_services() {
         "certbot-etc"
         "certbot-var"
         "web-root"
-        "poetize_node_modules"
-        "im_node_modules"
+        # node_modules volumes 已移除（前端构建优化后不再需要）
+        # "poetize_node_modules"
+        # "im_node_modules"
         "poetize_ui_dist"
         "poetize_im_dist"
         "poetize_uploads"
@@ -957,7 +958,21 @@ create_full_backup() {
         info "未找到域名配置，跳过域名备份"
     fi
     
-    # 8. 创建备份清单
+    # 8. 备份端口配置
+    info "备份端口配置..."
+    local http_port=""
+    if [ -f "docker-compose.yml" ]; then
+        # 提取HTTP端口配置（支持多种格式）
+        http_port=$(grep -E '^\s*-\s*["'\'']*[0-9]+:80' docker-compose.yml 2>/dev/null | head -1 | grep -oE '[0-9]+' | head -1)
+        if [ -n "$http_port" ]; then
+            echo "$http_port" > "$BACKUP_DIR/http_port.txt"
+            success "HTTP端口配置备份完成: $http_port"
+        else
+            info "使用默认80端口"
+        fi
+    fi
+    
+    # 9. 创建备份清单
     info "创建备份清单..."
     cat > "$BACKUP_DIR/backup_manifest.txt" << EOF
 POETIZE系统备份清单
@@ -972,6 +987,7 @@ POETIZE系统备份清单
 - 用户上传文件: uploads_backup.tar.gz
 - Redis缓存数据: redis_backup.tar.gz
 - 域名配置: domains.txt
+- 端口配置: http_port.txt
 
 注意: 此备份用于系统更新，包含恢复系统所需的所有关键数据
 EOF
@@ -1262,9 +1278,31 @@ reinstall_latest_system() {
     
     if [ -n "$domains" ]; then
         info "使用域名进行自动安装..."
-        # 为每个域名添加-d参数
+        
+        # 从备份中读取端口配置
+        local http_port=""
+        local backup_port_file="$BACKUP_DIR/http_port.txt"
+        if [ -f "$backup_port_file" ]; then
+            http_port=$(cat "$backup_port_file" 2>/dev/null | tr -d '[:space:]')
+            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+                info "从备份中读取到HTTP端口: $http_port"
+            else
+                http_port=""
+            fi
+        else
+            info "未找到端口配置备份，将使用默认80端口"
+        fi
+        
+        # 为每个域名添加-d参数（支持 域名:端口 格式）
         for domain in $domains; do
-            deploy_cmd="$deploy_cmd -d $domain"
+            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+                # 为域名添加自定义端口
+                deploy_cmd="$deploy_cmd -d ${domain}:${http_port}"
+                info "使用域名和端口: ${domain}:${http_port}"
+            else
+                deploy_cmd="$deploy_cmd -d $domain"
+                info "使用域名: $domain"
+            fi
         done
         info "完整安装命令: $deploy_cmd"
     else

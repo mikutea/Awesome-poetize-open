@@ -93,6 +93,7 @@
     <el-dialog title="文件"
                :visible.sync="resourceDialog"
                width="25%"
+               custom-class="centered-dialog"
                :append-to-body="true"
                :close-on-click-modal="false"
                destroy-on-close
@@ -120,6 +121,7 @@
     <el-dialog :title="getPreviewTitle()"
                :visible.sync="previewVisible"
                :width="isFont(previewMediaType) ? '80%' : '60%'"
+               custom-class="centered-dialog"
                :append-to-body="true"
                :close-on-click-modal="true"
                destroy-on-close
@@ -189,7 +191,9 @@
 
 <script>
 
-  const uploadPicture = () => import( "../common/uploadPicture");
+    import { useMainStore } from '@/stores/main';
+
+const uploadPicture = () => import( "../common/uploadPicture");
 
   export default {
     components: {
@@ -211,7 +215,7 @@
           {label: "兰空图床", value: "lsky"},
           {label: "简单图床", value: "easyimage"}
         ],
-        storeType: this.$store.state.sysConfig ? (this.$store.state.sysConfig['store.type'] || 'local') : 'local',
+        storeType: this.mainStore.sysConfig ? (this.mainStore.sysConfig['store.type'] || 'local') : 'local',
         previewMediaUrl: "",
         previewMediaType: "",
         previewFileName: "",
@@ -230,7 +234,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -380,7 +387,6 @@
           try {
             document.head.appendChild(style);
           } catch (e) {
-            console.warn('添加style元素失败:', e);
           }
         }
         
@@ -395,7 +401,6 @@
           try {
             document.body.appendChild(testDiv);
           } catch (e) {
-            console.warn('添加testDiv元素失败:', e);
           }
         }
         
@@ -509,5 +514,98 @@
     content: "🔤";
     margin-right: 8px;
     font-size: 18px;
+  }
+
+  /* ===========================================
+     表单移动端样式 - PC端和移动端响应式
+     =========================================== */
+  
+  /* PC端样式 - 768px以上 */
+  @media screen and (min-width: 769px) {
+    ::v-deep .el-form-item__label {
+      float: left !important;
+    }
+  }
+
+  /* 移动端样式 - 768px及以下 */
+  @media screen and (max-width: 768px) {
+    /* 表单标签 - 垂直布局 */
+    ::v-deep .el-form-item__label {
+      float: none !important;
+      width: 100% !important;
+      text-align: left !important;
+      margin-bottom: 8px !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
+      padding-bottom: 0 !important;
+      line-height: 1.5 !important;
+    }
+
+    ::v-deep .el-form-item__content {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+
+    ::v-deep .el-form-item {
+      margin-bottom: 20px !important;
+    }
+
+    /* 输入框移动端优化 */
+    ::v-deep .el-input__inner {
+      font-size: 16px !important;
+      height: 44px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 选择器移动端优化 */
+    ::v-deep .el-select {
+      width: 100% !important;
+    }
+
+    ::v-deep .el-select .el-input__inner {
+      height: 44px !important;
+      line-height: 44px !important;
+    }
+
+    /* 按钮移动端优化 */
+    ::v-deep .el-button {
+      min-height: 40px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 对话框移动端优化 */
+    ::v-deep .el-dialog {
+      width: 95% !important;
+      margin-top: 5vh !important;
+    }
+
+    ::v-deep .el-dialog__body {
+      padding: 15px !important;
+    }
+
+    /* 搜索框移动端优化 */
+    .handle-select {
+      width: 100% !important;
+      margin-bottom: 10px !important;
+    }
+  }
+
+  /* 极小屏幕优化 - 480px及以下 */
+  @media screen and (max-width: 480px) {
+    ::v-deep .el-form-item__label {
+      font-size: 13px !important;
+    }
+
+    ::v-deep .el-input__inner,
+    ::v-deep .el-select .el-input__inner {
+      height: 40px !important;
+      line-height: 40px !important;
+      font-size: 15px !important;
+    }
+
+    ::v-deep .el-button {
+      min-height: 38px !important;
+      font-size: 14px !important;
+    }
   }
 </style>

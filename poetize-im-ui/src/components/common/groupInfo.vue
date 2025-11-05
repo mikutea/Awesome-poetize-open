@@ -14,7 +14,8 @@
         <n-avatar object-fit="cover"
                   :size="60"
                   lazy
-                  :src="groups[currentGroupId] ? groups[currentGroupId].avatar : ''"/>
+                  :src="$common.getAvatarUrl(groups[currentGroupId] ? groups[currentGroupId].avatar : '')"
+                  :fallback-src="$common.getDefaultAvatar()"/>
       </div>
 
       <!-- 群信息 -->
@@ -121,7 +122,8 @@
             <div>
               <div class="myCenter" style="margin: 15px 0">
                 <n-avatar lazy object-fit="cover" @click="changeAvatar(2)" round class="group-avatar" :size="70"
-                          :src="groups[currentGroupId].avatar"/>
+                          :src="$common.getAvatarUrl(groups[currentGroupId].avatar)"
+                          :fallback-src="$common.getDefaultAvatar()"/>
               </div>
 
               <div class="group-set"
@@ -161,7 +163,8 @@
                   <n-avatar object-fit="cover"
                             :size="40"
                             lazy
-                            :src="item.avatar"/>
+                            :src="$common.getAvatarUrl(item.avatar)"
+                            :fallback-src="$common.getDefaultAvatar()"/>
                 </div>
 
                 <div style="margin-left: 20px;font-size: 16px">

@@ -25,8 +25,8 @@ from py_three_login import oauth_login, oauth_callback
 from redis_oauth_state_manager import oauth_state_manager
 from json_config_cache import get_json_config_cache
 
-from ai_chat_api import register_ai_chat_api  # 处理AI聊天配置功能
-from translation_api import register_translation_api  # 处理翻译管理功能
+from ai_chat_api import register_ai_chat_api  # 处理AI聊天功能（非配置管理）
+from translation_api import register_translation_api  # 处理翻译功能（非配置管理）
 from auth_decorator import admin_required  # 导入管理员权限验证装饰器
 
 # 配置日志
@@ -50,7 +50,6 @@ async def lifespan(app: FastAPI):
         for config_name in preload_configs:
             try:
                 json_cache.get_json_config(config_name)
-                logger.debug(f"预热配置: {config_name}")
             except Exception as e:
                 logger.warning(f"预热配置 {config_name} 失败: {e}")
         
@@ -141,8 +140,8 @@ def register_all_apis(app):
     app.add_api_route('/callback/{provider}', oauth_callback, methods=['GET'])
 
     # 注册各个API模块
-    register_ai_chat_api(app)  # 注册AI聊天配置API
-    register_translation_api(app)  # 注册翻译管理API
+    register_ai_chat_api(app)  # 注册AI聊天功能API（非配置管理，配置管理已迁移到Java）
+    register_translation_api(app)  # 注册翻译功能API（非配置管理，配置管理已迁移到Java）
 
     logger.info("所有API模块已注册完成")
 

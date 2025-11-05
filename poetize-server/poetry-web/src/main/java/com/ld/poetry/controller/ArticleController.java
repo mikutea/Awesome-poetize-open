@@ -116,69 +116,51 @@ public class ArticleController {
             
             // 使用Redis缓存清理替换PoetryCache
             if (articleVO.getUserId() != null) {
-                // 清理用户文章列表缓存，使用统一的缓存键常量
+                // 清理用户文章列表缓存
                 String userArticleKey = CacheConstants.buildUserArticleListKey(articleVO.getUserId());
                 cacheService.deleteKey(userArticleKey);
-                log.debug("清理用户文章列表缓存，用户ID: {}", articleVO.getUserId());
             }
             // 清理文章相关缓存
             cacheService.evictSortArticleList();
             
-            // 保存文章
-            PoetryResult result = articleService.saveArticle(articleVO);
+            // 准备暂存翻译数据（需要在调用saveArticle之前准备）
+            Map<String, String> pendingTranslation = null;
+            if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+                pendingTranslation = new HashMap<>();
+                pendingTranslation.put("title", pendingTranslationTitle);
+                pendingTranslation.put("content", pendingTranslationContent);
+                pendingTranslation.put("language", pendingTranslationLanguage);
+            }
+            
+            // 保存文章（传递skipAiTranslation和pendingTranslation参数）
+            PoetryResult result = articleService.saveArticle(articleVO, skipAiTranslation, pendingTranslation);
             
             // 如果保存成功并且文章有ID，执行后续任务
             if (result.getCode() == 200 && articleVO.getId() != null) {
                 final Integer articleId = articleVO.getId();
-                final Integer sortId = articleVO.getSortId();
-                
-                // 准备暂存翻译数据
-                Map<String, String> pendingTranslation = null;
-                if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
-                    pendingTranslation = new HashMap<>();
-                    pendingTranslation.put("title", pendingTranslationTitle);
-                    pendingTranslation.put("content", pendingTranslationContent);
-                    pendingTranslation.put("language", pendingTranslationLanguage);
-                }
-
-                // 异步执行翻译，避免阻塞用户操作（翻译完成后内部会触发预渲染）
-                final Map<String, String> finalPendingTranslation = pendingTranslation;
-                new Thread(() -> {
-                    try {
-                        translationService.translateAndSaveArticle(articleId, skipAiTranslation, finalPendingTranslation);
-                    } catch (Exception e) {
-                        // 翻译失败不影响保存结果
-                        log.error("翻译文章失败: " + e.getMessage(), e);
-                    }
-                }).start();
-                
-                log.info("文章ID {} 保存成功，sitemap更新将通过事件监听器自动处理", articleId);
                 
                 // 异步预生成文章二维码
                 new Thread(() -> {
                     try {
                         qrCodeService.preGenerateArticleQRCode(articleId);
-                        log.info("文章ID {} 二维码预生成完成", articleId);
                     } catch (Exception e) {
-                        log.warn("文章ID {} 二维码预生成失败（不影响保存）: {}", articleId, e.getMessage());
+                        log.warn("二维码预生成失败（不影响保存），文章ID: {}: {}", articleId, e.getMessage());
                     }
                 }).start();
                 
                 // 如果需要推送至搜索引擎且文章可见，异步处理
                 if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine()) && Boolean.TRUE.equals(articleVO.getViewStatus())) {
-                    log.info("文章ID {} 标记为需要推送至搜索引擎，开始异步处理", articleId);
-                    
                     // 异步执行SEO推送，避免阻塞用户操作
                     new Thread(() -> {
                         try {
-                            boolean seoResult = seoService.submitToSearchEngines(articleId);
-                            log.info("文章ID {} 搜索引擎推送完成，结果: {}", articleId, seoResult ? "成功" : "失败");
+                            Map<String, Object> seoResult = seoService.submitToSearchEngines(articleId);
+                            String status = (String) seoResult.get("status");
+                            String message = (String) seoResult.get("message");
+                            log.info("搜索引擎推送完成，文章ID: {}, 状态: {}, {}", articleId, status, message);
                         } catch (Exception e) {
                             log.error("搜索引擎推送失败，但不影响文章保存，文章ID: " + articleId, e);
                         }
                     }).start();
-                } else {
-                    log.info("文章ID {} 未标记为需要推送至搜索引擎或文章不可见", articleId);
                 }
             }
             
@@ -251,7 +233,7 @@ public class ArticleController {
     /**
      * 查询文章保存状态
      */
-    @LoginCheck(1)
+    @LoginCheck(value = 1, silentLog = true)
     @GetMapping("/getArticleSaveStatus")
     public PoetryResult<ArticleServiceImpl.ArticleSaveStatus> getArticleSaveStatus(@RequestParam("taskId") String taskId) {
         if (!StringUtils.hasText(taskId)) {
@@ -259,13 +241,10 @@ public class ArticleController {
         }
         
         try {
-            // 轮询期间的日志降级为DEBUG，减少噪音
-            log.debug("【Controller】收到状态查询请求，任务ID: {}", taskId);
             PoetryResult<ArticleServiceImpl.ArticleSaveStatus> result = articleService.getArticleSaveStatus(taskId);
-            log.debug("【Controller】状态查询结果: {}", result.getCode() == 200 ? "成功" : "失败");
             return result;
         } catch (Exception e) {
-            log.error("【Controller】查询保存状态异常: {}", e.getMessage(), e);
+            log.error("查询保存状态异常: {}", e.getMessage(), e);
             return PoetryResult.fail("查询保存状态失败: " + e.getMessage());
         }
     }
@@ -311,7 +290,7 @@ public class ArticleController {
         if (result.getCode() == 200) {
             // 发布文章删除事件，触发预渲染清理（在事务提交后执行）
             // 传递正确的分类ID，确保分类页面也会被重新渲染
-            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, false, "DELETE"));
+            eventPublisher.publishEvent(new ArticleSavedEvent(id, sortId, false, "DELETE", null));
             
             // 清除文章二维码缓存
             qrCodeService.evictArticleQRCode(id);
@@ -344,35 +323,21 @@ public class ArticleController {
         // 清理文章相关缓存
         cacheService.evictSortArticleList();
         
-        PoetryResult result = articleService.updateArticle(articleVO);
+        // 准备暂存翻译数据（需要在调用updateArticle之前准备）
+        Map<String, String> pendingTranslation = null;
+        if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
+            pendingTranslation = new HashMap<>();
+            pendingTranslation.put("title", pendingTranslationTitle);
+            pendingTranslation.put("content", pendingTranslationContent);
+            pendingTranslation.put("language", pendingTranslationLanguage);
+        }
+        
+        // 更新文章（传递skipAiTranslation和pendingTranslation参数）
+        PoetryResult result = articleService.updateArticle(articleVO, skipAiTranslation, pendingTranslation);
         
         // 更新文章成功后执行后续任务
         if (result.getCode() == 200 && articleVO.getId() != null) {
             final Integer articleId = articleVO.getId();
-            final Integer sortId = articleVO.getSortId();
-            
-            // 准备暂存翻译数据
-            Map<String, String> pendingTranslation = null;
-            if (pendingTranslationTitle != null && pendingTranslationContent != null && pendingTranslationLanguage != null) {
-                pendingTranslation = new HashMap<>();
-                pendingTranslation.put("title", pendingTranslationTitle);
-                pendingTranslation.put("content", pendingTranslationContent);
-                pendingTranslation.put("language", pendingTranslationLanguage);
-            }
-
-            // 异步执行翻译，避免阻塞用户操作（翻译完成后内部会触发预渲染）
-            final Map<String, String> finalPendingTranslation = pendingTranslation;
-            new Thread(() -> {
-                try {
-                    translationService.translateAndSaveArticle(articleId, skipAiTranslation, finalPendingTranslation);
-                } catch (Exception e) {
-                    log.error("文章更新后自动翻译失败", e);
-                }
-            }).start();
-            
-            // 注意：sitemap更新（包括文章可见性变更）已经通过 ArticleEventListener.updateSitemapAsync() 方法处理
-            // 无需在这里重复处理sitemap更新
-            log.info("文章ID {} 更新完成，sitemap更新将通过事件监听器自动处理", articleId);
             
             // 清除旧的二维码缓存并异步预生成新的二维码
             new Thread(() -> {
@@ -381,27 +346,24 @@ public class ArticleController {
                     qrCodeService.evictArticleQRCode(articleId);
                     // 再预生成新二维码
                     qrCodeService.preGenerateArticleQRCode(articleId);
-                    log.info("文章ID {} 二维码更新完成", articleId);
                 } catch (Exception e) {
-                    log.warn("文章ID {} 二维码更新失败（不影响更新）: {}", articleId, e.getMessage());
+                    log.warn("二维码更新失败（不影响更新），文章ID: {}: {}", articleId, e.getMessage());
                 }
             }).start();
             
             // 如果需要推送至搜索引擎且文章可见，异步处理
             if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine()) && Boolean.TRUE.equals(articleVO.getViewStatus())) {
-                log.info("更新文章ID {} 标记为需要推送至搜索引擎，开始异步处理", articleId);
-                
                 // 异步执行SEO推送，避免阻塞用户操作
                 new Thread(() -> {
                     try {
-                        boolean seoResult = seoService.submitToSearchEngines(articleId);
-                        log.info("更新文章ID {} 搜索引擎推送完成，结果: {}", articleId, seoResult ? "成功" : "失败");
+                        Map<String, Object> seoResult = seoService.submitToSearchEngines(articleId);
+                        String status = (String) seoResult.get("status");
+                        String message = (String) seoResult.get("message");
+                        log.info("搜索引擎推送完成，文章ID: {}, 状态: {}, {}", articleId, status, message);
                     } catch (Exception e) {
                         log.error("搜索引擎推送失败，但不影响文章更新，文章ID: " + articleId, e);
                     }
                 }).start();
-            } else {
-                log.info("更新文章ID {} 未标记为需要推送至搜索引擎或文章不可见", articleId);
             }
         }
         
@@ -490,10 +452,40 @@ public class ArticleController {
 
     /**
      * 查询文章 - 使用请求参数
+     * @param id 文章ID
+     * @param password 文章密码（可选）
+     * @param language 目标语言（可选，如：en, zh, ja等）- 优化：一次请求返回翻译内容
      */
     @GetMapping("/getArticleById")
-    public PoetryResult<ArticleVO> getArticleById(@RequestParam("id") Integer id, @RequestParam(value = "password", required = false) String password) {
-        return articleService.getArticleById(id, password);
+    public PoetryResult<ArticleVO> getArticleById(
+            @RequestParam("id") Integer id, 
+            @RequestParam(value = "password", required = false) String password,
+            @RequestParam(value = "language", required = false) String language) {
+        
+        // 获取文章
+        PoetryResult<ArticleVO> result = articleService.getArticleById(id, password);
+        
+        // 如果请求了翻译且文章获取成功，尝试附加翻译内容
+        if (result.getCode() == 200 && result.getData() != null && 
+            StringUtils.hasText(language)) {
+            
+            ArticleVO article = result.getData();
+            
+            try {
+                // 获取翻译（不阻塞主流程）
+                Map<String, String> translation = translationService.getArticleTranslation(id, language);
+                if (translation != null && !translation.isEmpty()) {
+                    article.setTranslatedTitle(translation.get("title"));
+                    article.setTranslatedContent(translation.get("content"));
+                }
+            } catch (Exception e) {
+                // 翻译获取失败不影响主流程，前端会fallback到第二次请求
+                log.warn("获取文章翻译失败（不影响主流程）: 文章ID={}, 语言={}, 错误={}", 
+                        id, language, e.getMessage());
+            }
+        }
+        
+        return result;
     }
 
     /**

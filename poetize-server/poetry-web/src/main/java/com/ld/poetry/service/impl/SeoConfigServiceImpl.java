@@ -30,8 +30,8 @@ import java.util.stream.Collectors;
  * SEO配置服务实现类
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-25
  */
 @Service
 @Slf4j
@@ -59,7 +59,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
             // 获取主配置，如果不存在则创建默认配置
             SeoConfig seoConfig = this.getOne(new LambdaQueryWrapper<SeoConfig>().last("LIMIT 1"));
             if (seoConfig == null) {
-                log.info("SEO配置不存在，创建默认配置");
                 initDefaultSeoConfig();
                 seoConfig = this.getOne(new LambdaQueryWrapper<SeoConfig>().last("LIMIT 1"));
             }
@@ -199,7 +198,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
                 seoNotificationConfigMapper.insert(seoConfig.getNotificationConfig());
             }
 
-            log.info("SEO配置保存成功，配置ID: {}", configId);
             return true;
 
         } catch (Exception e) {
@@ -388,7 +386,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
             // 更新通知配置
             updateNotificationConfigFromJson(configId, jsonConfig);
 
-            log.info("从JSON更新SEO配置成功");
             return true;
 
         } catch (Exception e) {
@@ -404,7 +401,6 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
             // 检查是否已存在配置
             long count = this.count();
             if (count > 0) {
-                log.info("SEO配置已存在，跳过初始化");
                 return true;
             }
 
@@ -821,12 +817,10 @@ public class SeoConfigServiceImpl extends ServiceImpl<SeoConfigMapper, SeoConfig
 
     private void initDefaultSearchEnginePushConfig(Integer configId) {
         // 这里可以初始化一些默认的搜索引擎配置，暂时留空
-        log.debug("搜索引擎推送配置初始化完成");
     }
 
     private void initDefaultSiteVerificationConfig(Integer configId) {
         // 这里可以初始化一些默认的网站验证配置，暂时留空
-        log.debug("网站验证配置初始化完成");
     }
 
     private void initDefaultSocialMediaConfig(Integer configId) {

@@ -15,6 +15,8 @@ module.exports = {
   },
   lintOnSave: false,
   productionSourceMap: false,
+  // 让babel转译mermaid模块（使用了ES2020+语法）
+  transpileDependencies: ['mermaid'],
   chainWebpack: config => {
     // 禁用默认的预加载和预取，减少不必要的资源
     config.plugins.delete('prefetch')
@@ -71,6 +73,13 @@ module.exports = {
           priority: 20,
           test: /[\\/]node_modules[\\/]_?highlight.js(.*)/,
           chunks: 'all'
+        },
+        // 将vditor单独打包（编辑器体积较大，分离后可以按需加载）
+        vditor: {
+          name: 'chunk-vditor',
+          priority: 20,
+          test: /[\\/]node_modules[\\/]_?vditor(.*)/,
+          chunks: 'all'
         }
       }
     })
@@ -116,28 +125,7 @@ module.exports = {
             keep_fnames: process.env.VUE_APP_PRODUCTION_MODE !== 'true' // 保留函数名
           }
         })
-      ],
-      splitChunks: {
-        chunks: 'all',
-        maxInitialRequests: Infinity,
-        minSize: 20000,
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name(module) {
-              const packageName = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/)[1];
-              return `npm.${packageName.replace('@', '')}`;
-            }
-          }
-        }
-      }
-    },
-    externals: {
-      // 'vue': 'Vue',
-      // 'vue-router': 'VueRouter',
-      // 'element-ui': 'ELEMENT',
-      // 'highlight.js': 'hljs',
-      // 'jquery': '$'
+      ]
     }
   },
   publicPath: '/',

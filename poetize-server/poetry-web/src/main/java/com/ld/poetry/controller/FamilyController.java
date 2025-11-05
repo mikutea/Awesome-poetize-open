@@ -72,12 +72,10 @@ public class FamilyController {
             if (userId.intValue() == PoetryUtil.getAdminUser().getId().intValue()) {
                 String adminFamilyKey = CacheConstants.CACHE_PREFIX + "admin:family";
                 cacheService.set(adminFamilyKey, family, CacheConstants.LONG_EXPIRE_TIME);
-                log.debug("缓存管理员家庭信息: userId={}", userId);
             }
 
             // 清理家庭列表缓存
             cacheService.deleteKey(CacheConstants.FAMILY_LIST_KEY);
-            log.debug("清理家庭列表缓存: userId={}", userId);
         } catch (Exception e) {
             log.error("保存家庭信息后更新缓存失败: userId={}", userId, e);
         }
@@ -96,7 +94,6 @@ public class FamilyController {
         try {
             // 清理家庭列表缓存
             cacheService.deleteKey(CacheConstants.FAMILY_LIST_KEY);
-            log.debug("删除家庭信息后清理缓存: id={}", id);
         } catch (Exception e) {
             log.error("删除家庭信息后清理缓存失败: id={}", id, e);
         }
@@ -134,14 +131,12 @@ public class FamilyController {
 
             if (cached instanceof Family) {
                 family = (Family) cached;
-                log.debug("从缓存获取管理员家庭信息成功");
             } else {
                 // 如果缓存中没有，从数据库查询管理员的家庭信息
                 Integer adminUserId = PoetryUtil.getAdminUser().getId();
                 family = familyService.lambdaQuery().eq(Family::getUserId, adminUserId).one();
                 if (family != null) {
                     cacheService.set(adminFamilyKey, family, CacheConstants.LONG_EXPIRE_TIME);
-                    log.debug("从数据库查询并缓存管理员家庭信息");
                 }
             }
 
@@ -195,7 +190,6 @@ public class FamilyController {
         try {
             // 清理家庭列表缓存
             cacheService.deleteKey(CacheConstants.FAMILY_LIST_KEY);
-            log.debug("修改表白状态后清理缓存: id={}, flag={}", id, flag);
         } catch (Exception e) {
             log.error("修改表白状态后清理缓存失败: id={}, flag={}", id, flag, e);
         }

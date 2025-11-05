@@ -97,8 +97,10 @@ class BaseOAuthProvider(ABC):
         Returns:
             tuple: (processed_email, email_collection_needed)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         if not email or email.strip() == "":
-            print(f"{self.provider_name}用户未绑定邮箱，需要前端收集")
             return "", True
         return email.strip(), False
     
@@ -123,12 +125,12 @@ class BaseOAuthProvider(ABC):
                 response.raise_for_status()
                 return response
         except httpx.TimeoutException as e:
-            raise OAuthError(f"{self.provider_name} API请求超时", "timeout", self.provider_name)
+            raise OAuthError(f"API请求超时", "timeout", self.provider_name)
         except httpx.HTTPStatusError as e:
-            raise OAuthError(f"{self.provider_name} API请求失败: {e.response.status_code}", 
+            raise OAuthError(f"API请求失败: {e.response.status_code}", 
                            "http_error", self.provider_name)
         except Exception as e:
-            raise OAuthError(f"{self.provider_name} 请求异常: {str(e)}", 
+            raise OAuthError(f"请求异常: {str(e)}", 
                            "request_error", self.provider_name)
 
 

@@ -7,8 +7,11 @@ import time
 import secrets
 import json
 import httpx
+import logging
 from typing import Optional, Dict, Any
 from config import JAVA_BACKEND_URL
+
+logger = logging.getLogger(__name__)
 
 class OAuthStateManager:
     """OAuth状态管理器"""
@@ -40,17 +43,15 @@ class OAuthStateManager:
         try:
             self._store_to_database(state_token, state_data)
         except Exception as e:
-            print(f"警告: 无法将状态存储到数据库: {e}")
+            logger.warning(f"无法将状态存储到数据库: {e}")
         
         # 清理过期状态
         self._cleanup_expired_states()
         
-        print(f"生成OAuth状态: provider={provider}, state={state_token}, session_id={session_id}")
         return state_token
     
     def validate_state(self, state_token: str, provider: str, session_id: str = None) -> bool:
         """验证OAuth状态token"""
-        print(f"验证OAuth状态: state={state_token}, provider={provider}, session_id={session_id}")
         
         # 首先从内存检查
         state_data = self._memory_store.get(state_token)
@@ -60,28 +61,26 @@ class OAuthStateManager:
             try:
                 state_data = self._get_from_database(state_token)
                 if state_data:
-                    print("从数据库恢复状态数据")
             except Exception as e:
-                print(f"从数据库获取状态失败: {e}")
+                logger.warning(f"从数据库获取状态失败: {e}")
         
         if not state_data:
-            print(f"状态token不存在: {state_token}")
+            logger.warning(f"状态token不存在: {state_token}")
             return False
         
         # 检查是否过期
         if time.time() > state_data.get('expires_at', 0):
-            print(f"状态token已过期: {state_token}")
+            logger.warning(f"状态token已过期: {state_token}")
             self._remove_state(state_token)
             return False
         
         # 检查provider是否匹配
         if state_data.get('provider') != provider:
-            print(f"Provider不匹配: 期望={provider}, 实际={state_data.get('provider')}")
+            logger.warning(f"Provider不匹配: 期望={provider}, 实际={state_data.get('provider')}")
             return False
         
         # 验证成功，清理状态
         self._remove_state(state_token)
-        print(f"✅ 状态验证成功: {state_token}")
         return True
     
     def _store_to_database(self, state_token: str, state_data: Dict[str, Any]):
@@ -106,7 +105,6 @@ class OAuthStateManager:
         try:
             self._remove_from_database(state_token)
         except Exception as e:
-            print(f"从数据库移除状态失败: {e}")
     
     def _remove_from_database(self, state_token: str):
         """从数据库移除状态"""
@@ -131,7 +129,6 @@ class OAuthStateManager:
             del self._memory_store[token]
         
         if expired_tokens:
-            print(f"清理了 {len(expired_tokens)} 个过期状态token")
         
         self._last_cleanup = current_time
     
@@ -168,7 +165,7 @@ def get_session_id(request) -> str:
             request.session['_session_id'] = session_id
         return session_id
     except Exception as e:
-        print(f"获取session ID失败: {e}")
+        logger.warning(f"获取session ID失败: {e}")
         # 如果session不可用，使用请求的客户端信息生成临时ID
         client_ip = getattr(request.client, 'host', 'unknown')
         user_agent = request.headers.get('user-agent', 'unknown')

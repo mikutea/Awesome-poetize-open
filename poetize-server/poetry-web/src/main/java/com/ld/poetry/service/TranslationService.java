@@ -23,6 +23,26 @@ public interface TranslationService {
     void translateAndSaveArticle(Integer articleId, boolean skipAiTranslation, Map<String, String> pendingTranslation);
 
     /**
+     * 只翻译文章内容，不保存到数据库（用于并行优化）
+     * @param title 文章标题
+     * @param content 文章内容
+     * @param skipAiTranslation 是否跳过AI翻译
+     * @param pendingTranslation 暂存的翻译数据
+     * @return 翻译结果 Map {title: 翻译后标题, content: 翻译后内容, language: 目标语言}，如果跳过翻译则返回null
+     */
+    Map<String, String> translateArticleOnly(String title, String content, boolean skipAiTranslation, Map<String, String> pendingTranslation);
+
+    /**
+     * 保存翻译结果到数据库
+     * @param articleId 文章ID
+     * @param translatedTitle 翻译后的标题
+     * @param translatedContent 翻译后的内容
+     * @param targetLanguage 目标语言
+     * @return 保存是否成功
+     */
+    boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent, String targetLanguage);
+
+    /**
      * 删除文章的所有翻译
      * @param articleId 文章ID
      */
@@ -83,10 +103,4 @@ public interface TranslationService {
      * @return 是否删除成功
      */
     boolean deleteSpecificTranslation(Integer articleId, String language);
-
-    /**
-     * 获取翻译语言配置
-     * @return 包含源语言和目标语言的配置Map
-     */
-    Map<String, String> getTranslationLanguageConfig();
 }

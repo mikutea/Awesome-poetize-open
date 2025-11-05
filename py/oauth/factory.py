@@ -159,7 +159,9 @@ class OAuthProviderFactory:
         if config_template:
             self.config_manager.add_provider_template(provider_name, config_template)
         
-        print(f"成功注册OAuth提供商: {provider_name}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"成功注册提供商: {provider_name}")
     
     def create_provider_safe(self, provider_name: str) -> Optional[BaseOAuthProvider]:
         """
@@ -174,5 +176,6 @@ class OAuthProviderFactory:
         try:
             return self.create_provider(provider_name)
         except Exception as e:
-            print(f"创建{provider_name}提供商失败: {str(e)}")
+            import logging
+            logger = logging.getLogger(__name__)
             return None

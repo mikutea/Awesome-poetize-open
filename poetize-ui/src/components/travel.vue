@@ -6,7 +6,7 @@
         <!-- 背景图片 -->
         <video class="index-video" autoplay="autoplay" muted="muted" loop="loop"
                preload="metadata" 
-               :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
+               :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
         </video>
         <div style="position: absolute;left: 20px;top: 20px">
           <!-- 标题 -->
@@ -43,7 +43,7 @@
 
         <photo :resourcePathList="photoList"></photo>
         <div class="pagination-wrap">
-          <div @click="pagePhotos()" class="pagination" v-if="photoPagination.total !== photoList.length">
+          <div @click="pagePhotos()" class="pagination" v-if="photoList.length < photoPagination.total">
             下一页
           </div>
           <div v-else style="user-select: none">
@@ -62,7 +62,9 @@
 
 <script>
 
-  const myFooter = () => import( "./common/myFooter");
+    import { useMainStore } from '@/stores/main';
+
+const myFooter = () => import( "./common/myFooter");
   const photo = () => import( "./common/photo");
   const proTag = () => import( "./common/proTag");
 
@@ -87,7 +89,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 

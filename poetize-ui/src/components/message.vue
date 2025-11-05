@@ -5,7 +5,7 @@
                 class="background-image"
                 v-once
                 lazy
-                :src="$store.state.webInfo.randomCover[Math.floor(Math.random() * $store.state.webInfo.randomCover.length)]"
+                :src="mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)]"
                 fit="cover">
         <div slot="error" class="image-slot background-image-error"></div>
       </el-image>
@@ -35,7 +35,12 @@
       
       <!-- 弹幕 -->
       <div class="barrage-container">
-        <vue-baberrage :barrageList="barrageList" :loop="true"></vue-baberrage>
+        <danmaku 
+          ref="danmaku" 
+          :list="barrageList" 
+          :loop="true"
+          :pauseOnHover="true"
+        ></danmaku>
       </div>
     </div>
     <div class="comment-wrap">
@@ -48,19 +53,28 @@
 </template>
 
 <script>
-  const comment = () => import( "./comment/comment");
+    import { useMainStore } from '@/stores/main';
+
+const comment = () => import( "./comment/comment");
   const myFooter = () => import( "./common/myFooter");
+  const danmaku = () => import( "./common/Danmaku");
 
   export default {
+        computed: {
+      mainStore() {
+        return useMainStore();
+      }
+    },
     components: {
       comment,
-      myFooter
+      myFooter,
+      danmaku
     },
     data() {
       return {
         show: false,
         messageContent: "",
-        // background: {"background": "url(" + this.$store.state.webInfo.backgroundImage + ") center center / cover no-repeat"},
+        // background: {"background": "url(" + this.mainStore.webInfo.backgroundImage + ") center center / cover no-repeat"},
         barrageList: []
       };
     },
@@ -82,7 +96,7 @@
               res.data.forEach(m => {
                 this.barrageList.push({
                   id: m.id,
-                  avatar: m.avatar,
+                  avatar: m.avatar, // 后端已处理随机头像
                   msg: m.message,
                   time: Math.floor(Math.random() * 5 + 10)
                 });
@@ -109,8 +123,11 @@
           message: this.messageContent.trim()
         };
 
-        if (!this.$common.isEmpty(this.$store.state.currentUser) && !this.$common.isEmpty(this.$store.state.currentUser.avatar)) {
-          treeHole.avatar = this.$store.state.currentUser.avatar;
+        // 如果用户已登录且有头像，使用用户头像
+        // 未登录或无头像时，不设置 avatar 字段，后端会自动分配随机头像
+        if (!this.$common.isEmpty(this.mainStore.currentUser) && 
+            !this.$common.isEmpty(this.mainStore.currentUser.avatar)) {
+          treeHole.avatar = this.mainStore.currentUser.avatar;
         }
 
 
@@ -119,7 +136,7 @@
             if (!this.$common.isEmpty(res.data)) {
               this.barrageList.push({
                 id: res.data.id,
-                avatar: res.data.avatar,
+                avatar: res.data.avatar, // 后端已处理随机头像
                 msg: res.data.message,
                 time: Math.floor(Math.random() * 5 + 10)
               });

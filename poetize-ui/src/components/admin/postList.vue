@@ -33,7 +33,6 @@
       <el-table-column prop="sort.sortName" label="分类" align="center"></el-table-column>
       <el-table-column prop="label.labelName" label="标签" align="center"></el-table-column>
       <el-table-column prop="viewCount" label="浏览量" align="center"></el-table-column>
-      <el-table-column prop="likeCount" label="点赞数" align="center"></el-table-column>
       <el-table-column label="是否可见" align="center">
         <template slot-scope="scope">
           <el-tag :type="scope.row.viewStatus === false ? 'danger' : 'success'"
@@ -69,9 +68,12 @@
       <el-table-column prop="commentCount" label="评论数" align="center"></el-table-column>
       <el-table-column prop="createTime" label="创建时间" align="center"></el-table-column>
       <el-table-column prop="updateTime" label="最终修改时间" align="center"></el-table-column>
-      <el-table-column label="操作" width="260" align="center">
+      <el-table-column label="操作" width="320" align="center">
         <template slot-scope="scope">
           <el-button type="text" icon="el-icon-edit" @click="handleEdit(scope.row)">编辑</el-button>
+          <el-button type="text" icon="el-icon-view" style="color: var(--blue)" @click="handleView(scope.row)">
+            查看
+          </el-button>
           <el-button type="text" icon="el-icon-s-tools" style="color: var(--blue)" @click="handleDeleteTranslation(scope.row)">
             删除翻译
           </el-button>
@@ -91,9 +93,8 @@
     </div>
 
     <!-- 删除翻译对话框 -->
-    <el-dialog title="删除翻译" :visible.sync="deleteTranslationDialog" width="500px" center>
+    <el-dialog title="删除翻译" :visible.sync="deleteTranslationDialog" width="500px" custom-class="centered-dialog">
       <div v-if="availableLanguages.length === 0" style="text-align: center; padding: 20px;">
-        <i class="el-icon-info" style="font-size: 48px; color: #909399;"></i>
         <p style="margin-top: 15px; color: #606266;">该文章暂无翻译版本</p>
       </div>
       
@@ -141,6 +142,9 @@
 </template>
 
 <script>
+    import { useMainStore } from '@/stores/main';
+
+import { getAdminLanguageMapping, getAdminLanguageName } from '@/utils/languageUtils';
 
   export default {
     data() {
@@ -164,31 +168,21 @@
         selectedLanguages: [],
         currentArticle: null,
         deleteLoading: false,
-        // 语言映射
+        // 语言映射（从数据库统一配置读取，这里只是初始占位）
         languageMap: {
           'zh': '中文',
-          'en': '英文',
-          'zh-TW': '繁体中文',
-          'ja': '日文',
-          'ko': '韩文',
-          'fr': '法文',
-          'de': '德文',
-          'es': '西班牙文',
-          'ru': '俄文',
-          'ar': '阿拉伯文',
-          'pt': '葡萄牙文',
-          'it': '意大利文',
-          'th': '泰文',
-          'vi': '越南文',
-          'hi': '印地文'
+          'en': 'English'
         }
       }
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       // 使用computed属性确保isBoss值能响应Store变化
       isBoss() {
-        return this.$store.state.currentAdmin.isBoss;
+        return this.mainStore.currentAdmin.isBoss;
       }
     },
 
@@ -200,7 +194,7 @@
         }
       },
       // 监听Store中currentAdmin的变化
-      '$store.state.currentAdmin': {
+      'mainStore.currentAdmin': {
         handler(newAdmin, oldAdmin) {
           // 当管理员信息更新时，重新获取文章数据
           if (newAdmin && newAdmin.isBoss !== oldAdmin?.isBoss) {
@@ -211,7 +205,9 @@
       }
     },
 
-    created() {
+    async created() {
+      // 加载后台管理用语言映射（中文）
+      this.languageMap = await getAdminLanguageMapping();
       this.getArticles();
       this.getSortAndLabel();
     },
@@ -372,9 +368,8 @@
         }
       },
       
-      getLanguageName(langCode) {
-        return this.languageMap[langCode] || langCode;
-      },
+      // 使用统一的后台管理语言映射工具（中文）
+      getLanguageName: getAdminLanguageName,
       
       selectAllLanguages() {
         this.selectedLanguages = [...this.availableLanguages];
@@ -509,13 +504,11 @@
                 language: language  // 传递语言参数，让Python服务知道要移除哪个语言版本
               }, true);
               
-              console.log(`成功移除文章 ${articleId} 的 ${language} 语言sitemap条目`);
             } catch (error) {
               console.error(`移除语言 ${language} 的sitemap条目失败:`, error);
             }
           }
           
-          console.log(`Sitemap已更新，移除文章 ${articleId} 的翻译语言:`, deletedLanguages);
         } catch (error) {
           console.error('更新sitemap失败:', error);
           // 不阻塞主流程，只记录错误
@@ -524,6 +517,13 @@
       
       handleEdit(item) {
         this.$router.push({path: '/postEdit', query: {id: item.id}});
+      },
+      handleView(item) {
+        // 在新标签页中打开文章详情页
+        const routeData = this.$router.resolve({
+          path: `/article/${item.id}`
+        });
+        window.open(routeData.href, '_blank');
       }
     }
   }
@@ -564,5 +564,98 @@
 
   .el-switch {
     margin: 5px;
+  }
+
+  /* ===========================================
+     表单移动端样式 - PC端和移动端响应式
+     =========================================== */
+  
+  /* PC端样式 - 768px以上 */
+  @media screen and (min-width: 769px) {
+    ::v-deep .el-form-item__label {
+      float: left !important;
+    }
+  }
+
+  /* 移动端样式 - 768px及以下 */
+  @media screen and (max-width: 768px) {
+    /* 表单标签 - 垂直布局 */
+    ::v-deep .el-form-item__label {
+      float: none !important;
+      width: 100% !important;
+      text-align: left !important;
+      margin-bottom: 8px !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
+      padding-bottom: 0 !important;
+      line-height: 1.5 !important;
+    }
+
+    ::v-deep .el-form-item__content {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+
+    ::v-deep .el-form-item {
+      margin-bottom: 20px !important;
+    }
+
+    /* 输入框移动端优化 */
+    ::v-deep .el-input__inner {
+      font-size: 16px !important;
+      height: 44px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 选择器移动端优化 */
+    ::v-deep .el-select {
+      width: 100% !important;
+    }
+
+    ::v-deep .el-select .el-input__inner {
+      height: 44px !important;
+      line-height: 44px !important;
+    }
+
+    /* 按钮移动端优化 */
+    ::v-deep .el-button {
+      min-height: 40px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 对话框移动端优化 */
+    ::v-deep .el-dialog {
+      width: 95% !important;
+      margin-top: 5vh !important;
+    }
+
+    ::v-deep .el-dialog__body {
+      padding: 15px !important;
+    }
+
+    /* 搜索框移动端优化 */
+    .handle-input {
+      width: 100% !important;
+      margin-bottom: 10px !important;
+    }
+  }
+
+  /* 极小屏幕优化 - 480px及以下 */
+  @media screen and (max-width: 480px) {
+    ::v-deep .el-form-item__label {
+      font-size: 13px !important;
+    }
+
+    ::v-deep .el-input__inner,
+    ::v-deep .el-select .el-input__inner {
+      height: 40px !important;
+      line-height: 40px !important;
+      font-size: 15px !important;
+    }
+
+    ::v-deep .el-button {
+      min-height: 38px !important;
+      font-size: 14px !important;
+    }
   }
 </style>

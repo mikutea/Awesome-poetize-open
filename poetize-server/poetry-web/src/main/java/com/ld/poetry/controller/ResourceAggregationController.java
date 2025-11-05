@@ -51,16 +51,25 @@ public class ResourceAggregationController {
     @LoginCheck(0)
     @PostMapping("/saveResourcePath")
     public PoetryResult saveResourcePath(@RequestBody ResourcePathVO resourcePathVO) {
-        if (!StringUtils.hasText(resourcePathVO.getTitle()) || !StringUtils.hasText(resourcePathVO.getType())) {
-            return PoetryResult.fail("标题和资源类型不能为空！");
+        // 侧边栏背景类型的特殊验证
+        if (CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            if (!StringUtils.hasText(resourcePathVO.getCover())) {
+                return PoetryResult.fail("侧边栏背景图片/CSS代码不能为空！");
+            }
+        } else {
+            if (!StringUtils.hasText(resourcePathVO.getTitle()) || !StringUtils.hasText(resourcePathVO.getType())) {
+                return PoetryResult.fail("标题和资源类型不能为空！");
+            }
         }
         
-        // 本站信息类型的特殊验证：只能有一条记录
-        if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
+        // 本站信息和侧边栏背景类型的特殊验证：只能有一条记录
+        if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) ||
+            CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
             LambdaQueryChainWrapper<ResourcePath> wrapper = new LambdaQueryChainWrapper<>(resourcePathMapper);
-            long count = wrapper.eq(ResourcePath::getType, CommonConst.RESOURCE_PATH_TYPE_SITE_INFO).count();
+            long count = wrapper.eq(ResourcePath::getType, resourcePathVO.getType()).count();
             if (count > 0) {
-                return PoetryResult.fail("本站信息只能有一条记录，请编辑现有记录！");
+                String typeName = CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType()) ? "本站信息" : "侧边栏背景";
+                return PoetryResult.fail(typeName + "只能有一条记录，请编辑现有记录！");
             }
         }
         
@@ -70,6 +79,41 @@ public class ResourceAggregationController {
         if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
             resourcePathVO.setUrl(null);
         }
+        
+        // 侧边栏背景：自动设置标题，并将额外背景层存储到remark
+        if (CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            resourcePathVO.setTitle("侧边栏背景");
+            if (StringUtils.hasText(resourcePathVO.getExtraBackground())) {
+                // 转义双引号和反斜杠
+                String escapedExtra = resourcePathVO.getExtraBackground()
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"");
+                resourcePathVO.setRemark("{\"extraBackground\":\"" + escapedExtra + "\"}");
+            } else {
+                resourcePathVO.setRemark(null); // 没有额外背景则不设置remark
+            }
+        }
+        
+        // 快捷入口和联系方式：将样式转换为JSON存储到remark字段
+        if (CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(resourcePathVO.getType()) || 
+            CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(resourcePathVO.getType())) {
+            StringBuilder jsonBuilder = new StringBuilder("{");
+            if (StringUtils.hasText(resourcePathVO.getBtnWidth())) {
+                jsonBuilder.append("\"btnWidth\":\"").append(resourcePathVO.getBtnWidth()).append("\",");
+            }
+            if (StringUtils.hasText(resourcePathVO.getBtnHeight())) {
+                jsonBuilder.append("\"btnHeight\":\"").append(resourcePathVO.getBtnHeight()).append("\",");
+            }
+            if (StringUtils.hasText(resourcePathVO.getBtnRadius())) {
+                jsonBuilder.append("\"btnRadius\":\"").append(resourcePathVO.getBtnRadius()).append("\",");
+            }
+            if (jsonBuilder.length() > 1) {
+                jsonBuilder.deleteCharAt(jsonBuilder.length() - 1); // 删除最后一个逗号
+            }
+            jsonBuilder.append("}");
+            resourcePathVO.setRemark(jsonBuilder.toString());
+        }
+        
         ResourcePath resourcePath = new ResourcePath();
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
         resourcePathMapper.insert(resourcePath);
@@ -123,11 +167,19 @@ public class ResourceAggregationController {
     @PostMapping("/updateResourcePath")
     @LoginCheck(0)
     public PoetryResult updateResourcePath(@RequestBody ResourcePathVO resourcePathVO) {
-        if (!StringUtils.hasText(resourcePathVO.getTitle()) || !StringUtils.hasText(resourcePathVO.getType())) {
-            return PoetryResult.fail("标题和资源类型不能为空！");
-        }
         if (resourcePathVO.getId() == null) {
             return PoetryResult.fail("Id不能为空！");
+        }
+        
+        // 侧边栏背景类型的特殊验证
+        if (CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            if (!StringUtils.hasText(resourcePathVO.getCover())) {
+                return PoetryResult.fail("侧边栏背景图片/CSS代码不能为空！");
+            }
+        } else {
+            if (!StringUtils.hasText(resourcePathVO.getTitle()) || !StringUtils.hasText(resourcePathVO.getType())) {
+                return PoetryResult.fail("标题和资源类型不能为空！");
+            }
         }
         if (CommonConst.RESOURCE_PATH_TYPE_LOVE_PHOTO.equals(resourcePathVO.getType())) {
             resourcePathVO.setRemark(PoetryUtil.getAdminUser().getId().toString());
@@ -135,6 +187,41 @@ public class ResourceAggregationController {
         if (CommonConst.RESOURCE_PATH_TYPE_SITE_INFO.equals(resourcePathVO.getType())) {
             resourcePathVO.setUrl(null);
         }
+        
+        // 侧边栏背景：自动设置标题，并将额外背景层存储到remark
+        if (CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(resourcePathVO.getType())) {
+            resourcePathVO.setTitle("侧边栏背景");
+            if (StringUtils.hasText(resourcePathVO.getExtraBackground())) {
+                // 转义双引号和反斜杠
+                String escapedExtra = resourcePathVO.getExtraBackground()
+                    .replace("\\", "\\\\")
+                    .replace("\"", "\\\"");
+                resourcePathVO.setRemark("{\"extraBackground\":\"" + escapedExtra + "\"}");
+            } else {
+                resourcePathVO.setRemark(null); // 没有额外背景则不设置remark
+            }
+        }
+        
+        // 快捷入口和联系方式：将样式转换为JSON存储到remark字段
+        if (CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(resourcePathVO.getType()) || 
+            CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(resourcePathVO.getType())) {
+            StringBuilder jsonBuilder = new StringBuilder("{");
+            if (StringUtils.hasText(resourcePathVO.getBtnWidth())) {
+                jsonBuilder.append("\"btnWidth\":\"").append(resourcePathVO.getBtnWidth()).append("\",");
+            }
+            if (StringUtils.hasText(resourcePathVO.getBtnHeight())) {
+                jsonBuilder.append("\"btnHeight\":\"").append(resourcePathVO.getBtnHeight()).append("\",");
+            }
+            if (StringUtils.hasText(resourcePathVO.getBtnRadius())) {
+                jsonBuilder.append("\"btnRadius\":\"").append(resourcePathVO.getBtnRadius()).append("\",");
+            }
+            if (jsonBuilder.length() > 1) {
+                jsonBuilder.deleteCharAt(jsonBuilder.length() - 1); // 删除最后一个逗号
+            }
+            jsonBuilder.append("}");
+            resourcePathVO.setRemark(jsonBuilder.toString());
+        }
+        
         ResourcePath resourcePath = new ResourcePath();
         BeanUtils.copyProperties(resourcePathVO, resourcePath);
         resourcePathMapper.updateById(resourcePath);
@@ -175,9 +262,8 @@ public class ResourceAggregationController {
         ResourcePathVO defaultSiteInfo = new ResourcePathVO();
         defaultSiteInfo.setTitle("POETIZE");
         defaultSiteInfo.setUrl(mailUtil.getSiteUrl());
-        defaultSiteInfo.setCover("https://s1.ax1x.com/2022/11/10/z9E7X4.jpg");
+        defaultSiteInfo.setCover("https://s1.ax1x.com/2022/11/10/z9VlHs.png");
         defaultSiteInfo.setIntroduction("这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～");
-        defaultSiteInfo.setRemark("https://s1.ax1x.com/2022/11/10/z9VlHs.png"); // 使用remark字段存储网站封面
         
         return PoetryResult.success(defaultSiteInfo);
     }
@@ -220,6 +306,35 @@ public class ResourceAggregationController {
             List<ResourcePathVO> resourcePathVOs = resourcePaths.stream().map(rp -> {
                 ResourcePathVO resourcePathVO = new ResourcePathVO();
                 BeanUtils.copyProperties(rp, resourcePathVO);
+                
+                // 快捷入口、联系方式、侧边栏背景：解析remark中的JSON，设置样式字段
+                if ((CommonConst.RESOURCE_PATH_TYPE_QUICK_ENTRY.equals(rp.getType()) || 
+                     CommonConst.RESOURCE_PATH_TYPE_CONTACT.equals(rp.getType()) ||
+                     CommonConst.RESOURCE_PATH_TYPE_ASIDE_BACKGROUND.equals(rp.getType())) && StringUtils.hasText(rp.getRemark())) {
+                    String remark = rp.getRemark().trim();
+                    if (remark.startsWith("{") && remark.endsWith("}")) {
+                        // 简单的JSON解析（避免引入额外依赖）
+                        remark = remark.substring(1, remark.length() - 1); // 去掉 {}
+                        String[] pairs = remark.split(",");
+                        for (String pair : pairs) {
+                            String[] keyValue = pair.split(":", 2);
+                            if (keyValue.length == 2) {
+                                String key = keyValue[0].trim().replace("\"", "");
+                                String value = keyValue[1].trim().replace("\"", "");
+                                if ("btnWidth".equals(key)) {
+                                    resourcePathVO.setBtnWidth(value);
+                                } else if ("btnHeight".equals(key)) {
+                                    resourcePathVO.setBtnHeight(value);
+                                } else if ("btnRadius".equals(key)) {
+                                    resourcePathVO.setBtnRadius(value);
+                                } else if ("extraBackground".equals(key)) {
+                                    resourcePathVO.setExtraBackground(value);
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 return resourcePathVO;
             }).collect(Collectors.toList());
             baseRequestVO.setRecords(resourcePathVOs);

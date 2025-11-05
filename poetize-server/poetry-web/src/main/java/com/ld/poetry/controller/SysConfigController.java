@@ -50,7 +50,18 @@ public class SysConfigController {
         LambdaQueryChainWrapper<SysConfig> wrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
         List<SysConfig> sysConfigs = wrapper.eq(SysConfig::getConfigType, Integer.toString(PoetryEnum.SYS_CONFIG_PUBLIC.getCode()))
                 .list();
-        Map<String, String> collect = sysConfigs.stream().collect(Collectors.toMap(SysConfig::getConfigKey, SysConfig::getConfigValue));
+        
+        // 处理重复的configKey，保留最后一个值，并记录警告日志
+        Map<String, String> collect = sysConfigs.stream().collect(
+            Collectors.toMap(
+                SysConfig::getConfigKey, 
+                SysConfig::getConfigValue,
+                (oldValue, newValue) -> {
+                    log.warn("检测到重复的配置键，将使用新值覆盖旧值。旧值: {}, 新值: {}", oldValue, newValue);
+                    return newValue;
+                }
+            )
+        );
         return PoetryResult.success(collect);
     }
 
@@ -78,6 +89,17 @@ public class SysConfigController {
             if (oldConfig != null) {
                 oldValue = oldConfig.getConfigValue();
             }
+        } else {
+            // 新增配置时，检查是否已存在相同的 configKey
+            LambdaQueryChainWrapper<SysConfig> checkWrapper = new LambdaQueryChainWrapper<>(sysConfigService.getBaseMapper());
+            SysConfig existingConfig = checkWrapper
+                    .eq(SysConfig::getConfigKey, sysConfig.getConfigKey())
+                    .eq(SysConfig::getConfigType, sysConfig.getConfigType())
+                    .one();
+            
+            if (existingConfig != null) {
+                return PoetryResult.fail("配置键 [" + sysConfig.getConfigKey() + "] 已存在，请勿重复添加！如需修改请编辑现有配置。");
+            }
         }
         
         boolean success = sysConfigService.saveOrUpdate(sysConfig);
@@ -85,10 +107,11 @@ public class SysConfigController {
         // 检查是否是影响sitemap的关键配置
         if (success && isConfigAffectingSitemap(sysConfig.getConfigKey(), oldValue, sysConfig.getConfigValue())) {
             try {
-                // 清除sitemap缓存，让下次访问时重新生成
+                // 重新生成sitemap并推送到搜索引擎（配置变更影响所有URL）
                 if (sitemapService != null) {
-                    sitemapService.clearSitemapCache();
-                    log.info("系统配置更新后已清除sitemap缓存，配置项: {}", sysConfig.getConfigKey());
+                    String reason = String.format("系统配置更新: %s", sysConfig.getConfigKey());
+                    sitemapService.updateSitemapAndPush(reason);
+                    log.info("系统配置更新后已重新生成sitemap并推送到搜索引擎，配置项: {}", sysConfig.getConfigKey());
                 }
                 
                 // 清除robots.txt缓存，让下次访问时重新生成

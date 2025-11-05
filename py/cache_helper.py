@@ -1,11 +1,14 @@
 """
 缓存辅助工具
 提供Python端需要的Redis缓存功能（翻译、AI聊天、OAuth状态管理）
+已修复双重JSON序列化问题
 """
 
+import logging
 from typing import Optional, Any
-import json
 from redis_client import get_redis_client
+
+logger = logging.getLogger(__name__)
 
 # 缓存键前缀
 CACHE_PREFIX = "poetize:python:"
@@ -28,21 +31,19 @@ class CacheHelper:
     def get(self, key: str) -> Optional[Any]:
         """获取缓存"""
         try:
-            value = self.redis_client.get(key)
-            if value:
-                return json.loads(value)
-            return None
+            # redis_client.get() 已经自动解析JSON，直接返回即可
+            return self.redis_client.get(key)
         except Exception as e:
-            print(f"获取缓存失败 {key}: {e}")
+            logger.error(f"获取缓存失败 {key}: {e}")
             return None
     
     def set(self, key: str, value: Any, expire: int = None) -> bool:
         """设置缓存"""
         try:
-            json_value = json.dumps(value, ensure_ascii=False)
-            return self.redis_client.set(key, json_value, ex=expire)
+            # redis_client.set() 已经自动序列化dict/list，直接传入即可
+            return self.redis_client.set(key, value, ex=expire)
         except Exception as e:
-            print(f"设置缓存失败 {key}: {e}")
+            logger.error(f"设置缓存失败 {key}: {e}")
             return False
     
     def delete(self, key: str) -> int:
@@ -50,7 +51,7 @@ class CacheHelper:
         try:
             return self.redis_client.delete(key)
         except Exception as e:
-            print(f"删除缓存失败 {key}: {e}")
+            logger.error(f"删除缓存失败 {key}: {e}")
             return 0
     
     def exists(self, key: str) -> bool:
@@ -58,7 +59,7 @@ class CacheHelper:
         try:
             return self.redis_client.exists(key) > 0
         except Exception as e:
-            print(f"检查缓存存在失败 {key}: {e}")
+            logger.error(f"检查缓存存在失败 {key}: {e}")
             return False
     
     # ========== 翻译缓存 ==========

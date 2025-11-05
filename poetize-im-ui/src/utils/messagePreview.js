@@ -4,9 +4,9 @@
  */
 
 /**
- * 获取消息预览文本（正确处理表情符号和文本混合内容）
+ * 获取消息预览HTML（保留表情图标）
  * @param {string} content - 消息内容（可能包含HTML标签）
- * @returns {string} 预览文本
+ * @returns {string} 预览HTML（包含表情图标）
  */
 export function getMessagePreview(content) {
   if (!content) return '';
@@ -15,29 +15,66 @@ export function getMessagePreview(content) {
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = content;
   
-  let previewText = '';
+  let previewHtml = '';
+  let textLength = 0;
+  const maxLength = 10; // 最大显示长度（10个字左右，避免换行）
+  let hasMoreContent = false; // 标记是否有未显示的内容
   
-  // 遍历所有子节点，正确处理文本和表情符号
+  // 遍历所有子节点，保留表情图标
   function processNode(node) {
+    if (textLength >= maxLength) {
+      hasMoreContent = true; // 标记还有内容未显示
+      return;
+    }
+    
     if (node.nodeType === Node.TEXT_NODE) {
-      // 文本节点，直接添加文本内容
-      previewText += node.textContent;
+      // 文本节点
+      const text = node.textContent;
+      const remainingLength = maxLength - textLength;
+      
+      if (text.length <= remainingLength) {
+        previewHtml += text;
+        textLength += text.length;
+      } else {
+        previewHtml += text.substr(0, remainingLength);
+        textLength = maxLength;
+        hasMoreContent = true; // 文本被截断，标记有更多内容
+      }
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       if (node.tagName === 'IMG') {
-        // 图片节点，检查是否是表情符号
-        const title = node.getAttribute('title');
+        // 图片节点
         const src = node.getAttribute('src');
+        const title = node.getAttribute('title');
         
-        if (src && src.includes('emoji/q') && title) {
-          // 表情符号，使用title属性
-          previewText += title;
+        if (src && src.includes('emoji/q')) {
+          // 检查是否还有足够空间显示表情
+          if (textLength + 2 <= maxLength) {
+            // 表情符号，保留img标签，调整大小适配列表
+            previewHtml += `<img src="${src}" ${title ? `title="${title}"` : ''} style="width: 20px; height: 20px; vertical-align: middle; margin: 0 2px;">`;
+            textLength += 2; // 表情算2个字符长度（因为表情占用空间较大）
+          } else {
+            hasMoreContent = true; // 表情显示不下，标记有更多内容
+          }
         } else {
-          // 普通图片
-          previewText += '[图片]';
+          // 普通图片，显示文字
+          if (textLength + 4 <= maxLength) {
+            previewHtml += '[图片]';
+            textLength += 4;
+          } else {
+            hasMoreContent = true;
+          }
         }
+      } else if (node.tagName === 'BR') {
+        // 换行符，转换为空格
+        previewHtml += ' ';
+        textLength += 1;
       } else {
         // 其他HTML元素，递归处理子节点
         for (let child of node.childNodes) {
+          if (textLength >= maxLength) {
+            hasMoreContent = true;
+            break;
+          }
           processNode(child);
         }
       }
@@ -46,19 +83,27 @@ export function getMessagePreview(content) {
   
   // 处理所有子节点
   for (let child of tempDiv.childNodes) {
+    if (textLength >= maxLength) {
+      hasMoreContent = true;
+      break;
+    }
     processNode(child);
   }
   
   // 清理多余的空白字符
-  previewText = previewText.replace(/\s+/g, ' ').trim();
+  previewHtml = previewHtml.replace(/\s+/g, ' ').trim();
   
-  // 如果没有提取到任何内容，检查是否是纯图片消息
-  if (!previewText && content.includes('<img')) {
-    previewText = '[图片]';
+  // 如果有更多内容未显示，添加省略号
+  if (hasMoreContent && previewHtml) {
+    previewHtml += '...';
   }
   
-  // 截取前10个字符（增加显示长度以更好展示混合内容）
-  return previewText.length > 10 ? previewText.substr(0, 10) + '...' : previewText;
+  // 如果没有提取到任何内容，检查是否是纯图片消息
+  if (!previewHtml && content.includes('<img')) {
+    previewHtml = '[图片]';
+  }
+  
+  return previewHtml;
 }
 
 /**

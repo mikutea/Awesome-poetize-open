@@ -6,7 +6,7 @@
         <!-- 背景图片 -->
         <video class="index-video" autoplay="autoplay" muted="muted" loop="loop"
                preload="metadata" 
-               :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
+               :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/backgroundVideo.mp4'">
         </video>
         <div class="favorites-header-content">
           <!-- 标题 -->
@@ -66,7 +66,9 @@
 </template>
 
 <script>
-  const myFooter = () => import( "./common/myFooter");
+    import { useMainStore } from '@/stores/main';
+
+const myFooter = () => import( "./common/myFooter");
 
   export default {
     components: {
@@ -79,13 +81,16 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
     created() {
-      // 设置页面标题
-      this.$store.commit("setTitle", "收藏夹 | " + this.$store.state.sysConfig.webName);
+      // 设置页面标题（注：setTitle 方法已移除，页面标题由路由或组件自行管理）
+      // document.title = "收藏夹 | " + this.mainStore.sysConfig.webName;
       this.getCollect();
     },
 

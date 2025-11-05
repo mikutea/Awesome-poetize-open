@@ -1,5 +1,5 @@
 <template>
-  <div class="my-header myBetween">
+  <div class="my-header myBetween" :class="{ 'header-dark': isAdminDark }">
     <div class="logo">后台管理</div>
     <div class="header-right">
       <div class="admin-index" @click="$router.push({path: '/'})">
@@ -24,9 +24,21 @@
         </svg>
         <span>&nbsp;首页</span>
       </div>
+      <!-- 暗色模式切换按钮 -->
+      <div class="theme-toggle" @click="$emit('toggle-theme')" :title="isAdminDark ? '切换到浅色模式' : '切换到暗色模式'">
+        <svg v-if="!isAdminDark" viewBox="0 0 1024 1024" width="22" height="22">
+          <!-- 月亮图标（浅色模式显示） -->
+          <path d="M593.216 143.488a368 368 0 1 0 287.232 287.264 272.576 272.576 0 0 1-287.232-287.232z" fill="currentColor"></path>
+        </svg>
+        <svg v-else viewBox="0 0 1024 1024" width="22" height="22">
+          <!-- 太阳图标（暗色模式显示） -->
+          <path d="M512 224a288 288 0 1 0 288 288 288 288 0 0 0-288-288z m0 512a224 224 0 1 1 224-224 224 224 0 0 1-224 224z m0-640a32 32 0 0 0 32-32V32a32 32 0 0 0-64 0v32a32 32 0 0 0 32 32z m0 832a32 32 0 0 0-32 32v32a32 32 0 0 0 64 0v-32a32 32 0 0 0-32-32zM195.2 195.2a32 32 0 0 0 0-45.248l-22.624-22.624a32 32 0 0 0-45.248 45.248l22.624 22.624a32 32 0 0 0 45.248 0z m701.472 678.656a32 32 0 0 0-45.248 0l-22.624 22.624a32 32 0 0 0 45.248 45.248l22.624-22.624a32 32 0 0 0 0-45.248zM96 512a32 32 0 0 0-32-32H32a32 32 0 0 0 0 64h32a32 32 0 0 0 32-32z m896 0a32 32 0 0 0-32-32h-32a32 32 0 0 0 0 64h32a32 32 0 0 0 32-32zM195.2 828.8a32 32 0 0 0-45.248 0l-22.624 22.624a32 32 0 0 0 45.248 45.248l22.624-22.624a32 32 0 0 0 0-45.248z m678.656-678.656a32 32 0 0 0 0-45.248l-22.624-22.624a32 32 0 0 0-45.248 45.248l22.624 22.624a32 32 0 0 0 45.248 0z" fill="currentColor"></path>
+        </svg>
+      </div>
       <div class="header-user-con">
         <el-avatar class="user-avatar" :size="40"
-                  :src="$store.state.currentAdmin.avatar">
+                  :src="$common.getAvatarUrl(mainStore.currentAdmin.avatar)">
+          <img :src="$getDefaultAvatar()" />
         </el-avatar>
       </div>
     </div>
@@ -34,12 +46,24 @@
 </template>
 
 <script>
-  export default {
+    import { useMainStore } from '@/stores/main';
+
+export default {
+    props: {
+      isAdminDark: {
+        type: Boolean,
+        default: false
+      }
+    },
+    
     data() {
       return {}
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -62,8 +86,12 @@
               type: "error"
             });
           });
-        this.$store.commit("loadCurrentAdmin", {});
+        this.mainStore.loadCurrentUser( {});
+        this.mainStore.loadCurrentAdmin( {});
+        localStorage.removeItem("userToken");
         localStorage.removeItem("adminToken");
+        
+        // 后台退出登录，跳转到首页
         this.$router.push({path: '/'});
       }
     }
@@ -103,6 +131,51 @@
   .header-user-con {
     display: flex;
     align-items: center;
+  }
+  
+  /* 暗色模式切换按钮 */
+  .theme-toggle {
+    height: 70px;
+    display: flex;
+    align-items: center;
+    margin-right: 20px;
+    cursor: pointer;
+    padding: 0 12px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    color: #606266;
+  }
+  
+  .theme-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #409EFF;
+  }
+  
+  /* 深色模式下的header样式 */
+  .header-dark {
+    background-color: #2d2d2d !important;
+    color: #e0e0e0 !important;
+  }
+  
+  .header-dark .logo {
+    color: #e0e0e0;
+  }
+  
+  .header-dark .admin-index {
+    color: #e0e0e0;
+  }
+  
+  .header-dark .admin-index:hover {
+    color: #409EFF;
+  }
+  
+  .header-dark .theme-toggle {
+    color: #b0b0b0;
+  }
+  
+  .header-dark .theme-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #409EFF;
   }
 
 </style>

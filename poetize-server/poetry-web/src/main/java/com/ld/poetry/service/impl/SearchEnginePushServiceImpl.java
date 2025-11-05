@@ -13,6 +13,7 @@ import com.ld.poetry.utils.mail.MailUtil;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.TranslationService;
 import com.ld.poetry.entity.WebInfo;
+import com.ld.poetry.utils.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -26,10 +27,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 搜索引擎推送服务实现类
- * 整合所有搜索引擎的推送功能，读取Java端的SEO配置
+ * 整合所有搜索引擎的推送功能，读取数据库中的SEO配置
  * 
  * @author LeapYa
  * @since 2025-09-22
@@ -62,22 +67,23 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
     
     @Autowired
     private TranslationService translationService;
+    
+    @Autowired
+    private RedisUtil redisUtil;
 
     private static final String[] SUPPORTED_ENGINES = {
         "baidu", "google", "bing", "yandex", "yahoo", "sogou", "so", "shenma"
     };
     
-    // SEO配置缓存，避免频繁调用SEO配置服务
-    private Map<String, Object> cachedSeoConfig = null;
-    private long configCacheTime = 0;
-    private static final long CONFIG_CACHE_DURATION = 300_000; // 5分钟缓存
+    // Redis缓存键名和过期时间（使用Redis分布式缓存替代实例变量）
+    private static final String SEO_CONFIG_CACHE_KEY = "seo:config:cache";
+    private static final long CONFIG_CACHE_DURATION_SECONDS = 300; // 5分钟缓存
 
     @Override
     public Map<String, Object> pushUrlToAllEngines(String url) {
-        log.info("开始推送URL到所有启用的搜索引擎: {}", url);
         
         Map<String, Object> result = new HashMap<>();
-        Map<String, Object> engineResults = new HashMap<>();
+        Map<String, Object> engineResults = new ConcurrentHashMap<>();
         
         if (!StringUtils.hasText(url)) {
             result.put("success", false);
@@ -87,7 +93,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
         
         // 如果是文章URL，获取所有需要推送的URL（包括翻译版本）
         List<String> urlsToPush = getUrlsIncludingTranslations(url);
-        log.info("需要推送的URL列表: {}", urlsToPush);
         
         // 获取SEO配置
         Map<String, Object> seoConfig = getSeoConfig();
@@ -97,80 +102,116 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             return result;
         }
         
-        int totalEngines = 0;
-        int successCount = 0;
-        int totalUrlsPushed = 0;
-        int successfulUrlsPushed = 0;
+        AtomicInteger totalEngines = new AtomicInteger(0);
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger totalUrlsPushed = new AtomicInteger(0);
+        AtomicInteger successfulUrlsPushed = new AtomicInteger(0);
         
-        // 遍历所有支持的搜索引擎
-        for (String engine : SUPPORTED_ENGINES) {
-            boolean enabled = isEngineEnabled(seoConfig, engine);
-            if (enabled) {
-                totalEngines++;
-                Map<String, Object> engineResult = new HashMap<>();
-                List<Map<String, Object>> urlResults = new ArrayList<>();
-                int engineSuccessCount = 0;
-                
-                // 为每个引擎推送所有URL
-                for (String urlToPush : urlsToPush) {
-                    totalUrlsPushed++;
-                    try {
-                        Map<String, Object> singleUrlResult = pushUrlToEngine(urlToPush, engine);
-                        urlResults.add(Map.of(
-                            "url", urlToPush,
-                            "success", singleUrlResult.get("success"),
-                            "message", singleUrlResult.get("message")
-                        ));
+        // 并行推送到所有启用的搜索引擎
+        try (var scope = StructuredTaskScope.open()) {
+            Map<String, Subtask<Map<String, Object>>> engineTasks = new HashMap<>();
+            
+            // 为每个启用的搜索引擎创建并行推送任务
+            for (String engine : SUPPORTED_ENGINES) {
+                boolean enabled = isEngineEnabled(seoConfig, engine);
+                if (enabled) {
+                    totalEngines.incrementAndGet();
+                    
+                    engineTasks.put(engine, scope.fork(() -> {
+                        Map<String, Object> engineResult = new HashMap<>();
+                        List<Map<String, Object>> urlResults = new ArrayList<>();
+                        int engineSuccessCount = 0;
                         
-                        if (Boolean.TRUE.equals(singleUrlResult.get("success"))) {
-                            engineSuccessCount++;
-                            successfulUrlsPushed++;
+                        // 为当前引擎推送所有URL
+                        for (String urlToPush : urlsToPush) {
+                            try {
+                                Map<String, Object> singleUrlResult = pushUrlToEngine(urlToPush, engine);
+                                urlResults.add(Map.of(
+                                    "url", urlToPush,
+                                    "success", singleUrlResult.get("success"),
+                                    "message", singleUrlResult.get("message")
+                                ));
+                                
+                                if (Boolean.TRUE.equals(singleUrlResult.get("success"))) {
+                                    engineSuccessCount++;
+                                }
+                            } catch (Exception e) {
+                                log.warn("推送{}到{}失败: {}", urlToPush, engine, e.getMessage());
+                                urlResults.add(Map.of(
+                                    "url", urlToPush,
+                                    "success", false,
+                                    "message", e.getMessage()
+                                ));
+                            }
                         }
-                    } catch (Exception e) {
-                        log.warn("推送{}到{}失败: {}", urlToPush, engine, e.getMessage());
-                        urlResults.add(Map.of(
-                            "url", urlToPush,
-                            "success", false,
-                            "message", e.getMessage()
-                        ));
-                    }
+                        
+                        engineResult.put("success", engineSuccessCount > 0);
+                        engineResult.put("successCount", engineSuccessCount);
+                        engineResult.put("totalUrls", urlsToPush.size());
+                        engineResult.put("urlResults", urlResults);
+                        engineResult.put("message", String.format("成功推送 %d/%d 个URL", engineSuccessCount, urlsToPush.size()));
+                        
+                        return engineResult;
+                    }));
+                } else {
                 }
-                
-                engineResult.put("success", engineSuccessCount > 0);
-                engineResult.put("successCount", engineSuccessCount);
-                engineResult.put("totalUrls", urlsToPush.size());
-                engineResult.put("urlResults", urlResults);
-                engineResult.put("message", String.format("成功推送 %d/%d 个URL", engineSuccessCount, urlsToPush.size()));
-                
-                engineResults.put(engine, engineResult);
-                
-                if (engineSuccessCount > 0) {
-                    successCount++;
-                }
-            } else {
-                log.debug("搜索引擎{}未启用，跳过推送", engine);
             }
+            
+            // 等待所有引擎推送完成
+            scope.join();
+            
+            // 收集结果
+            for (Map.Entry<String, Subtask<Map<String, Object>>> entry : engineTasks.entrySet()) {
+                String engine = entry.getKey();
+                Subtask<Map<String, Object>> task = entry.getValue();
+                
+                if (task.state() == Subtask.State.SUCCESS) {
+                    Map<String, Object> engineResult = task.get();
+                    engineResults.put(engine, engineResult);
+                    
+                    int engineSuccessCount = (Integer) engineResult.get("successCount");
+                    int engineTotalUrls = (Integer) engineResult.get("totalUrls");
+                    
+                    totalUrlsPushed.addAndGet(engineTotalUrls);
+                    successfulUrlsPushed.addAndGet(engineSuccessCount);
+                    
+                    if (engineSuccessCount > 0) {
+                        successCount.incrementAndGet();
+                    }
+                } else {
+                    log.error("搜索引擎{}推送失败", engine);
+                    engineResults.put(engine, Map.of(
+                        "success", false,
+                        "message", "推送任务执行失败"
+                    ));
+                }
+            }
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("搜索引擎推送被中断", e);
+            result.put("success", false);
+            result.put("message", "推送被中断");
+            return result;
         }
         
-        result.put("success", successCount > 0);
-        result.put("totalEngines", totalEngines);
-        result.put("successCount", successCount);
-        result.put("totalUrlsPushed", totalUrlsPushed);
-        result.put("successfulUrlsPushed", successfulUrlsPushed);
+        result.put("success", successCount.get() > 0);
+        result.put("totalEngines", totalEngines.get());
+        result.put("successCount", successCount.get());
+        result.put("totalUrlsPushed", totalUrlsPushed.get());
+        result.put("successfulUrlsPushed", successfulUrlsPushed.get());
         result.put("url", url);  // 原始URL
         result.put("allUrls", urlsToPush);  // 所有推送的URL
         result.put("results", engineResults);
         result.put("timestamp", new Date());
         
-        if (successCount > 0) {
+        if (successCount.get() > 0) {
             result.put("message", String.format("成功推送到 %d/%d 个搜索引擎，共推送 %d/%d 个URL", 
-                    successCount, totalEngines, successfulUrlsPushed, totalUrlsPushed));
-            log.info("URL推送完成，成功引擎: {}/{}, 成功URL: {}/{}", 
-                    successCount, totalEngines, successfulUrlsPushed, totalUrlsPushed);
+                    successCount.get(), totalEngines.get(), successfulUrlsPushed.get(), totalUrlsPushed.get()));
         } else {
-            result.put("message", totalEngines > 0 ? "所有启用的搜索引擎推送都失败了" : "没有启用任何搜索引擎");
+            result.put("message", totalEngines.get() > 0 ? "所有启用的搜索引擎推送都失败了" : "没有启用任何搜索引擎");
             log.warn("URL推送完成，成功引擎: {}/{}, 成功URL: {}/{}", 
-                    successCount, totalEngines, successfulUrlsPushed, totalUrlsPushed);
+                    successCount.get(), totalEngines.get(), successfulUrlsPushed.get(), totalUrlsPushed.get());
         }
         
         // 触发邮件通知回调
@@ -239,60 +280,64 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Map<String, Object> getSeoConfig() {
-        // 检查缓存是否有效（5分钟内）
-        long currentTime = System.currentTimeMillis();
-        if (cachedSeoConfig != null && (currentTime - configCacheTime) < CONFIG_CACHE_DURATION) {
-            log.debug("从缓存获取SEO配置");
-            return cachedSeoConfig;
-        }
-        
         try {
-            log.debug("从Java SEO配置服务获取配置");
+            // 尝试从Redis缓存获取SEO配置
+            Object cachedConfig = redisUtil.get(SEO_CONFIG_CACHE_KEY);
+            if (cachedConfig != null) {
+                return (Map<String, Object>) cachedConfig;
+            }
             
-            // 直接从Java的SEO配置服务获取
+            
+            // 从数据库查询SEO配置
             Map<String, Object> seoConfig = seoConfigService.getSeoConfigAsJson();
             
             if (seoConfig != null && !seoConfig.isEmpty()) {
                 // site_address 已迁移至 web_info 表，使用的地方应直接调用 mailUtil.getSiteUrl()
                 
-                // 更新缓存
-                cachedSeoConfig = seoConfig;
-                configCacheTime = currentTime;
+                // 将配置存入Redis缓存（5分钟过期）
+                boolean cached = redisUtil.set(SEO_CONFIG_CACHE_KEY, seoConfig, CONFIG_CACHE_DURATION_SECONDS);
+                if (cached) {
+                } else {
+                    log.warn("SEO配置存入Redis缓存失败，但仍返回配置");
+                }
                 
-                log.debug("成功从Java SEO配置服务获取配置，已缓存5分钟");
                 return seoConfig;
             } else {
-                log.warn("Java SEO配置服务返回空配置，使用备用配置");
+                log.warn("数据库中SEO配置为空，使用备用默认配置");
                 return getFallbackSeoConfig();
             }
             
         } catch (Exception e) {
-            log.error("从Java SEO配置服务获取配置失败: {}", e.getMessage(), e);
+            log.error("获取SEO配置失败: {}", e.getMessage(), e);
             return getFallbackSeoConfig();
         }
     }
     
     @Override
     public void clearSeoConfigCache() {
-        this.cachedSeoConfig = null;
-        this.configCacheTime = 0;
-        log.info("SearchEnginePushService SEO配置缓存已清理");
+        try {
+            redisUtil.del(SEO_CONFIG_CACHE_KEY);
+            log.info("SearchEnginePushService SEO配置Redis缓存已清理");
+        } catch (Exception e) {
+            log.error("清理SEO配置Redis缓存失败", e);
+        }
     }
     
     /**
      * 获取备用SEO配置
-     * 当无法从Java SEO配置服务获取配置时使用
+     * 当无法从数据库获取配置时使用（所有搜索引擎推送均禁用）
      */
     private Map<String, Object> getFallbackSeoConfig() {
-        log.warn("使用备用SEO配置");
+        log.warn("使用备用默认SEO配置（所有搜索引擎推送禁用）");
         
-        // 返回一个基本的配置，只启用简单的ping推送
+        // 返回一个安全的默认配置，禁用所有搜索引擎推送
         Map<String, Object> fallbackConfig = new HashMap<>();
         fallbackConfig.put("enable", true);
         // site_address 已迁移至 web_info 表，使用的地方应直接调用 mailUtil.getSiteUrl()
         
-        // 所有搜索引擎推送都禁用，避免无配置的推送
+        // 所有搜索引擎推送都禁用，避免无有效API Token时的推送
         fallbackConfig.put("baidu_push_enabled", false);
         fallbackConfig.put("google_index_enabled", false);
         fallbackConfig.put("bing_push_enabled", false);
@@ -402,7 +447,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "百度推送成功");
                 result.put("response", responseJson);
-                log.info("百度推送成功: {}", responseJson);
             } else {
                 result.put("success", false);
                 result.put("message", "百度推送失败: HTTP " + response.getStatusCode());
@@ -452,7 +496,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "Google索引提交成功");
                 result.put("response", responseJson);
-                log.info("Google索引提交成功: {}", responseJson);
             } else {
                 result.put("success", false);
                 result.put("message", "Google索引提交失败: HTTP " + response.getStatusCode());
@@ -482,7 +525,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             result.put("success", true);
             result.put("message", "Google ping推送成功");
             result.put("response", response != null ? response : "");
-            log.info("Google ping推送成功: {}", url);
             
         } catch (Exception e) {
             log.error("Google ping推送失败", e);
@@ -526,7 +568,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "Bing IndexNow提交成功");
                 result.put("response", response.getBody());
-                log.info("Bing IndexNow提交成功: {}", url);
             } else {
                 result.put("success", false);
                 result.put("message", "Bing IndexNow提交失败: HTTP " + response.getStatusCode());
@@ -556,7 +597,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             result.put("success", true);
             result.put("message", "Bing ping推送成功");
             result.put("response", response != null ? response : "");
-            log.info("Bing ping推送成功: {}", url);
             
         } catch (Exception e) {
             log.error("Bing ping推送失败", e);
@@ -600,7 +640,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "Yandex推送成功");
                 result.put("response", response.getBody());
-                log.info("Yandex推送成功: {}", url);
             } else {
                 result.put("success", false);
                 result.put("message", "Yandex推送失败: HTTP " + response.getStatusCode());
@@ -630,7 +669,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             result.put("success", true);
             result.put("message", "Yahoo推送成功");
             result.put("response", response != null ? response : "");
-            log.info("Yahoo推送成功: {}", url);
             
         } catch (Exception e) {
             log.error("Yahoo推送失败", e);
@@ -683,7 +721,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "搜狗推送成功");
                 result.put("response", response.getBody());
-                log.info("搜狗推送成功: {}", url);
             } else {
                 result.put("success", false);
                 result.put("message", "搜狗推送失败: HTTP " + response.getStatusCode());
@@ -741,7 +778,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "360推送成功");
                 result.put("response", responseJson);
-                log.info("360推送成功: {}", responseJson);
             } else {
                 result.put("success", false);
                 result.put("message", "360推送失败: HTTP " + response.getStatusCode());
@@ -794,7 +830,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
                 result.put("success", true);
                 result.put("message", "神马推送成功");
                 result.put("response", responseJson);
-                log.info("神马推送成功: {}", responseJson);
             } else {
                 result.put("success", false);
                 result.put("message", "神马推送失败: HTTP " + response.getStatusCode());
@@ -848,7 +883,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             // 检查是否启用推送通知
             Boolean enablePushNotification = (Boolean) seoConfig.get("enable_push_notification");
             if (!Boolean.TRUE.equals(enablePushNotification)) {
-                log.debug("推送通知未启用，跳过邮件发送");
                 return;
             }
 
@@ -857,18 +891,17 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             Boolean pushSuccess = (Boolean) pushResult.get("success");
             
             if (Boolean.TRUE.equals(notifyOnlyOnFailure) && Boolean.TRUE.equals(pushSuccess)) {
-                log.debug("配置为仅失败时通知，且推送成功，跳过邮件发送");
                 return;
             }
 
-            // 异步发送邮件通知，避免影响推送性能
-            new Thread(() -> {
+            // 使用虚拟线程异步发送邮件通知，避免影响推送性能
+            Thread.ofVirtual().name("seo-email-notify").start(() -> {
                 try {
                     sendNotificationEmail(articleId, url, pushResult);
                 } catch (Exception e) {
                     log.error("发送SEO推送结果通知邮件时出错", e);
                 }
-            }).start();
+            });
 
         } catch (Exception e) {
             log.error("触发邮件通知时出错", e);
@@ -938,7 +971,6 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             boolean mailSent = mailService.sendMail(recipients, subject, content, true, null);
 
             if (mailSent) {
-                log.info("SEO推送结果通知邮件发送成功，收件人: {}, 文章ID: {}", author.getEmail(), articleId);
             } else {
                 log.warn("SEO推送结果通知邮件发送失败，收件人: {}, 文章ID: {}", author.getEmail(), articleId);
             }
@@ -1119,32 +1151,99 @@ public class SearchEnginePushServiceImpl implements SearchEnginePushService {
             // 检查是否是文章URL格式: {site_address}/article/{id}
             Integer articleId = extractArticleIdFromUrl(url);
             if (articleId == null) {
-                log.debug("URL不是文章格式，仅推送原始URL: {}", url);
                 return urls;
             }
             
             // 获取文章的所有翻译语言
             List<String> availableLanguages = translationService.getArticleAvailableLanguages(articleId);
             if (availableLanguages == null || availableLanguages.isEmpty()) {
-                log.debug("文章ID {}没有翻译版本，仅推送源文章URL", articleId);
                 return urls;
             }
             
-            // 为每种翻译语言生成URL
-            String baseUrl = url.substring(0, url.lastIndexOf("/article/"));
+            // 构建翻译文章URL
             for (String language : availableLanguages) {
-                String translatedUrl = baseUrl + "/article/" + language + "/" + articleId;
-                urls.add(translatedUrl);
-                log.debug("添加翻译文章URL: {} (语言: {})", translatedUrl, language);
+                String translatedUrl = buildTranslatedArticleUrl(url, articleId, language);
+                if (translatedUrl != null) {
+                    urls.add(translatedUrl);
+                }
             }
             
-            log.info("文章ID {} 共生成 {} 个URL进行推送: 1个源文章 + {} 个翻译版本", 
-                    articleId, urls.size(), availableLanguages.size());
             
         } catch (Exception e) {
             log.warn("获取翻译URL时出错，仅推送原始URL: {}", url, e);
         }
         
         return urls;
+    }
+    
+    /**
+     * 安全地构建翻译文章URL
+     * 使用 URI 类处理，支持带查询参数和 fragment 的 URL
+     * 
+     * @param originalUrl 原始文章URL (如: https://example.com/article/123?ref=twitter#comments)
+     * @param articleId 文章ID
+     * @param language 目标语言
+     * @return 翻译文章URL (如: https://example.com/article/en/123?ref=twitter#comments)
+     */
+    private String buildTranslatedArticleUrl(String originalUrl, Integer articleId, String language) {
+        try {
+            java.net.URI originalUri = java.net.URI.create(originalUrl);
+            
+            // 获取原始路径
+            String originalPath = originalUri.getPath();
+            if (originalPath == null) {
+                log.warn("URL路径为空，无法构建翻译URL: {}", originalUrl);
+                return null;
+            }
+            
+            // 查找 /article/ 的位置
+            int articleIndex = originalPath.lastIndexOf("/article/");
+            if (articleIndex == -1) {
+                log.warn("URL路径中未找到 /article/ 标识，无法构建翻译URL: {}", originalUrl);
+                return null;
+            }
+            
+            // 构建新路径：保留 /article/ 之前的部分 + /article/ + 语言 + / + 文章ID
+            String basePath = originalPath.substring(0, articleIndex);
+            String newPath = basePath + "/article/" + language + "/" + articleId;
+            
+            // 构建新的 URI，保留 scheme, host, port, query, fragment
+            StringBuilder translatedUrl = new StringBuilder();
+            
+            // Scheme (http/https)
+            if (originalUri.getScheme() != null) {
+                translatedUrl.append(originalUri.getScheme()).append("://");
+            }
+            
+            // Host
+            if (originalUri.getHost() != null) {
+                translatedUrl.append(originalUri.getHost());
+            }
+            
+            // Port (如果不是默认端口)
+            if (originalUri.getPort() != -1) {
+                translatedUrl.append(":").append(originalUri.getPort());
+            }
+            
+            // Path
+            translatedUrl.append(newPath);
+            
+            // Query parameters (保留原始查询参数，如 ?ref=twitter)
+            if (originalUri.getQuery() != null) {
+                translatedUrl.append("?").append(originalUri.getQuery());
+            }
+            
+            // Fragment (保留原始fragment，如 #comments)
+            if (originalUri.getFragment() != null) {
+                translatedUrl.append("#").append(originalUri.getFragment());
+            }
+            
+            return translatedUrl.toString();
+            
+        } catch (Exception e) {
+            log.error("构建翻译文章URL失败，原始URL: {}, 语言: {}, 错误: {}", 
+                    originalUrl, language, e.getMessage(), e);
+            return null;
+        }
     }
 }

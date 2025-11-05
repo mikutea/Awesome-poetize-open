@@ -285,20 +285,16 @@ public class ApiController {
                 if (Boolean.TRUE.equals(articleVO.getSubmitToSearchEngine())) {
                     try {
                         // 此处可以调用搜索引擎推送相关服务
-                        // 如果系统中已有推送服务，可以直接调用
-                        log.info("API创建的文章ID {} 标记为需要推送至搜索引擎", articleId);
-                        System.out.println("【API控制器】文章ID " + articleId + " 标记为需要推送至搜索引擎");
-                        
                         // 调用SEO服务进行推送
-                        boolean seoResult = seoService.submitToSearchEngines(articleId);
-                        System.out.println("【API控制器】SEO推送结果: " + (seoResult ? "成功" : "失败"));
+                        log.info("API创建的文章ID {} 标记为需要推送至搜索引擎", articleId);
+                        Map<String, Object> seoResult = seoService.submitToSearchEngines(articleId);
+                        String status = (String) seoResult.get("status");
+                        String message = (String) seoResult.get("message");
+                        log.info("API文章搜索引擎推送结果: 文章ID={}, 状态={}, {}", articleId, status, message);
                     } catch (Exception e) {
-                        log.error("搜索引擎推送失败，但不影响文章创建", e);
-                        System.out.println("【API控制器】搜索引擎推送失败: " + e.getMessage());
-                        e.printStackTrace();
+                        log.error("API文章搜索引擎推送失败，但不影响文章创建，文章ID: {}", articleId, e);
                     }
                 } else {
-                    System.out.println("【API控制器】文章ID " + articleId + " 未标记为需要推送至搜索引擎");
                 }
                 
                 Map<String, Object> data = new HashMap<>();
@@ -374,7 +370,6 @@ public class ApiController {
             articleVO.setSortId(article.getSortId());
             articleVO.setLabelId(article.getLabelId());
             articleVO.setViewCount(article.getViewCount());
-            articleVO.setLikeCount(article.getLikeCount());
             articleVO.setCommentStatus(article.getCommentStatus());
             articleVO.setRecommendStatus(article.getRecommendStatus());
             articleVO.setViewStatus(article.getViewStatus());

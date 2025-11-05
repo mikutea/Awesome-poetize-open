@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-09-25
+## 修改时间: 2025-10-23
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 1.1.0
+## 版本: 1.2.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -619,6 +619,20 @@ backup_database() {
     local backup_cmd="sudo docker exec $actual_container mariadb-dump -u root -p'$DB_ROOT_PASSWORD' --single-transaction --routines --triggers --databases poetize > '$BACKUP_DIR/poetry.sql'"
     
     if retry_command "$MAX_RETRIES" "$RETRY_DELAY" "数据库备份" "$backup_cmd"; then
+        # 备份端口配置
+        info "备份端口配置..."
+        local http_port=""
+        if [ -f "docker-compose.yml" ]; then
+            # 提取HTTP端口配置（支持多种格式）
+            http_port=$(grep -E '^\s*-\s*["'\'']*[0-9]+:80' docker-compose.yml 2>/dev/null | head -1 | grep -oE '[0-9]+' | head -1)
+            if [ -n "$http_port" ]; then
+                echo "$http_port" > "$BACKUP_DIR/http_port.txt"
+                success "HTTP端口配置备份完成: $http_port"
+            else
+                info "使用默认80端口"
+            fi
+        fi
+        
         save_state "$STEP_BACKUP_DB" "completed"
         save_backup_info
         success "数据库备份成功: $BACKUP_DIR/poetry.sql"
@@ -941,8 +955,31 @@ deploy_on_target() {
     # 如果提取到了域名，自动添加域名参数
     if [ -n "$NGINX_DOMAINS" ]; then
         info "使用提取到的域名参数: $(echo "$NGINX_DOMAINS" | tr '\n' ' ')"
+        
+        # 从备份中读取端口配置
+        local http_port=""
+        local backup_port_file="$BACKUP_DIR/http_port.txt"
+        if [ -f "$backup_port_file" ]; then
+            http_port=$(cat "$backup_port_file" 2>/dev/null | tr -d '[:space:]')
+            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+                info "从备份中读取到HTTP端口: $http_port"
+            else
+                http_port=""
+            fi
+        else
+            info "未找到端口配置备份，将使用默认80端口"
+        fi
+        
+        # 添加域名参数（支持 域名:端口 格式）
         for domain in $NGINX_DOMAINS; do
-            deploy_cmd="$deploy_cmd -d $domain"
+            if [ -n "$http_port" ] && [ "$http_port" != "80" ]; then
+                # 为域名添加自定义端口
+                deploy_cmd="$deploy_cmd -d ${domain}:${http_port}"
+                info "使用域名和端口: ${domain}:${http_port}"
+            else
+                deploy_cmd="$deploy_cmd -d $domain"
+                info "使用域名: $domain"
+            fi
         done
         info "完整的部署命令: $deploy_cmd"
     else

@@ -14,7 +14,7 @@
           <div 
             ref="slideTrackFill" 
             class="slide-track-fill"
-            :style="{ width: slidePosition + (isDragging ? buttonWidth/2 : 0) + 'px' }"
+            :style="{ width: slidePosition + (isDragging || verified ? buttonWidth/2 : 0) + 'px' }"
           >
             <div class="track-stars" v-if="!verified">
               <span>✨</span>
@@ -34,14 +34,26 @@
           @mousedown.prevent="onDragStart"
           @touchstart.prevent="onDragStart"
         >
-          <div class="slide-button-icon" v-if="!verified">></div>
-          <div class="slide-button-icon success" v-else>√</div>
+          <div class="slide-button-icon" v-if="!verified">
+            <svg t="1761392312974" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="5450" width="24" height="24">
+              <path d="M761.055557 532.128047c0.512619-0.992555 1.343475-1.823411 1.792447-2.848649 8.800538-18.304636 5.919204-40.703346-9.664077-55.424808L399.935923 139.743798c-19.264507-18.208305-49.631179-17.344765-67.872168 1.888778-18.208305 19.264507-17.375729 49.631179 1.888778 67.872168l316.960409 299.839269L335.199677 813.631716c-19.071845 18.399247-19.648112 48.767639-1.247144 67.872168 9.407768 9.791372 21.984142 14.688778 34.560516 14.688778 12.000108 0 24.000215-4.479398 33.311652-13.439914l350.048434-337.375729c0.672598-0.672598 0.927187-1.599785 1.599785-2.303346 0.512619-0.479935 1.056202-0.832576 1.567101-1.343475C757.759656 538.879828 759.199462 535.391265 761.055557 532.128047z" fill="#ffffff" p-id="5451"></path>
+            </svg>
+          </div>
+          <div class="slide-button-icon success" v-else>
+            <svg t="1761392930423" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="12241" width="24" height="24">
+              <path d="M380.343 801.646a53.394 53.394 0 0 1-36.572-16.092L125.44 568.32a55.589 55.589 0 0 1 0-77.166 54.126 54.126 0 0 1 76.8 0l178.103 179.2L835.29 272.091a53.394 53.394 0 0 1 76.435 0 54.126 54.126 0 0 1 0 76.8L418.743 785.554a54.491 54.491 0 0 1-38.4 16.092z" fill="#ffffff" p-id="12242"></path>
+            </svg>
+          </div>
         </div>
       </div>
       
       <transition name="bounce">
         <div v-if="errorMsg" class="slide-message error">
-          <i class="slide-message-icon">❌</i>
+          <i class="slide-message-icon">
+            <svg t="1761392553630" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="7629" width="20" height="20">
+              <path d="M727 676.05a36.11 36.11 0 0 1 0 50.95 36.11 36.11 0 0 1-50.91 0L512 562.91 348 727a36.11 36.11 0 0 1-51 0 36.11 36.11 0 0 1 0-50.91l164-164L297 348a36.11 36.11 0 0 1 0-51 36.11 36.11 0 0 1 51 0l164 164.09 164-164a36.11 36.11 0 0 1 51-0.09 36.11 36.11 0 0 1 0 51L562.91 512z" fill="#ff6b95" p-id="7630"></path>
+            </svg>
+          </i>
           {{ errorMsg }}
         </div>
       </transition>
@@ -105,9 +117,7 @@ export default {
     try {
       const { getBrowserFingerprint } = await import('@/utils/fingerprintUtil')
       this.browserFingerprint = await getBrowserFingerprint()
-      console.log('滑动验证码 - 浏览器指纹已加载:', this.browserFingerprint)
     } catch (error) {
-      console.warn('浏览器指纹加载失败:', error)
     }
     
     
@@ -259,24 +269,73 @@ export default {
         browserFingerprint: this.browserFingerprint
       };
       
-      console.log('滑动验证数据:', verifyData);
       
       // 调用后端验证接口
       this.$http.post(this.$constant.baseURL + "/captcha/verify-slide", verifyData)
         .then(res => {
-          console.log("滑动验证响应:", res);
           
-          if (res.data && res.data.success) {
+          // 处理返回的数据（支持两种格式）
+          let responseData = res.data;
+          if (res.data && res.data.code === 200 && res.data.data) {
+            responseData = res.data.data;
+          }
+          
+          // 检查是否被封禁
+          if (responseData && responseData.blocked) {
+            const remainingMinutes = responseData.remainingMinutes || 30;
+            const blockMessage = `验证失败次数过多，已被限制 ${remainingMinutes} 分钟`;
+            
+            this.$message({
+              message: responseData.message || `您的IP已被临时限制 ${remainingMinutes} 分钟，请稍后再试`,
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            });
+            
+            // 使用自定义错误消息
+            this.verifyFail(blockMessage);
+            return;
+          }
+          
+          // 显示警告信息（剩余次数少时）
+          if (responseData && responseData.warning) {
+            this.$message({
+              message: responseData.warning,
+              type: 'warning',
+              duration: 4000,
+              showClose: true
+            });
+          }
+          
+          // 检查验证是否成功
+          if (responseData && responseData.success) {
             this.verifySuccess();
           } else {
-            this.errorMsg = res.data?.message || '验证失败，请重试';
-            this.verifyFail();
+            const failMessage = responseData?.message || '验证失败，请重试';
+            
+            // 显示具体的失败原因
+            if (responseData && responseData.message) {
+              this.$message({
+                message: responseData.message,
+                type: 'error',
+                duration: 3000
+              });
+            }
+            
+            // 使用自定义错误消息
+            this.verifyFail(failMessage);
           }
         })
         .catch(error => {
           console.error("滑动验证失败:", error);
-          this.errorMsg = '验证失败，请重试';
-          this.verifyFail();
+          this.$message({
+            message: '验证请求失败，请检查网络连接',
+            type: 'error',
+            duration: 3000
+          });
+          
+          // 使用自定义错误消息
+          this.verifyFail('网络错误，请重试');
         });
     },
     
@@ -298,9 +357,15 @@ export default {
     },
     
     // 验证失败
-    verifyFail() {
+    verifyFail(customErrorMsg = null) {
       this.verified = false;
-      this.errorMsg = '没滑到终点哦，验证失败！';
+      // 如果没有自定义错误消息，使用默认消息
+      if (customErrorMsg) {
+        this.errorMsg = customErrorMsg;
+      } else if (!this.errorMsg) {
+        // 只有在errorMsg为空时才设置默认消息
+        this.errorMsg = '没滑到终点哦，验证失败！';
+      }
       
       // 播放失败音效
       this.playSound('fail');
@@ -359,7 +424,6 @@ export default {
       try {
         // 如果需要，可以在这里添加音效播放逻辑
       } catch(e) {
-        console.log('播放音效失败', e);
       }
     },
     
@@ -569,6 +633,9 @@ export default {
   font-size: 24px;
   user-select: none;
   transition: transform 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .slide-button.active .slide-button-icon {
@@ -609,6 +676,9 @@ export default {
   font-style: normal;
   margin-right: 6px;
   font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 页脚样式 */

@@ -59,19 +59,15 @@ public class ThreadContextConfig implements AsyncConfigurer {
                                 Integer userId = cacheService.getUserIdFromSession(token);
                                 if (userId != null) {
                                     currentUser = cacheService.getCachedUser(userId);
-                                    log.debug("异步任务中成功获取用户信息: userId={}", userId);
                                 } else {
-                                    log.debug("异步任务中token无效: {}", token);
                                 }
                             } catch (Exception e) {
-                                log.debug("异步任务中获取用户信息失败: token={}, error={}", token, e.getMessage());
                             }
                         }
                     }
                 }
             } catch (Exception e) {
                 // 如果获取Token失败，记录日志但不影响异步任务执行
-                log.debug("异步任务中获取用户Token失败: {}", e.getMessage());
             }
             
             // 保存最终用户对象，供内部类使用
@@ -92,10 +88,8 @@ public class ThreadContextConfig implements AsyncConfigurer {
                     // 优先使用捕获的用户信息，因为它可能更完整
                     if (capturedUser != null) {
                         AsyncUserContext.setUser(capturedUser);
-                        log.debug("异步任务使用捕获的用户信息: {}", capturedUser.getUsername());
                     } else if (finalUser != null) {
                         AsyncUserContext.setUser(finalUser);
-                        log.debug("异步任务使用从token获取的用户信息: {}", finalUser.getUsername());
                     }
                     
                     if (finalToken != null) {
@@ -103,14 +97,10 @@ public class ThreadContextConfig implements AsyncConfigurer {
                     }
                     
                     User userContext = AsyncUserContext.getUser();
-                    log.debug("异步任务开始 - 用户: {}, Token: {}", 
-                            userContext != null ? userContext.getUsername() : (capturedUsername != null ? capturedUsername : "匿名"),
-                            finalToken != null ? finalToken.substring(0, Math.min(finalToken.length(), 10)) + "..." : "无");
                     
                     // 执行异步任务
                     task.run();
                     
-                    log.debug("异步任务执行成功");
                 } catch (Exception e) {
                     log.error("异步任务执行失败 - 用户: {}, 异常: {}", 
                             AsyncUserContext.getCurrentUsername(), e.getMessage(), e);

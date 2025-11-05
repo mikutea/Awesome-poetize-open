@@ -6,7 +6,7 @@
               style="position: absolute;margin-top: -50px"
               v-once
               lazy
-              :src="$store.state.webInfo.randomCover[Math.floor(Math.random() * $store.state.webInfo.randomCover.length)]"
+              :src="mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)]"
               fit="cover">
       <div slot="error" class="image-slot"></div>
     </el-image>
@@ -21,9 +21,16 @@
   </div>
 </template>
 <script>
-  import apiFallback from '@/utils/api-fallback';
+    import { useMainStore } from '@/stores/main';
+
+import apiFallback from '@/utils/api-fallback';
   
   export default {
+        computed: {
+      mainStore() {
+        return useMainStore();
+      }
+    },
     props: {
       isHitokoto: {
         type: Boolean,

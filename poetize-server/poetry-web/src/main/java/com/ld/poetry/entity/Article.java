@@ -101,12 +101,6 @@ public class Article implements Serializable {
     private Integer viewCount;
 
     /**
-     * 点赞数
-     */
-    @TableField("like_count")
-    private Integer likeCount;
-
-    /**
      * 是否启用评论[0:否，1:是]
      */
     @TableField("comment_status")

@@ -10,7 +10,7 @@
            class="toolbar-content myBetween">
         <!-- 网站名称 -->
         <div class="toolbar-title">
-          <h2 @click="$router.push({path: '/'})">{{$store.state.webInfo.webName}}</h2>
+          <h2 @click="$router.push({path: '/'})">{{mainStore.webInfo.webName}}</h2>
         </div>
 
         <!-- 手机导航按钮 -->
@@ -27,7 +27,10 @@
             <!-- 遍历导航项并按配置顺序显示 -->
             <template v-for="(item, index) in orderedNavItems">
               <!-- 首页 -->
-              <li v-if="item.name === '首页'" :key="'nav-'+index" @click="$router.push({path: '/'})">
+              <li v-if="item.name === '首页'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/', '首页')"
+                  @click="goHome()">
                 <div class="my-menu">
                   🏡 <span>首页</span>
                 </div>
@@ -42,7 +45,9 @@
                 </li>
                 <el-dropdown-menu slot="dropdown">
                   <el-dropdown-item v-for="(sort, sortIndex) in sortInfo" :key="sortIndex">
-                    <div @click="$router.push('/sort/' + sort.id)">
+                    <div draggable="true" 
+                         @dragstart="handleNavDragStart($event, '/sort/' + sort.id, sort.sortName)"
+                         @click="$router.push('/sort/' + sort.id)">
                       {{sort.sortName}}
                     </div>
                   </el-dropdown-item>
@@ -50,35 +55,50 @@
               </el-dropdown>
 
               <!-- 家 -->
-              <li v-if="item.name === '家'" :key="'nav-'+index" @click="$router.push({path: '/love'})">
+              <li v-if="item.name === '家'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/love', '家')"
+                  @click="$router.push({path: '/love'})">
                 <div class="my-menu">
                   ❤️‍🔥 <span>家</span>
                 </div>
               </li>
 
               <!-- 友人帐 -->
-              <li v-if="item.name === '友人帐'" :key="'nav-'+index" @click="$router.push({path: '/friends'})">
+              <li v-if="item.name === '友人帐'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/friends', '友人帐')"
+                  @click="$router.push({path: '/friends'})">
                 <div class="my-menu">
                   🤝 <span>友人帐</span>
                 </div>
               </li>
 
               <!-- 曲乐 -->
-              <li v-if="item.name === '曲乐'" :key="'nav-'+index" @click="$router.push({path: '/music'})">
+              <li v-if="item.name === '曲乐'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/music', '曲乐')"
+                  @click="$router.push({path: '/music'})">
                 <div class="my-menu">
                   🎵 <span>曲乐</span>
                 </div>
               </li>
 
               <!-- 收藏夹 -->
-              <li v-if="item.name === '收藏夹'" :key="'nav-'+index" @click="$router.push({path: '/favorites'})">
+              <li v-if="item.name === '收藏夹'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/favorites', '收藏夹')"
+                  @click="$router.push({path: '/favorites'})">
                 <div class="my-menu">
                   📁 <span>收藏夹</span>
                 </div>
               </li>
 
               <!-- 留言 -->
-              <li v-if="item.name === '留言'" :key="'nav-'+index" @click="$router.push({path: '/message'})">
+              <li v-if="item.name === '留言'" :key="'nav-'+index" 
+                  draggable="true" 
+                  @dragstart="handleNavDragStart($event, '/message', '留言')"
+                  @click="$router.push({path: '/message'})">
                 <div class="my-menu">
                   📪 <span>留言</span>
                 </div>
@@ -93,7 +113,10 @@
             </template>
 
             <!-- 后台 -->
-            <li @click="goAdmin()" v-if="!$common.isEmpty($store.state.currentUser) && ($store.state.currentUser.userType === 0 || $store.state.currentUser.userType === 1)">
+            <li @click="goAdmin()" 
+                draggable="true" 
+                @dragstart="handleNavDragStart($event, '/admin', '后台')"
+                v-if="!$common.isEmpty(mainStore.currentUser) && (mainStore.currentUser.userType === 0 || mainStore.currentUser.userType === 1)">
               <div class="my-menu">
                 💻️ <span>后台</span>
               </div>
@@ -102,42 +125,38 @@
             <!-- 登录/个人中心 -->
             <li>
               <!-- 未登录时显示粉色圆形登录按钮 -->
-              <div v-if="$common.isEmpty($store.state.currentUser)" 
+              <div v-if="$common.isEmpty(mainStore.currentUser)" 
                    class="circle-login-button"
-                   @click="$router.push({path: '/user'})">
+                   @click="goToLogin()">
                 登录
               </div>
               
               <!-- 已登录时显示头像和自定义下拉菜单 -->
-              <div v-else 
-                   class="avatar-dropdown-container"
-                   @mouseenter="showUserMenu = true"
-                   @mouseleave="showUserMenu = false">
+              <div v-else class="avatar-dropdown-container">
                 <el-avatar class="user-avatar" 
-                          :class="{ 'avatar-hover': showUserMenu }"
                           :size="36"
                           style="margin-top: 12px"
-                          :src="$store.state.currentUser.avatar">
+                          :src="$common.getAvatarUrl(mainStore.currentUser.avatar)">
+                  <img :src="$getDefaultAvatar()" />
                 </el-avatar>
 
                 <!-- 自定义下拉菜单 -->
-                <transition name="menu-fade">
-                  <div v-show="showUserMenu" class="custom-user-menu">
+                <div class="custom-user-menu">
                     <!-- 用户名 -->
                     <div class="user-menu-header">
-                      <span class="user-menu-name">{{$store.state.currentUser.username}}</span>
-                      <span v-if="$store.state.currentUser"
+                      <span class="user-menu-name">{{mainStore.currentUser.username}}</span>
+                      <span v-if="mainStore.currentUser"
                             class="user-role-badge"
                             :class="{
-                              'owner': $store.state.currentUser.userType === 0,
-                              'admin': $store.state.currentUser.userType === 1
+                              'owner': mainStore.currentUser.userType === 0,
+                              'admin': mainStore.currentUser.userType === 1
                             }">
-                        {{$store.state.currentUser.userType === 0 ? '站长' : ($store.state.currentUser.userType === 1 ? '管理员' : '用户')}}
+                        {{mainStore.currentUser.userType === 0 ? '站长' : (mainStore.currentUser.userType === 1 ? '管理员' : '用户')}}
                       </span>
                     </div>
                     
                     <!-- 个人中心 -->
-                    <div class="user-menu-item" @click="$router.push({path: '/user'})">
+                    <div class="user-menu-item" @click="goToUserCenter()">
                       <i class="fa fa-user-circle" aria-hidden="true"></i>
                       <span>个人中心</span>
                       <i class="fa fa-angle-right menu-arrow" aria-hidden="true"></i>
@@ -147,12 +166,11 @@
                     <div class="user-menu-divider"></div>
                     
                     <!-- 退出 -->
-                    <div class="user-menu-item" @click="logout()">
+                    <div class="user-menu-item" @click="handleLogout()">
                       <i class="fa fa-sign-out" aria-hidden="true"></i>
                       <span>退出</span>
                     </div>
-                  </div>
-                </transition>
+                </div>
               </div>
             </li>
           </ul>
@@ -168,13 +186,15 @@
 <!--    <div href="#" class="cd-top" v-if="!$common.mobile()" @click="toTop()"></div>-->
 
     <div class="toolButton">
+      <!-- 注释原因：通过CSS层叠上下文已解决article.vue中语言切换按钮的遮挡问题
+           原按钮在所有屏幕尺寸下都可用，不再需要这个备用的简化按钮 -->
       <!-- 简化语言切换按钮 - 只在文章页面且屏幕≤1050px时显示 -->
-      <div class="simple-lang-switch"
+      <!-- <div class="simple-lang-switch"
            v-if="showSimpleLangSwitch"
            @click="handleSimpleLangSwitch()"
            :title="getSimpleLangSwitchTitle()">
         <span class="simple-lang-text">{{ getSimpleLangDisplay() }}</span>
-      </div>
+      </div> -->
 
       <!-- 目录按钮 - 只在文章页面显示 -->
       <div class="toc-button-container" v-if="showTocButton" @click="clickTocButton()">
@@ -235,7 +255,7 @@
       <!-- 自定义头像标题 -->
       <div v-if="showDrawerAvatar" slot="title" class="drawer-avatar-container">
         <img 
-          :src="$store.state.webInfo.avatar" 
+          :src="$common.getAvatarUrl(mainStore.webInfo.avatar)" 
           :style="{
             width: drawerAvatarSize + 'px',
             height: drawerAvatarSize + 'px',
@@ -255,7 +275,7 @@
           <!-- 遍历导航项并按配置顺序显示 -->
           <template v-for="(item, index) in orderedNavItems">
             <!-- 首页 -->
-            <li v-if="item.name === '首页'" :key="'mobile-nav-'+index" @click="smallMenu({path: '/'})">
+            <li v-if="item.name === '首页'" :key="'mobile-nav-'+index" @click="goHomeMobile()">
               <div>
                 🏡 <span>首页</span>
               </div>
@@ -322,26 +342,26 @@
           </template>
 
           <!-- 后台 -->
-          <li @click="goAdmin()" v-if="!$common.isEmpty($store.state.currentUser) && ($store.state.currentUser.userType === 0 || $store.state.currentUser.userType === 1)">
+          <li @click="goAdmin()" v-if="!$common.isEmpty(mainStore.currentUser) && (mainStore.currentUser.userType === 0 || mainStore.currentUser.userType === 1)">
             <div>
               💻️ <span>后台</span>
             </div>
           </li>
 
           <!-- 登录/个人中心 -->
-          <li v-if="$common.isEmpty($store.state.currentUser)" @click="smallMenu({path: '/user'})">
+          <li v-if="$common.isEmpty(mainStore.currentUser)" @click="goToLoginMobile()">
             <div>
               <i class="fa fa-sign-in" aria-hidden="true"></i> <span>登录</span>
             </div>
           </li>
 
-          <li v-if="!$common.isEmpty($store.state.currentUser)" @click="smallMenu({path: '/user'})">
+          <li v-if="!$common.isEmpty(mainStore.currentUser)" @click="smallMenu({path: '/user'})">
             <div>
               <i class="fa fa-user-circle" aria-hidden="true"></i> <span>个人中心</span>
             </div>
           </li>
 
-          <li v-if="!$common.isEmpty($store.state.currentUser)" @click="smallMenuLogout">
+          <li v-if="!$common.isEmpty(mainStore.currentUser)" @click="smallMenuLogout">
             <div>
               <i class="fa fa-sign-out" aria-hidden="true"></i> <span>退出</span>
             </div>
@@ -354,13 +374,14 @@
 
 <script>
   import mousedown from '../utils/mousedown';
+  import { useMainStore } from '@/stores/main';
 
   export default {
     data() {
       return {
         toolButton: false,
         showTocButton: false, // 控制目录按钮显示
-        showSimpleLangSwitch: false, // 控制简化语言切换按钮显示
+        // showSimpleLangSwitch: false, // 控制简化语言切换按钮显示（已注释，不再需要）
         hoverEnter: false,
         mouseAnimation: false,
         isDark: false,
@@ -370,10 +391,8 @@
         visitCountInterval: null,
         // 移动端侧边栏配置
         drawerConfig: null,
-        // 移动端侧边栏"分类"菜单展开状态（智能判断）
-        sortMenuExpanded: this.getInitialSortMenuState(),
-        // 用户菜单显示状态
-        showUserMenu: false
+        // 移动端侧边栏"分类"菜单展开状态（智能判断）- 初始化为 false，在 created 中设置
+        sortMenuExpanded: false
       }
     },
     mounted() {
@@ -382,101 +401,59 @@
       }
       window.addEventListener("scroll", this.onScrollPage);
       
-      // 优先从localStorage恢复用户保存的主题（支持过期机制）
+      // 优先从localStorage恢复用户保存的主题
       try {
-        const savedData = localStorage.getItem('poetize-theme');
-        if (savedData) {
-          // 尝试解析新格式（带时间戳）
-          try {
-            const themeData = JSON.parse(savedData);
-            
-            // 检查是否是新格式
-            if (themeData && themeData.timestamp && themeData.theme) {
-              const now = Date.now();
-              const elapsed = now - themeData.timestamp;
-              
-              // 检查是否过期（1天 = 24 * 60 * 60 * 1000 毫秒）
-              if (elapsed > themeData.expiry) {
-                console.log('主题设置已过期，清除并使用默认逻辑');
-                localStorage.removeItem('poetize-theme');
-                // 使用默认的白天夜晚逻辑
-                if (this.isDaylight()) {
-                  this.isDark = true;
-                  this.applyDarkTheme();
-                }
-              } else {
-                console.log(`恢复保存的主题: ${themeData.theme}，剩余有效时间: ${Math.round((themeData.expiry - elapsed) / (60 * 60 * 1000))}小时`);
-                if (themeData.theme === 'dark') {
-                  this.isDark = true;
-                  this.applyDarkTheme();
-                } else {
-                  this.isDark = false;
-                  this.applyLightTheme();
-                }
-                console.log('主题已从localStorage恢复');
-              }
-            } else {
-              // 旧格式，直接使用并升级为新格式
-              console.log('检测到旧格式主题数据，将升级为新格式');
-              if (savedData === 'dark') {
-                this.isDark = true;
-                this.applyDarkTheme();
-                // 升级为新格式
-                const themeData = {
-                  theme: 'dark',
-                  timestamp: Date.now(),
-                  expiry: 24 * 60 * 60 * 1000
-                };
-                localStorage.setItem('poetize-theme', JSON.stringify(themeData));
-              } else {
-                this.isDark = false;
-                this.applyLightTheme();
-                // 升级为新格式
-                const themeData = {
-                  theme: 'light',
-                  timestamp: Date.now(),
-                  expiry: 24 * 60 * 60 * 1000
-                };
-                localStorage.setItem('poetize-theme', JSON.stringify(themeData));
-              }
-              console.log('主题已从localStorage恢复并升级为新格式');
-            }
-          } catch (parseError) {
-            console.error('解析主题数据失败:', parseError);
-            localStorage.removeItem('poetize-theme');
-            // 使用默认逻辑
-            if (this.isDaylight()) {
-              this.isDark = true;
-              this.applyDarkTheme();
-            }
-          }
+        // 清理旧的格式数据（迁移）
+        if (localStorage.getItem('poetize-theme')) {
+          localStorage.removeItem('poetize-theme');
+        }
+        
+        const userTheme = localStorage.getItem('theme');
+        
+        if (userTheme === 'dark') {
+          this.isDark = true;
+          this.applyDarkTheme(false); // 已经保存过了，不再重复保存
+        } else if (userTheme === 'light') {
+          this.isDark = false;
+          this.applyLightTheme(false); // 已经保存过了，不再重复保存
         } else {
-          console.log('未找到保存的主题，使用默认逻辑');
-          // 如果没有保存的主题，则使用原来的白天夜晚逻辑
-          if (this.isDaylight()) {
+          // 用户未手动设置，检查系统偏好或使用时间判断
+          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          
+          if (prefersDark) {
             this.isDark = true;
-            this.applyDarkTheme();
+            this.applyDarkTheme(false); // 不保存，跟随系统
+          } else if (this.isDaylight()) {
+            // 如果系统是浅色模式，则使用原来的白天夜晚逻辑
+            this.isDark = true;
+            this.applyDarkTheme(false); // 不保存，跟随时间
+          } else {
+            this.isDark = false;
+            this.applyLightTheme(false); // 不保存，跟随时间
           }
         }
       } catch (error) {
-        console.error('恢复主题时出错:', error);
-        // 出错时使用原来的逻辑
-        if (this.isDaylight()) {
+        // 出错时检查系统偏好或时间
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark || this.isDaylight()) {
           this.isDark = true;
-          this.applyDarkTheme();
+          this.applyDarkTheme(false); // 不保存，自动逻辑
         }
       }
 
+      // 监听系统暗色模式变化
+      this.setupSystemThemeListener();
+
       // 灰色模式
-      if (this.$store.state.webInfo && this.$store.state.webInfo.enableGrayMode) {
+      if (this.mainStore.webInfo && this.mainStore.webInfo.enableGrayMode) {
         this.applyGrayMask();
       }
 
       // 初始化目录按钮显示状态
       this.updateTocButtonVisibility();
 
-      // 初始化简化语言切换按钮显示状态
-      this.updateSimpleLangSwitchVisibility();
+      // 初始化简化语言切换按钮显示状态（已注释，不再需要）
+      // this.updateSimpleLangSwitchVisibility();
     },
     destroyed() {
       window.removeEventListener("scroll", this.onScrollPage);
@@ -492,7 +469,7 @@
       // 监听路由变化，控制目录按钮显示
       '$route'(to, from) {
         this.updateTocButtonVisibility();
-        this.updateSimpleLangSwitchVisibility();
+        // this.updateSimpleLangSwitchVisibility(); // 已注释，不再需要
       },
 
       scrollTop(scrollTop, oldScrollTop) {
@@ -523,7 +500,7 @@
           enter: enter,
           visible: top,
         };
-        this.$store.commit("changeToolbarStatus", toolbarStatus);
+        this.mainStore.changeToolbarStatus( toolbarStatus);
       },
       
       // 监听侧边栏打开状态，应用动态样式
@@ -537,7 +514,7 @@
       },
       
       // 监听 store 中的移动端侧边栏配置变化
-      '$store.state.webInfo.mobileDrawerConfig': {
+      'mainStore.webInfo.mobileDrawerConfig': {
         handler(newVal) {
           if (newVal) {
             try {
@@ -549,7 +526,7 @@
                 });
               }
             } catch (e) {
-              console.error('解析移动端侧边栏配置失败:', e);
+              // 解析失败，使用默认配置
             }
           }
         },
@@ -557,6 +534,9 @@
       }
     },
     created() {
+      // 初始化分类菜单展开状态
+      this.sortMenuExpanded = this.getInitialSortMenuState();
+      
       // 获取网站信息
       this.getWebInfo();
       this.getSysConfig();
@@ -581,11 +561,14 @@
       this.mobile = document.body.clientWidth < 1100;
     },
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       toolbar() {
-        return this.$store.state.toolbar;
+        return this.mainStore.toolbar;
       },
       sortInfo() {
-        return this.$store.state.sortInfo;
+        return this.mainStore.sortInfo;
       },
       mainContainerStyle() {
         return {};
@@ -610,11 +593,10 @@
       },
       orderedNavItems() {
         try {
-          if (this.$store.state.webInfo && this.$store.state.webInfo.navConfig) {
-            const navConfig = this.$store.state.webInfo.navConfig;
+          if (this.mainStore.webInfo && this.mainStore.webInfo.navConfig) {
+            const navConfig = this.mainStore.webInfo.navConfig;
             // 处理空JSON对象或空字符串的情况
             if (navConfig === "{}" || navConfig === "" || navConfig === "[]") {
-              console.log("导航配置为空，使用默认导航项");
               return this.defaultNavItems;
             }
             
@@ -622,7 +604,7 @@
             return JSON.parse(navConfig);
           }
         } catch (e) {
-          console.error("解析导航配置失败:", e);
+          // 解析失败，使用默认配置
         }
         
         // 如果出错或没有配置，返回默认导航项
@@ -643,6 +625,42 @@
       }
     },
     methods: {
+      // 处理导航项拖拽开始事件
+      handleNavDragStart(event, path, title) {
+        // 构建完整URL
+        const baseUrl = window.location.origin;
+        const fullUrl = `${baseUrl}${path}`;
+        
+        // 设置拖拽数据
+        event.dataTransfer.effectAllowed = 'link';
+        event.dataTransfer.setData('text/uri-list', fullUrl);
+        event.dataTransfer.setData('text/plain', fullUrl);
+        event.dataTransfer.setData('text/html', `<a href="${fullUrl}">${title}</a>`);
+      },
+      
+      // 返回首页
+      goHome() {
+        // 如果当前在首页路由，触发首页重置事件
+        if (this.$route.path === '/') {
+          this.$root.$emit('resetIndexPage');
+        } else {
+          // 如果不在首页，跳转到首页
+          this.$router.push({path: '/'});
+        }
+      },
+      
+      // 移动端返回首页
+      goHomeMobile() {
+        this.toolbarDrawer = false;
+        // 如果当前在首页路由，触发首页重置事件
+        if (this.$route.path === '/') {
+          this.$root.$emit('resetIndexPage');
+        } else {
+          // 如果不在首页，跳转到首页
+          this.$router.push({path: '/'});
+        }
+      },
+      
       smallMenu(data) {
         this.$router.push(data);
         this.toolbarDrawer = false;
@@ -657,7 +675,7 @@
         }
         
         // 2. 首次访问，根据分类数量智能判断
-        const sortCount = this.$store.state.sortInfo?.length || 0;
+        const sortCount = this.mainStore?.sortInfo?.length || 0;
         
         // 分类少（≤5个）默认展开，分类多（>5个）默认折叠
         return sortCount <= 5;
@@ -676,7 +694,7 @@
       },
 
       async goIm() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
@@ -685,48 +703,42 @@
         }
 
         try {
-          console.log('[博客前端] 开始获取聊天室token...');
-          console.log('[博客前端] 请求URL:', this.$constant.baseURL + "/im/getWsToken");
-          
           // 获取WebSocket临时token
           const response = await this.$http.get(this.$constant.baseURL + "/im/getWsToken", {}, true);
-          console.log('[博客前端] 后端响应:', response);
           
           if (response.code === 200 && response.data) {
             const wsToken = response.data;
             let imUrl = this.$constant.imBaseURL + 
               "?token=" + wsToken + 
-              "&defaultStoreType=" + (this.$store.state.sysConfig['store.type'] || 'local');
+              "&defaultStoreType=" + (this.mainStore.sysConfig['store.type'] || 'local');
             
-            // 仅在开发环境下（不同端口导致localStorage不共享）才通过URL传递用户信息
+            // 仅在开发环境下（不同端口导致localStorage不共享）才通过URL传递数据
             // 生产环境下同域名会共享localStorage，无需传递
             const isDevelopment = this.$constant.imBaseURL.includes('localhost') || 
                                  this.$constant.imBaseURL.includes('127.0.0.1');
             
             if (isDevelopment) {
-              console.log('[博客前端] 检测到开发环境，通过URL传递用户信息');
-              const userInfo = encodeURIComponent(JSON.stringify(this.$store.state.currentUser));
-              const sysConfig = encodeURIComponent(JSON.stringify(this.$store.state.sysConfig));
+              // 传递用户信息
+              const userInfo = encodeURIComponent(JSON.stringify(this.mainStore.currentUser));
+              const sysConfig = encodeURIComponent(JSON.stringify(this.mainStore.sysConfig));
               imUrl += "&userInfo=" + userInfo + "&sysConfig=" + sysConfig;
-            } else {
-              console.log('[博客前端] 生产环境，不通过URL传递敏感信息');
+              
+              // 传递主题状态（开发环境localStorage不共享）
+              const currentTheme = localStorage.getItem('theme');
+              if (currentTheme) {
+                imUrl += "&theme=" + currentTheme;
+              }
             }
-            
-            console.log('[博客前端] 获取到token:', wsToken);
-            console.log('[博客前端] imBaseURL配置:', this.$constant.imBaseURL);
-            console.log('[博客前端] URL长度:', imUrl.length);
             
             // 使用临时token打开聊天室
             window.open(imUrl);
           } else {
-            console.error('[博客前端] 获取token失败:', response);
             this.$message({
               message: response.message || "获取聊天室访问凭证失败",
               type: "error"
             });
           }
         } catch (error) {
-          console.error("获取WebSocket token失败:", error);
           this.$message({
             message: "进入聊天室失败，请稍后重试",
             type: "error"
@@ -736,6 +748,35 @@
 
       goAdmin() {
         window.location.href = this.$constant.webURL + "/admin";
+      },
+
+      // 跳转到登录页，携带当前页面路径作为重定向参数
+      goToLogin() {
+        const currentPath = this.$route.fullPath;
+        this.$router.push({
+          path: '/user',
+          query: { redirect: currentPath }
+        });
+      },
+
+      // 移动端跳转到登录页，携带当前页面路径作为重定向参数
+      goToLoginMobile() {
+        const currentPath = this.$route.fullPath;
+        this.toolbarDrawer = false;
+        this.$router.push({
+          path: '/user',
+          query: { redirect: currentPath }
+        });
+      },
+
+      // 跳转到个人中心
+      goToUserCenter() {
+        this.$router.push({path: '/user'});
+      },
+
+      // 处理退出登录
+      handleLogout() {
+        this.logout();
       },
 
       logout() {
@@ -748,9 +789,25 @@
               type: "error"
             });
           });
-        this.$store.commit("loadCurrentUser", {});
+        this.mainStore.loadCurrentUser( {});
+        this.mainStore.loadCurrentAdmin( {});
         localStorage.removeItem("userToken");
-        this.$router.push({path: '/'});
+        localStorage.removeItem("adminToken");
+        
+        // 只有在需要登录的页面才跳转到首页，否则留在当前页面
+        const currentPath = this.$route.path;
+        const needsAuthPaths = ['/user', '/admin', '/verify'];
+        const needsRedirect = needsAuthPaths.some(path => currentPath.startsWith(path));
+        
+        if (needsRedirect) {
+          this.$router.push({path: '/'});
+        } else {
+          // 留在当前页面，显示退出成功提示
+          this.$message({
+            message: "退出成功",
+            type: "success"
+          });
+        }
       },
       getWebInfo() {
         this.$http.get(this.$constant.baseURL + "/webInfo/getWebInfo")
@@ -760,7 +817,7 @@
               const originalWebTitle = res.data.webTitle;
               
               // 处理网站信息
-              this.$store.commit("loadWebInfo", res.data);
+              this.mainStore.loadWebInfo( res.data);
               
               // 更新浏览器标签栏标题 - 使用原始的webTitle字符串
               if (originalWebTitle) {
@@ -786,7 +843,7 @@
         this.$http.get(this.$constant.baseURL + "/sysConfig/listSysConfig")
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
-              this.$store.commit("loadSysConfig", res.data);
+              this.mainStore.loadSysConfig( res.data);
               this.buildCssPicture();
             }
           })
@@ -799,7 +856,7 @@
       },
       buildCssPicture() {
         let root = document.querySelector(":root");
-        let webStaticResourcePrefix = this.$store.state.sysConfig['webStaticResourcePrefix'];
+        let webStaticResourcePrefix = this.mainStore.sysConfig['webStaticResourcePrefix'];
         root.style.setProperty("--commentURL", "url(" + webStaticResourcePrefix + "assets/commentURL.png)");
         root.style.setProperty("--springBg", "url(" + webStaticResourcePrefix + "assets/springBg.png)");
         root.style.setProperty("--admireImage", "url(" + webStaticResourcePrefix + "assets/admireImage.jpg)");
@@ -814,7 +871,7 @@
         this.$http.get(this.$constant.baseURL + "/webInfo/getSortInfo")
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
-              this.$store.commit("loadSortInfo", res.data);
+              this.mainStore.loadSortInfo( res.data);
             }
           })
           .catch((error) => {
@@ -827,40 +884,63 @@
       changeColor() {
         this.isDark = !this.isDark;
         if (this.isDark) {
-          this.applyDarkTheme();
-          
-          // 保存深色主题到localStorage（带过期时间）
-          try {
-            const themeData = {
-              theme: 'dark',
-              timestamp: Date.now(),
-              expiry: 24 * 60 * 60 * 1000 // 1天过期时间（毫秒）
-            };
-            localStorage.setItem('poetize-theme', JSON.stringify(themeData));
-            console.log('主题已保存到localStorage: dark，将在1天后过期');
-          } catch (error) {
-            console.error('保存主题到localStorage失败:', error);
-          }
+          this.applyDarkTheme(); // savePreference默认为true，会保存用户偏好
         } else {
-          this.applyLightTheme();
-          
-          // 保存浅色主题到localStorage（带过期时间）
-          try {
-            const themeData = {
-              theme: 'light',
-              timestamp: Date.now(),
-              expiry: 24 * 60 * 60 * 1000 // 1天过期时间（毫秒）
-            };
-            localStorage.setItem('poetize-theme', JSON.stringify(themeData));
-            console.log('主题已保存到localStorage: light，将在1天后过期');
-          } catch (error) {
-            console.error('保存主题到localStorage失败:', error);
-          }
+          this.applyLightTheme(); // savePreference默认为true，会保存用户偏好
         }
+        
+        // 重新初始化Mermaid主题并触发重新渲染
+        this.reinitializeMermaidTheme();
       },
       
-      applyDarkTheme() {
+      // 监听系统暗色模式变化
+      setupSystemThemeListener() {
+        // 检查浏览器是否支持媒体查询
+        if (!window.matchMedia) {
+          return;
+        }
+        
+        const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        // 监听系统主题变化
+        const handleThemeChange = (e) => {
+          
+          // 检查用户是否手动设置过主题
+          const userTheme = localStorage.getItem('theme');
+          
+          // 只有在用户未手动设置时才自动切换
+          if (!userTheme) {
+            if (e.matches) {
+              this.isDark = true;
+              this.applyDarkTheme(false); // false表示不保存用户偏好
+            } else {
+              this.isDark = false;
+              this.applyLightTheme(false); // false表示不保存用户偏好
+            }
+            
+            // 触发主题切换事件（用于Mermaid等组件）
+            this.$root.$emit('theme-changed', {
+              isDark: this.isDark,
+              source: 'system'
+            });
+          } else {
+          }
+        };
+        
+        // 添加监听器
+        if (darkModeQuery.addEventListener) {
+          darkModeQuery.addEventListener('change', handleThemeChange);
+        } else if (darkModeQuery.addListener) {
+          // 兼容旧版浏览器
+          darkModeQuery.addListener(handleThemeChange);
+        }
+        
+      },
+      
+      applyDarkTheme(savePreference = true) {
         let root = document.querySelector(":root");
+        document.body.classList.add('dark-mode');
+        document.documentElement.classList.add('dark-mode'); // 同时在html元素上添加，确保所有组件都能检测到
         root.style.setProperty("--background", "#272727");
         root.style.setProperty("--fontColor", "white");
         root.style.setProperty("--borderColor", "#4F4F4F");
@@ -880,10 +960,17 @@
         root.style.setProperty("--secondaryText", "#B0B0B0");
         // 设置卡片背景RGB值用于半透明背景
         root.style.setProperty("--card-bg-rgb", "39, 39, 39");
+        
+        // 保存用户手动设置的主题偏好
+        if (savePreference) {
+          localStorage.setItem('theme', 'dark');
+        }
       },
       
-      applyLightTheme() {
+      applyLightTheme(savePreference = true) {
         let root = document.querySelector(":root");
+        document.body.classList.remove('dark-mode');
+        document.documentElement.classList.remove('dark-mode'); // 同时从html元素移除
         root.style.setProperty("--background", "white");
         root.style.setProperty("--fontColor", "black");
         root.style.setProperty("--borderColor", "rgba(0, 0, 0, 0.5)");
@@ -903,7 +990,59 @@
         root.style.setProperty("--secondaryText", "#666666");
         // 设置卡片背景RGB值用于半透明背景
         root.style.setProperty("--card-bg-rgb", "255, 255, 255");
+        
+        // 保存用户手动设置的主题偏好
+        if (savePreference) {
+          localStorage.setItem('theme', 'light');
+        }
       },
+      
+      // 重新初始化Mermaid主题并重新渲染图表
+      reinitializeMermaidTheme() {
+        try {
+          // 检查Mermaid是否已加载
+          if (!window.mermaid) {
+            return;
+          }
+          
+          // 重新初始化Mermaid配置
+          const newTheme = this.isDark ? 'dark' : 'default';
+          
+          window.mermaid.initialize({
+            startOnLoad: false,
+            theme: newTheme,
+            securityLevel: 'loose',
+            fontFamily: 'Arial, sans-serif',
+            themeVariables: this.isDark ? {
+              // 深色模式的自定义主题变量
+              darkMode: true,
+              background: '#1e1e1e',
+              primaryColor: '#4a9eff',
+              primaryTextColor: '#ffffff',
+              primaryBorderColor: '#4a9eff',
+              lineColor: '#6b6b6b',
+              secondaryColor: '#2d2d2d',
+              tertiaryColor: '#3a3a3a',
+              mainBkg: '#2d2d2d',
+              secondBkg: '#383838',
+              mainContrastColor: '#ffffff',
+              darkTextColor: '#ffffff',
+              textColor: '#e0e0e0',
+              labelTextColor: '#e0e0e0',
+              fontSize: '14px'
+            } : {
+              fontSize: '14px'
+            }
+          });
+          
+          // 触发全局事件，通知文章页面重新渲染Mermaid图表
+          this.$root.$emit('themeChanged', {isDark: this.isDark, theme: newTheme});
+          
+        } catch (error) {
+          console.error('重新初始化Mermaid主题失败:', error);
+        }
+      },
+      
       // 更新目录按钮显示状态
       updateTocButtonVisibility() {
         // 只在文章页面显示目录按钮
@@ -924,15 +1063,16 @@
         });
       },
 
+      // 注释原因：通过CSS层叠上下文已解决article.vue中语言切换按钮的遮挡问题，不再需要简化按钮
       // 更新简化语言切换按钮显示状态
-      updateSimpleLangSwitchVisibility() {
+      /* updateSimpleLangSwitchVisibility() {
         // 只在文章页面显示简化语言切换按钮
         // 支持新的URL格式：/article/id 或 /article/lang/id
         this.showSimpleLangSwitch = this.$route.path.startsWith('/article/') && this.$route.params.id;
-      },
+      }, */
 
       // 获取当前语言的简化显示
-      getSimpleLangDisplay() {
+      /* getSimpleLangDisplay() {
         // 从article组件获取当前语言，如果获取不到则默认为中文
         const articleComponent = this.getArticleComponent();
 
@@ -990,10 +1130,10 @@
         };
 
         return langMap[defaultLang] || '简';
-      },
+      }, */
 
       // 获取简化语言切换按钮的提示文本
-      getSimpleLangSwitchTitle() {
+      /* getSimpleLangSwitchTitle() {
         const articleComponent = this.getArticleComponent();
         if (articleComponent && articleComponent.availableLanguageButtons) {
           const nextLang = this.getNextAvailableLanguage();
@@ -1002,10 +1142,10 @@
           }
         }
         return '语言切换';
-      },
+      }, */
 
       // 获取下一个可用语言
-      getNextAvailableLanguage() {
+      /* getNextAvailableLanguage() {
         const articleComponent = this.getArticleComponent();
         if (articleComponent && articleComponent.availableLanguageButtons && articleComponent.availableLanguageButtons.length > 1) {
           const currentIndex = articleComponent.availableLanguageButtons.findIndex(
@@ -1015,10 +1155,10 @@
           return articleComponent.availableLanguageButtons[nextIndex];
         }
         return null;
-      },
+      }, */
 
       // 获取article组件实例
-      getArticleComponent() {
+      /* getArticleComponent() {
         // 通过多种方式查找article组件
         const findArticleComponent = (children) => {
           for (let child of children) {
@@ -1080,10 +1220,10 @@
         }
 
         return articleComponent;
-      },
+      }, */
 
       // 处理简化语言切换按钮点击
-      handleSimpleLangSwitch() {
+      /* handleSimpleLangSwitch() {
         const articleComponent = this.getArticleComponent();
         if (articleComponent && articleComponent.handleLanguageSwitch) {
           const nextLang = this.getNextAvailableLanguage();
@@ -1095,7 +1235,7 @@
             this.$forceUpdate();
           }
         }
-      },
+      }, */
 
       toTop() {
         window.scrollTo({
@@ -1108,7 +1248,7 @@
       },
       isDaylight() {
         // 后台可配置：enableAutoNight, autoNightStart, autoNightEnd
-        const cfg = this.$store?.state?.webInfo || {};
+        const cfg = this.mainStore?.webInfo || {};
 
         // 若未开启自动夜间则直接返回 false
         if (cfg.enableAutoNight === false) return false;
@@ -1143,39 +1283,25 @@
       // 根据后台配置重新判断并自动应用夜间主题（仅当用户未手动设置主题时调用）
       maybeApplyAutoNight() {
         try {
-          const savedData = localStorage.getItem('poetize-theme');
-          if (savedData) {
-            // 检查是否有有效的主题设置
-            try {
-              const themeData = JSON.parse(savedData);
-              if (themeData && themeData.timestamp && themeData.theme) {
-                const now = Date.now();
-                const elapsed = now - themeData.timestamp;
-                
-                // 如果主题未过期，则尊重用户选择
-                if (elapsed <= themeData.expiry) {
-                  return; // 用户已手动选择主题且未过期，尊重用户
-                } else {
-                  // 主题已过期，清除并继续自动逻辑
-                  console.log('主题设置已过期，将使用自动夜间模式逻辑');
-                  localStorage.removeItem('poetize-theme');
-                }
-              }
-            } catch (parseError) {
-              // 旧格式或解析失败，认为用户有手动设置
-              return;
-            }
+          // 检查用户是否手动设置过主题偏好
+          const userTheme = localStorage.getItem('theme');
+          if (userTheme) {
+            return; // 尊重用户手动设置
           }
 
-          if (this.isDaylight()) {
+          // 检查系统偏好优先，否则使用时间判断
+          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (prefersDark) {
             this.isDark = true;
-            this.applyDarkTheme();
+            this.applyDarkTheme(false); // 不保存，跟随系统
+          } else if (this.isDaylight()) {
+            this.isDark = true;
+            this.applyDarkTheme(false); // 不保存，跟随时间
           } else {
             this.isDark = false;
-            this.applyLightTheme();
+            this.applyLightTheme(false); // 不保存，跟随时间
           }
         } catch(e) {
-          console.warn('auto night check error', e);
         }
       },
       applyGrayMask() {
@@ -1193,19 +1319,18 @@
           try {
             document.body.appendChild(mask);
           } catch (e) {
-            console.warn('添加mask元素失败:', e);
           }
         }
       },
       getWebsitConfig() {
-        this.$store.dispatch("getWebsitConfig");
+        this.mainStore.getWebsitConfig();
         // 加载侧边栏配置
         this.loadDrawerConfig();
       },
       loadDrawerConfig() {
         try {
-          if (this.$store.state.webInfo && this.$store.state.webInfo.mobileDrawerConfig) {
-            this.drawerConfig = JSON.parse(this.$store.state.webInfo.mobileDrawerConfig);
+          if (this.mainStore.webInfo && this.mainStore.webInfo.mobileDrawerConfig) {
+            this.drawerConfig = JSON.parse(this.mainStore.webInfo.mobileDrawerConfig);
             // 应用动态样式
             this.$nextTick(() => {
               this.applyDrawerStyles();
@@ -1265,7 +1390,6 @@
       handleAvatarError(e) {
         // 防止无限循环：检查当前 src 是否已经是默认头像
         if (e.target.src.includes('/assets/avatar.jpg')) {
-          console.warn('默认头像也加载失败，停止重试');
           // 移除 error 监听器，防止继续触发
           e.target.onerror = null;
           // 不做任何处理，让浏览器显示默认的图片加载失败状态
@@ -1273,14 +1397,13 @@
         }
         
         // 第一次失败时尝试使用默认头像
-        console.warn('头像加载失败，尝试使用默认头像');
         e.target.src = '/assets/avatar.jpg';
       },
       loadFont() {
       },
       getActualBackgroundHeight() {
         // 获取当前设置的首页上拉高度，与bannerStyle()保持一致的计算逻辑
-        const height = this.$store.state.webInfo.homePagePullUpHeight;
+        const height = this.mainStore.webInfo.homePagePullUpHeight;
         
         // 如果是有效的数值且在0-100范围内，直接使用该值作为vh
         if (typeof height === 'number' && height >= 0 && height <= 100) {
@@ -1475,14 +1598,17 @@
 
 .backTop {
   /* 性能优化: 只监听实际变化的属性 */
-  transition: transform 0.3s ease-in, opacity 0.3s ease-in;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease-in;
   position: relative;
-  top: 0;
   left: -13px;
+  /* GPU加速，防止抖动 */
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .backTop:hover {
-  top: -10px;
+  /* 使用transform代替top，避免布局重排引起的hover状态切换 */
+  transform: translateY(-10px) translateZ(0);
 }
 
 #outerImg {
@@ -1496,7 +1622,8 @@
   display: none;
 }
 
-/* 简化语言切换按钮样式 - 仅在≤1050px时显示 */
+/* 注释原因：通过CSS层叠上下文已解决article.vue中语言切换按钮的遮挡问题，不再需要简化按钮
+   简化语言切换按钮样式 - 仅在≤1050px时显示
 .simple-lang-switch {
   display: none;
 }
@@ -1513,7 +1640,6 @@
     backdrop-filter: blur(10px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     cursor: pointer;
-    /* 性能优化: 只监听实际变化的属性 */
     transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease;
     margin-bottom: 8px;
     border: 1px solid rgba(255, 255, 255, 0.8);
@@ -1542,6 +1668,7 @@
     color: var(--themeBackground);
   }
 }
+*/
 
 /* 目录按钮样式 */
 .toc-button-container {
@@ -1569,8 +1696,79 @@
   }
 }
 
-/* 移动端简化语言切换按钮优化 */
-@media (max-width: 768px) {
+/* ========== 暗色模式适配 - toolButton 工具按钮 ========== */
+/* 目录按钮暗色模式 */
+body.dark-mode .toc-button-icon {
+  color: #ffffff !important;
+}
+
+body.dark-mode .toc-button-container:hover .toc-button-icon {
+  color: var(--lightGreen) !important;
+}
+
+/* 回到顶部按钮SVG暗色模式 */
+body.dark-mode .backTop svg path {
+  fill: #ffffff !important;
+}
+
+/* 设置按钮（齿轮图标）暗色模式 */
+body.dark-mode .iconRotate {
+  color: #ffffff !important;
+}
+
+body.dark-mode .iconRotate:hover {
+  color: var(--lightGreen) !important;
+}
+
+/* Popover 弹出框暗色模式 */
+body.dark-mode .el-popover {
+  background-color: #2c2c2c !important;
+  border-color: #404040 !important;
+}
+
+body.dark-mode .el-popover .my-setting i {
+  color: #ffffff !important;
+}
+
+body.dark-mode .el-popover .my-setting i:hover {
+  color: var(--lightGreen) !important;
+}
+
+/* Popover 箭头暗色模式 */
+body.dark-mode .el-popover[x-placement^="left"] .popper__arrow {
+  border-left-color: #404040 !important;
+}
+
+body.dark-mode .el-popover[x-placement^="left"] .popper__arrow::after {
+  border-left-color: #2c2c2c !important;
+}
+
+body.dark-mode .el-popover[x-placement^="right"] .popper__arrow {
+  border-right-color: #404040 !important;
+}
+
+body.dark-mode .el-popover[x-placement^="right"] .popper__arrow::after {
+  border-right-color: #2c2c2c !important;
+}
+
+body.dark-mode .el-popover[x-placement^="top"] .popper__arrow {
+  border-top-color: #404040 !important;
+}
+
+body.dark-mode .el-popover[x-placement^="top"] .popper__arrow::after {
+  border-top-color: #2c2c2c !important;
+}
+
+body.dark-mode .el-popover[x-placement^="bottom"] .popper__arrow {
+  border-bottom-color: #404040 !important;
+}
+
+body.dark-mode .el-popover[x-placement^="bottom"] .popper__arrow::after {
+  border-bottom-color: #2c2c2c !important;
+}
+
+/* 移动端简化语言切换按钮优化（已注释，不再需要） */
+/* @media (max-width: 768px) {
   .simple-lang-switch {
     width: 32px !important;
     height: 32px !important;
@@ -1582,15 +1780,14 @@
     font-size: 11px !important;
   }
 
-  /* 移动端触摸优化 */
   .simple-lang-switch:hover {
-    transform: none !important; /* 移除hover效果避免触摸设备粘滞 */
+    transform: none !important;
   }
 
   .simple-lang-switch:active {
     transform: scale(0.95) !important;
   }
-}
+} */
 
 .my-menu {
   font-family: 'MyAwesomeFont', serif;
@@ -1749,8 +1946,34 @@
   display: inline-block;
 }
 
+/* 初始响应区域（伪元素） */
+.avatar-dropdown-container::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  left: -10px;
+  right: -30px;
+  bottom: 0px;
+  min-height: 80px;
+  z-index: 99;
+  transition: all 0.3s ease;
+  /* 调试用 */
+  /* background: rgba(0, 255, 0, 0.1); */
+}
+
+/* hover时动态扩大响应区域 - 覆盖头像移动路径和菜单 */
+.avatar-dropdown-container:hover::before {
+  top: -20px;
+  left: -160px; /* 向左扩展，覆盖头像移动后的位置 */
+  right: -150px; /* 向右扩展，覆盖菜单 */
+  bottom: -10px;
+  min-height: 380px;
+  /* 调试用：hover时变成红色 */
+  /* background: rgba(255, 0, 0, 0.1); */
+}
+
 /* 导航栏头像样式 */
-.toolbar-content .el-avatar.user-avatar {
+.user-avatar {
   cursor: pointer;
   transition: all 0.3s ease;
   will-change: transform;
@@ -1761,16 +1984,9 @@
   border-radius: 50%;
 }
 
-/* 头像悬停时的偏移和放大效果 */
-.toolbar-content .el-avatar.user-avatar.avatar-hover {
-  /* 计算说明：
-     - 菜单 right: -10px，width: 300px，padding: 0 24px
-     - 菜单盒子中心 = -10px - 150px = -160px
-     - 内容区域中心需要向右偏移（因为padding相等，不影响中心）
-     - 头像放大后半径 = 36px * 1.6 / 2 = 28.8px
-     - 微调：向右偏移一点，让视觉更居中
-  */
-  transform: translate(calc(-10px - 260px / 2 + 36px * 1.7 / 2 + 15px), 43px) scale(1.7);
+/* 悬停在容器上时，头像偏移 */
+.avatar-dropdown-container:hover .user-avatar {
+  transform: translate(-105px, 43px) scale(1.7) !important;
 }
 
 /* 自定义用户下拉菜单 */
@@ -1788,6 +2004,18 @@
   padding: 0 24px 18px;
   box-shadow: 0 0 30px rgba(0, 0, 0, .1);
   border: 1px solid #e3e5e7;
+  /* 默认隐藏 */
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* 悬停时显示菜单 */
+.avatar-dropdown-container:hover .custom-user-menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 /* 用户名头部 */
@@ -1885,17 +2113,5 @@
 .user-menu-divider {
   margin: 6px 0 12px 0;
   border-bottom: 1px solid #ddd;
-}
-
-/* 菜单淡入淡出动画 */
-.menu-fade-enter-active,
-.menu-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.menu-fade-enter,
-.menu-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 </style>

@@ -13,13 +13,9 @@ import com.ld.poetry.vo.ArticleVO;
 import com.ld.poetry.vo.BaseRequestVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -123,7 +119,8 @@ public class AdminArticleController {
     @LoginCheck(1)
     public PoetryResult generateSummary(@RequestParam Integer articleId) {
         try {
-            summaryService.generateAndSaveSummaryAsync(articleId);
+            // 使用虚拟线程在后台执行
+            Thread.ofVirtual().start(() -> summaryService.generateAndSaveSummary(articleId));
             return PoetryResult.success("摘要生成任务已启动");
         } catch (Exception e) {
             log.error("启动摘要生成任务失败", e);
@@ -148,9 +145,9 @@ public class AdminArticleController {
                 return PoetryResult.success("所有文章都已有摘要");
             }
             
-            // 异步生成所有摘要
+            // 使用虚拟线程批量生成所有摘要
             for (Article article : articlesWithoutSummary) {
-                summaryService.generateAndSaveSummaryAsync(article.getId());
+                Thread.ofVirtual().start(() -> summaryService.generateAndSaveSummary(article.getId()));
             }
             
             return PoetryResult.success("已启动" + articlesWithoutSummary.size() + "篇文章的摘要生成任务");

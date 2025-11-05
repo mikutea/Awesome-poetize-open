@@ -127,4 +127,10 @@ public interface ThirdPartyOauthConfigService extends IService<ThirdPartyOauthCo
      * @return 统计信息
      */
     PoetryResult<Map<String, Object>> getConfigStats();
+    
+    /**
+     * 并行检查所有OAuth平台的可用状态（用于登录页显示）
+     * @return 平台状态Map，key为平台类型，value为是否可用
+     */
+    Map<String, Boolean> getAllPlatformsStatus();
 }

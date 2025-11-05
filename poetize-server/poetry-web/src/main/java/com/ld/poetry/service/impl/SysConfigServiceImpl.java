@@ -39,7 +39,6 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
             
             SysConfig sysConfig = this.getOne(queryWrapper);
             if (sysConfig != null) {
-                log.debug("从数据库获取配置成功，key: {}, value: {}", configKey, sysConfig.getConfigValue());
                 return sysConfig.getConfigValue();
             } else {
                 log.warn("未找到配置项，key: {}", configKey);

@@ -13,16 +13,20 @@
       <!-- 对象 -->
       <div class="love-wrap transformCenter">
         <div>
-          <el-avatar class="love-avatar" :src="love.manCover"></el-avatar>
+          <el-avatar class="love-avatar" :src="$common.getAvatarUrl(love.manCover)">
+            <img :src="$getDefaultAvatar()" />
+          </el-avatar>
           <div class="love-title">
             {{love.manName}}
           </div>
         </div>
         <div>
-          <img class="love-img" :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/loveLike.svg'" alt="心心">
+          <img class="love-img" :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/loveLike.svg'" alt="心心">
         </div>
         <div>
-          <el-avatar class="love-avatar" :src="love.womanCover"></el-avatar>
+          <el-avatar class="love-avatar" :src="$common.getAvatarUrl(love.womanCover)">
+            <img :src="$getDefaultAvatar()" />
+          </el-avatar>
           <div class="love-title">
             {{love.womanName}}
           </div>
@@ -113,7 +117,7 @@
           <div class="card-content shadow-box-mini" @click="changeCard(1)">
             <div>
               <el-avatar :size="100"
-                         :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/loveWeiYan.jpg'">
+                         :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/loveWeiYan.jpg'">
               </el-avatar>
             </div>
             <div class="card-right">
@@ -129,7 +133,7 @@
           <div class="card-content shadow-box-mini" @click="changeCard(2)">
             <div>
               <el-avatar :size="100"
-                         :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/lovePhoto.jpg'">
+                         :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/lovePhoto.jpg'">
               </el-avatar>
             </div>
             <div class="card-right">
@@ -145,7 +149,7 @@
           <div class="card-content shadow-box-mini" @click="changeCard(3)">
             <div>
               <el-avatar :size="100"
-                         :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/loveMessage.jpg'">
+                         :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/loveMessage.jpg'">
               </el-avatar>
             </div>
             <div class="card-right">
@@ -162,7 +166,7 @@
         <div class="card-container">
           <div id="treeHole" v-show="card === 1 && !$common.isEmpty(treeHoleList)">
             <treeHole :treeHoleList="treeHoleList"
-                      :avatar="$store.state.webInfo.avatar"
+                      :avatar="$common.getAvatarUrl(mainStore.webInfo.avatar)"
                       @launch="launch"
                       @deleteTreeHole="deleteTreeHole">
             </treeHole>
@@ -186,7 +190,7 @@
 
             <photo :resourcePathList="photoList"></photo>
             <div class="pagination-wrap">
-              <div @click="pagePhotos()" class="pagination" v-if="photoPagination.total !== photoList.length">
+              <div @click="pagePhotos()" class="pagination" v-if="photoList.length < photoPagination.total">
                 下一页
               </div>
               <div v-else style="user-select: none">
@@ -206,16 +210,20 @@
               <div class="family-wrap"
                    :style="{ background: 'url(' + item.bgCover + ') center center / cover no-repeat' }">
                 <div>
-                  <el-avatar class="family-avatar" :src="item.manCover"></el-avatar>
+                  <el-avatar class="family-avatar" :src="$common.getAvatarUrl(item.manCover)">
+                    <img :src="$getDefaultAvatar()" />
+                  </el-avatar>
                   <div class="family-title">
                     {{item.manName}}
                   </div>
                 </div>
                 <div>
-                  <img class="family-img" :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/loveLike.svg'" alt="心心">
+                  <img class="family-img" :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/loveLike.svg'" alt="心心">
                 </div>
                 <div>
-                  <el-avatar class="family-avatar" :src="item.womanCover"></el-avatar>
+                  <el-avatar class="family-avatar" :src="$common.getAvatarUrl(item.womanCover)">
+                    <img :src="$getDefaultAvatar()" />
+                  </el-avatar>
                   <div class="family-title">
                     {{item.womanName}}
                   </div>
@@ -261,11 +269,12 @@
                  width="40%"
                  :close-on-click-modal="false"
                  :append-to-body="true"
+                 custom-class="centered-dialog"
                  destroy-on-close
                  center>
         <div>
           <div class="form-main">
-            <img :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/friendLetterMiddle.jpg'" style="width: 100%"/>
+            <img :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/friendLetterMiddle.jpg'" style="width: 100%"/>
             <div>
               <div>
                 <div class="myCenter form-friend">
@@ -389,7 +398,7 @@
                 </div>
               </div>
               <div>
-                <img :src="$store.state.sysConfig['webStaticResourcePrefix'] + 'assets/friendLetterBiLi.png'" style="width: 100%;margin: 5px auto"/>
+                <img :src="mainStore.sysConfig['webStaticResourcePrefix'] + 'assets/friendLetterBiLi.png'" style="width: 100%;margin: 5px auto"/>
               </div>
               <p style="font-size: 12px;text-align: center;color: #999">欢迎入住表白墙</p>
             </div>
@@ -420,7 +429,9 @@
 
 <script>
 
-  const treeHole = () => import( "./common/treeHole");
+    import { useMainStore } from '@/stores/main';
+
+const treeHole = () => import( "./common/treeHole");
   const comment = () => import( "./comment/comment");
   const myFooter = () => import( "./common/myFooter");
   const photo = () => import( "./common/photo");
@@ -496,7 +507,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -593,11 +607,11 @@
           });
       },
       addFamily() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
+          // 使用统一的登录跳转函数
+          this.$common.redirectToLogin(this.$router, {
+            message: '请先登录！'
+          }, this);
           return;
         }
 
@@ -751,7 +765,7 @@
         this.countdownChange = countdown.d + "天" + countdown.h + "时" + countdown.m + "分" + countdown.s + "秒";
       },
       launch() {
-        if (this.weiYanPagination.total !== this.treeHoleList.length) {
+        if (this.treeHoleList.length < this.weiYanPagination.total) {
           this.weiYanPagination.current = this.weiYanPagination.current + 1;
           this.getWeiYan();
         } else {
@@ -786,11 +800,11 @@
           });
       },
       deleteTreeHole(id) {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
+          // 使用统一的登录跳转函数
+          this.$common.redirectToLogin(this.$router, {
+            message: '请先登录！'
+          }, this);
           return;
         }
 

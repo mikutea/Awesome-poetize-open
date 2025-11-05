@@ -35,16 +35,6 @@ public class OAuthCallbackController {
     @PostMapping("/callback")
     public PoetryResult<UserVO> handleOAuthCallback(@RequestBody Map<String, Object> oauthData) {
         try {
-            log.info("收到OAuth回调请求: {}", oauthData);
-
-            // 记录原始数据类型用于调试
-            oauthData.forEach((key, value) -> {
-                if (value != null) {
-                    log.debug("OAuth数据字段: {} = {} (类型: {})", key, value, value.getClass().getSimpleName());
-                } else {
-                    log.debug("OAuth数据字段: {} = null", key);
-                }
-            });
 
             // 安全地提取和转换字段
             String provider = extractStringValue(oauthData, "provider");
@@ -53,34 +43,26 @@ public class OAuthCallbackController {
             String email = extractStringValue(oauthData, "email");
             String avatar = extractStringValue(oauthData, "avatar");
 
-            // 检查是否需要邮箱收集（主要针对Gitee）
+            // 检查是否需要邮箱收集
             Boolean emailCollectionNeeded = extractBooleanValue(oauthData, "email_collection_needed");
 
-            log.info("转换后的OAuth数据: provider={}, uid={}, username={}, email={}, avatar={}, emailCollectionNeeded={}",
-                    provider, uid, username, email, avatar, emailCollectionNeeded);
             
             // 验证必要参数
             if (provider == null || provider.trim().isEmpty()) {
-                log.warn("OAuth回调缺少provider参数");
+                log.warn("回调缺少provider参数");
                 return PoetryResult.fail("缺少provider参数");
             }
             
             if (uid == null || uid.trim().isEmpty()) {
-                log.warn("OAuth回调缺少uid参数");
+                log.warn("回调缺少uid参数");
                 return PoetryResult.fail("缺少uid参数");
             }
-            
-            log.info("处理{}平台的OAuth登录: uid={}, username={}, email={}", 
-                    provider, uid, username, email);
             
             // 调用用户服务处理第三方登录
             PoetryResult<UserVO> result = userService.thirdLogin(provider, uid, username, email, avatar);
 
             if (result.isSuccess()) {
-                log.info("OAuth登录成功: provider={}, uid={}, userId={}",
-                        provider, uid, result.getData().getId());
 
-                // 🔧 修复邮箱收集逻辑：检查数据库中用户是否已有邮箱
                 UserVO userVO = result.getData();
                 boolean userHasEmailInDB = StringUtils.hasText(userVO.getEmail());
 
@@ -89,26 +71,17 @@ public class OAuthCallbackController {
                     (emailCollectionNeeded != null && emailCollectionNeeded);
 
                 if (needsEmailCollection) {
-                    log.info("用户需要补充邮箱信息: provider={}, uid={}, 数据库邮箱={}, 第三方邮箱={}",
-                            provider, uid, userVO.getEmail(), email);
                     result.setMessage("EMAIL_COLLECTION_NEEDED");
-                } else if (userHasEmailInDB) {
-                    log.info("用户已有邮箱信息，无需收集: provider={}, uid={}, 邮箱={}",
-                            provider, uid, userVO.getEmail());
-                } else if (StringUtils.hasText(email)) {
-                    log.info("第三方平台提供了邮箱信息: provider={}, uid={}, 邮箱={}",
-                            provider, uid, email);
                 }
             } else {
-                log.warn("OAuth登录失败: provider={}, uid={}, error={}",
-                        provider, uid, result.getMessage());
+                log.warn("登录失败: provider={}, uid={}, error={}", provider, uid, result.getMessage());
             }
 
             return result;
             
         } catch (Exception e) {
-            log.error("处理OAuth回调时发生异常", e);
-            return PoetryResult.fail("OAuth回调处理失败: " + e.getMessage());
+            log.error("处理回调时发生异常", e);
+            return PoetryResult.fail("回调处理失败: " + e.getMessage());
         }
     }
     

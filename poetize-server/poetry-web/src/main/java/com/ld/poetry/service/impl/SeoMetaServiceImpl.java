@@ -1,12 +1,15 @@
 package com.ld.poetry.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ld.poetry.service.SeoMetaService;
 import com.ld.poetry.service.SeoConfigService;
 import com.ld.poetry.service.ArticleService;
 import com.ld.poetry.service.SortService;
 import com.ld.poetry.service.LabelService;
 import com.ld.poetry.service.CacheService;
+import com.ld.poetry.dao.ArticleTranslationMapper;
 import com.ld.poetry.entity.Article;
+import com.ld.poetry.entity.ArticleTranslation;
 import com.ld.poetry.entity.Sort;
 import com.ld.poetry.entity.Label;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +27,8 @@ import java.util.regex.Pattern;
  * SEO元数据生成服务实现类
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-9-25
  */
 @Service
 @Slf4j
@@ -45,6 +48,12 @@ public class SeoMetaServiceImpl implements SeoMetaService {
     
     @Autowired
     private CacheService cacheService;
+    
+    @Autowired
+    private ArticleTranslationMapper articleTranslationMapper;
+    
+    @Autowired
+    private com.ld.poetry.service.SysAiConfigService sysAiConfigService;
 
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
@@ -76,7 +85,8 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             String title = StringUtils.hasText(article.getArticleTitle()) ? 
                 article.getArticleTitle() : getSiteTitle();
             
-            String description = generateArticleDescription(article, seoConfig);
+            // 生成描述时传入语言参数，使用对应语言的摘要
+            String description = generateArticleDescription(article, seoConfig, language);
             String keywords = generateArticleKeywords(article, seoConfig);
 
             meta.put("title", title);
@@ -118,7 +128,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 结构化数据
             meta.put("structured_data", generateArticleStructuredData(article, seoConfig));
 
-            log.debug("成功生成文章SEO元数据: articleId={}", articleId);
             return meta;
 
         } catch (Exception e) {
@@ -162,7 +171,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 结构化数据
             meta.put("structured_data", generateWebsiteStructuredData(seoConfig));
 
-            log.debug("成功生成网站SEO元数据");
             return meta;
 
         } catch (Exception e) {
@@ -208,7 +216,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 结构化数据
             meta.put("structured_data", generateCategoryStructuredData(category, seoConfig));
 
-            log.debug("成功生成分类SEO元数据: categoryId={}", categoryId);
             return meta;
 
         } catch (Exception e) {
@@ -251,7 +258,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 自定义头部代码
             meta.put("custom_head_code", seoConfig.get("custom_head_code"));
 
-            log.debug("成功生成标签SEO元数据: tagId={}", tagId);
             return meta;
 
         } catch (Exception e) {
@@ -284,7 +290,6 @@ public class SeoMetaServiceImpl implements SeoMetaService {
             // 自定义头部代码
             meta.put("custom_head_code", seoConfig.get("custom_head_code"));
 
-            log.debug("成功生成IM站点SEO元数据");
             return meta;
 
         } catch (Exception e) {
@@ -319,10 +324,45 @@ public class SeoMetaServiceImpl implements SeoMetaService {
 
     // ========== 私有辅助方法 ==========
 
-    private String generateArticleDescription(Article article, Map<String, Object> seoConfig) {
+    /**
+     * 生成文章描述（支持多语言）
+     * 
+     * @param article 文章对象
+     * @param seoConfig SEO配置
+     * @param language 语言代码，如果为null则使用源语言
+     * @return 文章描述
+     */
+    private String generateArticleDescription(Article article, Map<String, Object> seoConfig, String language) {
         String description = "";
         
-        // 优先使用文章摘要
+        // 如果指定了语言参数，尝试从翻译表获取对应语言的摘要
+        if (StringUtils.hasText(language)) {
+            try {
+                // 获取默认源语言
+                Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+                String sourceLanguage = defaultLangs != null ? 
+                    (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
+                
+                // 如果不是源语言，从翻译表获取摘要
+                if (!language.equals(sourceLanguage)) {
+                    ArticleTranslation translation = articleTranslationMapper.selectOne(
+                        new LambdaQueryWrapper<ArticleTranslation>()
+                            .eq(ArticleTranslation::getArticleId, article.getId())
+                            .eq(ArticleTranslation::getLanguage, language)
+                    );
+                    
+                    if (translation != null && StringUtils.hasText(translation.getSummary())) {
+                        description = cleanHtmlTags(translation.getSummary());
+                        return description;
+                    } else {
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("获取翻译摘要失败，使用原文摘要: {}", e.getMessage());
+            }
+        }
+        
+        // 使用源语言摘要或内容
         if (StringUtils.hasText(article.getSummary())) {
             description = cleanHtmlTags(article.getSummary());
         } else if (StringUtils.hasText(article.getArticleContent())) {

@@ -66,6 +66,7 @@
     <el-dialog title="图片"
                :visible.sync="coverDialog"
                width="25%"
+               custom-class="centered-dialog"
                :append-to-body="true"
                :close-on-click-modal="false"
                destroy-on-close
@@ -79,6 +80,7 @@
     <el-dialog title="文件"
                :visible.sync="uploadDialog"
                width="25%"
+               custom-class="centered-dialog"
                :append-to-body="true"
                :close-on-click-modal="false"
                destroy-on-close
@@ -89,33 +91,132 @@
       </div>
     </el-dialog>
 
+    <el-dialog title="额外背景图片"
+               :visible.sync="extraBackgroundDialog"
+               width="25%"
+               custom-class="centered-dialog"
+               :append-to-body="true"
+               :close-on-click-modal="false"
+               destroy-on-close
+               center>
+      <div>
+        <uploadPicture :isAdmin="true" :prefix="'asideBackgroundExtra'" @addPicture="addExtraBackground" :maxSize="5"
+                       :maxNumber="1"></uploadPicture>
+      </div>
+    </el-dialog>
+
     <el-dialog title="资源聚合"
                :visible.sync="addResourcePathDialog"
                width="50%"
+               custom-class="centered-dialog"
                :before-close="clearDialog"
                :append-to-body="true"
                :close-on-click-modal="false"
                center>
-      <div>
+      <div style="position: relative;">
         <div>
           <div class="myCenter">
             <el-radio-group v-model="resourcePath.type">
-              <template v-for="item in resourceTypes">
-                <el-radio-button :label="item.value">{{ item.label }}</el-radio-button>
-              </template>
+              <el-radio-button 
+                v-for="item in resourceTypes" 
+                :key="item.value"
+                :label="item.value">
+                {{ item.label }}
+                <!-- 带提示的资源类型显示问号图标 - 使用 el-popover -->
+                <el-popover
+                  v-if="['contact', 'quickEntry', 'asideBackground'].includes(item.value)"
+                  placement="right"
+                  trigger="hover"
+                  :append-to-body="true"
+                  :open-delay="200"
+                  popper-class="resource-type-help-popover">
+                  <img 
+                    :src="getHelpImage(item.value)" 
+                    :alt="item.label + '使用说明'" 
+                    class="help-image"
+                    style="display: block; max-width: 300px; border-radius: 4px;" />
+                  <i 
+                    slot="reference"
+                    class="el-icon-question type-tip-icon">
+                  </i>
+                </el-popover>
+              </el-radio-button>
             </el-radio-group>
           </div>
-          <div style="margin-bottom: 5px">标题：</div>
-          <el-input maxlength="60" v-model="resourcePath.title"></el-input>
+          
+          <div style="margin-bottom: 5px">
+            标题：
+            <span v-if="resourcePath.type === 'quickEntry'" style="color: #909399; font-size: 12px;">
+              （支持图标占位符，如：[star]朋友圈、前往朋友圈[xiaoche]、联系我[heart]、快速访问[rocket]）
+            </span>
+            <span v-if="resourcePath.type === 'asideBackground'" style="color: #909399; font-size: 12px;">
+              （自动填写，无需手动设置）
+            </span>
+          </div>
+          <el-input maxlength="60" v-model="resourcePath.title" :disabled="resourcePath.type === 'asideBackground'" :placeholder="resourcePath.type === 'asideBackground' ? '自动填写：侧边栏背景' : ''"></el-input>
           <div style="margin-top: 10px;margin-bottom: 5px">分类：</div>
-          <el-input :disabled="!['friendUrl', 'lovePhoto', 'funny', 'favorites', 'siteInfo'].includes(resourcePath.type)"
-                    maxlength="30" v-model="resourcePath.classify" :placeholder="resourcePath.type === 'siteInfo' ? '暂未使用' : ''"></el-input>
+          <el-select v-if="resourcePath.type === 'friendUrl'" v-model="resourcePath.classify" placeholder="请选择分类" style="width: 100%">
+            <el-option label="🌟青出于蓝" value="🌟青出于蓝"></el-option>
+            <el-option label="🥇友情链接" value="🥇友情链接"></el-option>
+          </el-select>
+          <el-input v-else-if="['lovePhoto', 'funny', 'favorites', 'contact'].includes(resourcePath.type)"
+                    maxlength="30" v-model="resourcePath.classify" placeholder="联系方式类型（如：社交媒体、邮箱等）"></el-input>
+          <el-input v-else disabled maxlength="30" v-model="resourcePath.classify" placeholder=""></el-input>
           <div style="margin-top: 10px;margin-bottom: 5px">简介：</div>
-          <el-input :disabled="!['friendUrl', 'favorites', 'siteInfo'].includes(resourcePath.type)"
-                    maxlength="1000" v-model="resourcePath.introduction" :placeholder="resourcePath.type === 'siteInfo' ? '网站描述' : ''"></el-input>
-          <div style="margin-top: 10px;margin-bottom: 5px">封面：</div>
-          <div style="display: flex">
-            <el-input v-model="resourcePath.cover"></el-input>
+          <el-input :disabled="!['friendUrl', 'favorites', 'siteInfo', 'contact'].includes(resourcePath.type)"
+                    maxlength="1000" v-model="resourcePath.introduction" :placeholder="resourcePath.type === 'siteInfo' ? '网站描述' : (resourcePath.type === 'contact' ? '联系方式描述（可选）' : '')"></el-input>
+          <div style="margin-top: 10px;margin-bottom: 5px">
+            封面：
+            <span v-if="resourcePath.type === 'contact'" style="color: #909399; font-size: 12px;">
+              （有封面则只显示图标，无封面则显示标题文字（支持图标占位符）；支持URL或直接粘贴SVG代码自动上传）
+            </span>
+            <span v-if="resourcePath.type === 'asideBackground'" style="color: #909399; font-size: 12px;">
+              （支持图片URL或CSS渐变代码，如：linear-gradient(-45deg, #e8d8b9, #eccec5)，必填）
+            </span>
+          </div>
+          <div v-if="resourcePath.type === 'asideBackground'">
+            <div style="margin-bottom: 5px">主背景层（最底层）：</div>
+            <el-input 
+              type="textarea"
+              :rows="2"
+              v-model="resourcePath.cover" 
+              placeholder="图片URL或CSS代码，如：linear-gradient(-45deg, #e8d8b9, #eccec5, #a3e9eb, #bdbdf0, #eec1ea)">
+            </el-input>
+            <div style="width: 100%;margin-top: 5px; margin-bottom: 10px">
+              <proButton :info="'上传主背景图片'"
+                         @click.native="addResourcePathCover()"
+                         :before="$constant.before_color_1"
+                         :after="$constant.after_color_1">
+              </proButton>
+            </div>
+            
+            <div style="margin-bottom: 5px; margin-top: 15px">
+              额外背景层（可选，用于堆叠效果）：
+              <span style="color: #909399; font-size: 12px;">
+                （支持图片URL或CSS代码，将堆叠在主背景之上）
+              </span>
+            </div>
+            <el-input 
+              type="textarea"
+              :rows="2"
+              v-model="resourcePath.extraBackground" 
+              placeholder="可选，如：linear-gradient(#fff0, #ebfcfd 40%, #caeafa)">
+            </el-input>
+            <div style="width: 100%;margin-top: 5px">
+              <proButton :info="'上传额外背景图片'"
+                         @click.native="uploadExtraBackground()"
+                         :before="$constant.before_color_1"
+                         :after="$constant.after_color_1">
+              </proButton>
+            </div>
+          </div>
+          <div v-else style="display: flex">
+            <el-input 
+              v-model="resourcePath.cover" 
+              :disabled="resourcePath.type === 'quickEntry'"
+              @paste.native="handleCoverPaste"
+              :placeholder="resourcePath.type === 'contact' ? '支持图片URL或直接粘贴SVG代码自动上传' : ''">
+            </el-input>
             <div style="width: 66px;margin: 3.5px 0 0 10px">
               <proButton :info="'上传封面'"
                          @click.native="addResourcePathCover()"
@@ -126,9 +227,9 @@
           </div>
           <div style="margin-top: 10px;margin-bottom: 5px">链接：</div>
           <div style="display: flex">
-            <el-input :disabled="!['friendUrl', 'funny', 'favorites'].includes(resourcePath.type)"
+            <el-input :disabled="!['friendUrl', 'funny', 'favorites', 'contact', 'quickEntry'].includes(resourcePath.type)"
                       v-model="resourcePath.url"
-                      :placeholder="resourcePath.type === 'siteInfo' ? '自动获取（来自网站设置）' : ''"
+                      :placeholder="resourcePath.type === 'siteInfo' ? '自动获取（来自网站设置->网站地址）' : (resourcePath.type === 'contact' ? '联系方式链接（可选）' : (resourcePath.type === 'quickEntry' ? '跳转链接（必填）' : (resourcePath.type === 'asideBackground' ? '无需填写' : '')))"
                       :class="{'readonly-input': resourcePath.type === 'siteInfo'}"></el-input>
             <div style="width: 66px;margin: 3.5px 0 0 10px">
               <proButton :info="'上传文件'"
@@ -138,11 +239,59 @@
               </proButton>
             </div>
           </div>
+          
+          <!-- 快捷入口按钮样式自定义 -->
+          <template v-if="resourcePath.type === 'quickEntry'">
+            <div style="margin-top: 10px;margin-bottom: 5px">
+              按钮样式：
+              <span style="color: #909399; font-size: 12px;">
+                （可选，留空则使用默认样式）
+              </span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <el-input v-model="resourcePath.btnWidth" placeholder="宽度（默认65%）" style="flex: 1;">
+                <template slot="prepend">宽度</template>
+              </el-input>
+              <el-input v-model="resourcePath.btnHeight" placeholder="高度（默认35px）" style="flex: 1;">
+                <template slot="prepend">高度</template>
+              </el-input>
+              <el-input v-model="resourcePath.btnRadius" placeholder="圆角（默认1rem）" style="flex: 1;">
+                <template slot="prepend">圆角</template>
+              </el-input>
+            </div>
+          </template>
+          
+          <!-- 联系方式图标样式自定义 -->
+          <template v-if="resourcePath.type === 'contact'">
+            <div style="margin-top: 10px;margin-bottom: 5px">
+              图标样式：
+              <span style="color: #909399; font-size: 12px;">
+                （可选，留空则使用默认样式）
+              </span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <el-input v-model="resourcePath.btnWidth" placeholder="宽度（默认25px）" style="flex: 1;">
+                <template slot="prepend">宽度</template>
+              </el-input>
+              <el-input v-model="resourcePath.btnHeight" placeholder="高度（默认25px）" style="flex: 1;">
+                <template slot="prepend">高度</template>
+              </el-input>
+              <el-input v-model="resourcePath.btnRadius" placeholder="圆角（默认0）" style="flex: 1;">
+                <template slot="prepend">圆角</template>
+              </el-input>
+            </div>
+          </template>
+          
           <div style="margin-top: 10px;margin-bottom: 5px">资源类型：</div>
-          <div style="margin-top: 10px;margin-bottom: 5px">备注：</div>
-          <el-input :disabled="!['siteInfo'].includes(resourcePath.type)"
+          <div style="margin-top: 10px;margin-bottom: 5px">
+            备注：
+            <span v-if="resourcePath.type === 'quickEntry' || resourcePath.type === 'contact' || resourcePath.type === 'asideBackground'" style="color: #909399; font-size: 12px;">
+              （备注字段用于存储样式信息，请勿手动修改）
+            </span>
+          </div>
+          <el-input :disabled="resourcePath.type === 'quickEntry' || resourcePath.type === 'contact' || resourcePath.type === 'asideBackground'"
                     maxlength="1000" v-model="resourcePath.remark" type="textarea" 
-                    :placeholder="resourcePath.type === 'siteInfo' ? '网站封面图片URL' : ''"></el-input>
+                    :placeholder="(resourcePath.type === 'quickEntry' || resourcePath.type === 'contact' || resourcePath.type === 'asideBackground') ? '自动生成，请勿手动填写' : ''"></el-input>
         </div>
         <div style="display: flex;margin-top: 30px" class="myCenter">
           <proButton :info="'提交'"
@@ -173,7 +322,10 @@
           {label: "图片", value: "lovePhoto"},
           {label: "音乐", value: "funny"},
           {label: "收藏夹", value: "favorites"},
-          {label: "本站信息", value: "siteInfo"}
+          {label: "本站信息", value: "siteInfo"},
+          {label: "联系方式", value: "contact"},
+          {label: "快捷入口", value: "quickEntry"},
+          {label: "侧边栏背景", value: "asideBackground"}
         ],
         pagination: {
           current: 1,
@@ -185,6 +337,7 @@
         resourcePaths: [],
         coverDialog: false,
         uploadDialog: false,
+        extraBackgroundDialog: false,
         addResourcePathDialog: false,
         isUpdate: false,
         resourcePath: {
@@ -194,7 +347,11 @@
           cover: "",
           url: "",
           type: "",
-          remark: ""
+          remark: "",
+          btnWidth: "",
+          btnHeight: "",
+          btnRadius: "",
+          extraBackground: ""
         }
       }
     },
@@ -211,6 +368,98 @@
     },
 
     methods: {
+      getHelpImage(type) {
+        // 根据类型返回对应的帮助图片路径
+        const tipImages = {
+          'contact': '/assets/contactHelp.png',
+          'quickEntry': '/assets/quickEntryHelp.png',
+          'asideBackground': '/assets/asideBackgroundHelp.png'
+        };
+        return tipImages[type] || '';
+      },
+      async handleCoverPaste(event) {
+        // 获取粘贴的文本
+        const pastedText = (event.clipboardData || window.clipboardData).getData('text');
+        
+        // 检测是否是SVG代码
+        if (pastedText.trim().startsWith('<svg') && pastedText.includes('</svg>')) {
+          // 阻止默认粘贴行为
+          event.preventDefault();
+          
+          // 显示上传中提示
+          const loading = this.$loading({
+            lock: true,
+            text: '正在上传SVG文件...',
+            spinner: 'el-icon-loading',
+            background: 'rgba(0, 0, 0, 0.7)'
+          });
+          
+          try {
+            // 将SVG代码上传为文件
+            const svgUrl = await this.uploadSvgAsFile(pastedText.trim());
+            
+            // 设置封面字段
+            this.$nextTick(() => {
+              this.resourcePath.cover = svgUrl;
+            });
+            
+            loading.close();
+            this.$message({
+              message: "SVG已自动上传成功",
+              type: "success"
+            });
+          } catch (error) {
+            loading.close();
+            this.$message({
+              message: "SVG上传失败：" + error.message,
+              type: "error"
+            });
+          }
+        }
+        // 如果不是SVG代码，使用默认粘贴行为
+      },
+      
+      async uploadSvgAsFile(svgCode) {
+        // 创建SVG Blob
+        const blob = new Blob([svgCode], { type: 'image/svg+xml' });
+        
+        // 生成文件名（使用时间戳）
+        const timestamp = Date.now();
+        const filename = `icon_${timestamp}.svg`;
+        
+        // 创建File对象
+        const file = new File([blob], filename, { type: 'image/svg+xml' });
+        
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', this.resourcePath.type || 'contact');
+        // 使用专门的contactCover目录，后端会自动创建
+        formData.append('relativePath', `contactCover/${filename}`);
+        formData.append('storeType', 'local'); // 默认使用本地存储
+        formData.append('originalName', filename);
+        
+        // 获取token
+        const adminToken = window.localStorage.getItem("adminToken");
+        
+        // 上传文件
+        const response = await fetch(this.$constant.baseURL + "/resource/upload", {
+          method: 'POST',
+          headers: {
+            'Authorization': adminToken
+          },
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.code === 200 && result.data) {
+          return result.data;
+        } else {
+          throw new Error(result.message || '上传失败');
+        }
+      },
+      
       addPicture(res) {
         this.resourcePath.cover = res;
         this.coverDialog = false;
@@ -218,6 +467,23 @@
       addFile(res) {
         this.resourcePath.url = res;
         this.uploadDialog = false;
+      },
+      addExtraBackground(res) {
+        this.resourcePath.extraBackground = res;
+        this.extraBackgroundDialog = false;
+      },
+      uploadExtraBackground() {
+        if (this.addResourcePathDialog === false) {
+          return;
+        }
+        if (this.resourcePath.type !== 'asideBackground') {
+          this.$message({
+            message: "仅侧边栏背景类型支持上传额外背景！",
+            type: "error"
+          });
+          return;
+        }
+        this.extraBackgroundDialog = true;
       },
       addResourcePathUrl() {
         if (this.addResourcePathDialog === false) {
@@ -246,16 +512,33 @@
         this.coverDialog = true;
       },
       addResourcePath() {
-        if (this.$common.isEmpty(this.resourcePath.title) || this.$common.isEmpty(this.resourcePath.type)) {
-          this.$message({
-            message: "标题和资源类型不能为空！",
-            type: "error"
-          });
-          return;
+        // 侧边栏背景类型的特殊验证
+        if (this.resourcePath.type === 'asideBackground') {
+          if (this.$common.isEmpty(this.resourcePath.cover)) {
+            this.$message({
+              message: "侧边栏背景图片/CSS代码不能为空！",
+              type: "error"
+            });
+            return;
+          }
+        } else {
+          // 其他类型的常规验证
+          if (this.$common.isEmpty(this.resourcePath.title) || this.$common.isEmpty(this.resourcePath.type)) {
+            this.$message({
+              message: "标题和资源类型不能为空！",
+              type: "error"
+            });
+            return;
+          }
         }
+        
         const payload = JSON.parse(JSON.stringify(this.resourcePath));
         if (payload.type === 'siteInfo') {
           payload.url = '';
+        }
+        // 侧边栏背景自动设置标题
+        if (payload.type === 'asideBackground') {
+          payload.title = '侧边栏背景';
         }
         this.$http.post(this.$constant.baseURL + "/webInfo/" + (this.isUpdate ? "updateResourcePath" : "saveResourcePath"), payload, true)
           .then((res) => {
@@ -363,7 +646,11 @@
           cover: "",
           url: "",
           type: "",
-          remark: ""
+          remark: "",
+          btnWidth: "",
+          btnHeight: "",
+          btnRadius: "",
+          extraBackground: ""
         }
       }
     }
@@ -405,4 +692,43 @@
   .el-switch {
     margin: 5px;
   }
+
+  /* 资源类型提示图标样式 */
+  .type-tip-icon {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 14px;
+    cursor: help;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+    vertical-align: middle;
+  }
+
+  .type-tip-icon:hover {
+    opacity: 1;
+  }
+</style>
+
+<style>
+/* 资源类型帮助提示 Popover 全局样式 - 暗色模式适配 */
+.dark-mode .resource-type-help-popover {
+  background-color: #2c2c2c !important;
+  border-color: #404040 !important;
+}
+
+.dark-mode .resource-type-help-popover .popper__arrow::after {
+  border-right-color: #2c2c2c !important;
+  border-bottom-color: #2c2c2c !important;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .resource-type-help-popover {
+    max-width: 90vw !important;
+  }
+  
+  .resource-type-help-popover .help-image {
+    max-width: 100% !important;
+  }
+}
 </style>

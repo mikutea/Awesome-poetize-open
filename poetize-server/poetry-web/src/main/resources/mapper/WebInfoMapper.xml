@@ -17,6 +17,7 @@
         <result column="waifu_json" property="waifuJson"/>
         <result column="status" property="status"/>
         <result column="enable_waifu" property="enableWaifu"/>
+        <result column="waifu_display_mode" property="waifuDisplayMode"/>
         <result column="home_page_pull_up_height" property="homePagePullUpHeight"/>
         <result column="api_enabled" property="apiEnabled"/>
         <result column="api_key" property="apiKey"/>
@@ -35,7 +36,7 @@
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
         id, web_name, web_title, notices, footer, background_image, avatar, random_avatar, random_name, random_cover,
-        waifu_json, status, enable_waifu, home_page_pull_up_height, api_enabled, api_key, nav_config,
+        waifu_json, status, enable_waifu, waifu_display_mode, home_page_pull_up_height, api_enabled, api_key, nav_config,
         footer_background_image, footer_background_config, email, minimal_footer, enable_auto_night,
         auto_night_start, auto_night_end, enable_gray_mode, mobile_drawer_config
     </sql>
@@ -73,6 +74,9 @@
             </if>
             <if test="enableWaifu != null">
                 enable_waifu = #{enableWaifu},
+            </if>
+            <if test="waifuDisplayMode != null">
+                waifu_display_mode = #{waifuDisplayMode},
             </if>
             <if test="homePagePullUpHeight != null">
                 home_page_pull_up_height = #{homePagePullUpHeight},

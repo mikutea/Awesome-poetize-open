@@ -2,7 +2,8 @@
   <div class="card-container" v-if="!$common.isEmpty(resourcePathList)">
     <div v-for="(resourcePath, index) in resourcePathList"
          :key="index"
-         class="card-item shadow-box wow"
+         class="card-item shadow-box"
+         v-animate
          @click="clickResourcePath(resourcePath)">
       <div class="card-image">
         <el-image class="my-el-image"
@@ -12,7 +13,7 @@
                   fit="cover">
           <div slot="error" class="image-slot myCenter" style="background-color: var(--lightGreen)">
             <div class="error-text">
-              <div>遇事不决，可问春风</div>
+              <div v-html="'「' + resourcePath.title + '」'"></div>
             </div>
           </div>
         </el-image>

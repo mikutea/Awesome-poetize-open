@@ -7,21 +7,21 @@
     <artifactId>poetry</artifactId>
     <version>3.0-LeapYa</version>
     <name>POETIZE - 最美博客 (LeapYa维护版)</name>
-    <description>POETIZE - 最美博客系统 LeapYa维护版，基于Spring Boot 3.x + Java 21</description>
+    <description>POETIZE - 最美博客系统 LeapYa维护版，基于Spring Boot 3.x + Java 25</description>
     <packaging>pom</packaging>
 
     <properties>
         <poetry.version>3.0-LeapYa</poetry.version>
-        <spring-boot.version>3.2.12</spring-boot.version>
+        <spring-boot.version>3.5.5</spring-boot.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven-jar-plugin.version>3.9.0</maven-jar-plugin.version>
-        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <java.version>21</java.version>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <java.version>25</java.version>
         <springdoc.version>2.3.0</springdoc.version>
         <mybatis-plus.version>3.5.8</mybatis-plus.version>
         <hutool.version>5.8.24</hutool.version>
-        <lombok.version>1.18.30</lombok.version>
+        <lombok.version>1.18.40</lombok.version>
         <!-- 离线IP地址定位库 -->
         <ip2region.version>2.7.0</ip2region.version>
         <!-- 禁用Maven 3.8+的HTTP仓库检查 -->
@@ -128,6 +128,13 @@
                 <version>3.23.0</version>
             </dependency>
 
+            <!-- 统一 error_prone_annotations 版本，解决依赖冲突 -->
+            <dependency>
+                <groupId>com.google.errorprone</groupId>
+                <artifactId>error_prone_annotations</artifactId>
+                <version>2.40.0</version>
+            </dependency>
+
             <dependency>
                 <groupId>com.ld</groupId>
                 <artifactId>poetry-web</artifactId>
@@ -144,8 +151,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
                 <configuration>
-                    <source>21</source>
-                    <target>21</target>
+                    <source>25</source>
+                    <target>25</target>
                     <encoding>${project.build.sourceEncoding}</encoding>
                     <annotationProcessorPaths>
                         <path>
@@ -158,7 +165,7 @@
                         <arg>-Xlint:deprecation</arg>
                         <arg>-parameters</arg>
                     </compilerArgs>
-                    <release>21</release>
+                    <release>25</release>
                 </configuration>
             </plugin>
             <plugin>
@@ -192,8 +199,9 @@
                         </goals>
                         <configuration>
                             <rules>
+                                <!-- 确保所有传递依赖使用统一版本 -->
                                 <dependencyConvergence />
-                                <!-- 禁用上界依赖检查，因为升级到Java 11后会有版本冲突 -->
+                                <!-- 上界依赖检查：某些第三方库可能有版本要求差异，暂时禁用 -->
                                 <!-- <requireUpperBoundDeps /> -->
                                 <bannedDependencies>
                                     <excludes>

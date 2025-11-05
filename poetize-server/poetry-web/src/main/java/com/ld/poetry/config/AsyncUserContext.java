@@ -20,7 +20,6 @@ public class AsyncUserContext {
      */
     public static void setUser(User user) {
         userThreadLocal.set(user);
-        log.debug("异步线程设置用户上下文: {}", user != null ? user.getUsername() : "null");
     }
     
     /**
@@ -29,7 +28,6 @@ public class AsyncUserContext {
      */
     public static void setToken(String token) {
         tokenThreadLocal.set(token);
-        log.debug("异步线程设置Token上下文: {}", token != null ? token.substring(0, Math.min(token.length(), 10)) + "..." : "null");
     }
     
     /**
@@ -72,14 +70,12 @@ public class AsyncUserContext {
         Long executionTime = getExecutionTime();
         
         if (user != null && executionTime != null) {
-            log.debug("异步任务完成 - 用户: {}, 执行时间: {}ms", user.getUsername(), executionTime);
         }
         
         userThreadLocal.remove();
         tokenThreadLocal.remove();
         startTimeThreadLocal.remove();
         
-        log.debug("异步线程上下文已清理");
     }
     
     /**

@@ -44,7 +44,6 @@ public class Ip2RegionProvider implements IpLocationProvider {
     @Override
     public String resolveLocation(String ipAddress) {
         if (!isAvailable()) {
-            log.debug("IP2Region离线库未初始化，无法解析IP: {}", ipAddress);
             return "未知";
         }
         

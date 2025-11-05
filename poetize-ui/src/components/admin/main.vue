@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :class="{ 'main-dark-mode': isDarkMode }">
     <div v-loading="loading">
       <el-tag effect="dark" class="my-tag">
         <svg viewBox="0 0 1024 1024" width="20" height="20" style="vertical-align: -4px;">
@@ -201,6 +201,66 @@
         <div class="history-title">访问量历史趋势</div>
         <visit-stats ref="visitStatsChart"></visit-stats>
       </div>
+
+      <!-- 封禁IP列表 -->
+      <div style="margin-top: 40px;">
+        <div class="history-title">
+          封禁IP列表
+          <el-button type="text" 
+                     style="float: right; margin-top: -5px; color: #409EFF;"
+                     @click="refreshBlockedIps"
+                     :loading="loadingBlockedIps"
+                     title="刷新封禁IP列表">
+            <i class="el-icon-refresh"></i>
+          </el-button>
+        </div>
+        
+        <div style="max-width: 900px; margin: 0 auto;">
+          <el-table 
+            :data="blockedIps" 
+            border 
+            v-loading="loadingBlockedIps"
+            style="margin-top: 10px;">
+            <el-table-column type="index" label="序号" width="60" align="center"></el-table-column>
+            
+            <el-table-column prop="ip" label="IP地址" min-width="180" align="center">
+              <template slot-scope="scope">
+                <el-tag type="danger" size="small">{{ scope.row.ip }}</el-tag>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="失败次数" width="100" align="center">
+              <template slot-scope="scope">
+                <el-tag type="warning" size="small">{{ scope.row.failCount }} 次</el-tag>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="剩余时间" width="120" align="center">
+              <template slot-scope="scope">
+                <el-tag :type="getTimeTagType(scope.row.remainingMinutes)" size="small">
+                  {{ scope.row.remainingMinutes }} 分钟
+                </el-tag>
+              </template>
+            </el-table-column>
+            
+            <el-table-column label="操作" width="120" align="center">
+              <template slot-scope="scope">
+                <el-button
+                  size="mini"
+                  type="success"
+                  @click="handleUnblock(scope.row)"
+                  :loading="unblockingIps[scope.row.ip]">
+                  解除封禁
+                </el-button>
+              </template>
+            </el-table-column>
+            
+            <template slot="empty">
+              <span style="color: #909399;">暂无数据</span>
+            </template>
+          </el-table>
+        </div>
+      </div>
       
     </div>
   </div>
@@ -217,7 +277,11 @@ export default {
     return {
       historyInfo: {},
       loading: false,
-      refreshing: false
+      refreshing: false,
+      isDarkMode: false,
+      blockedIps: [],
+      loadingBlockedIps: false,
+      unblockingIps: {}
     }
   },
 
@@ -227,10 +291,24 @@ export default {
 
   created() {
     this.getHistoryInfo();
+    this.getBlockedIps();
+    // 初始化主题
+    this.updateTheme();
   },
 
   mounted() {
+    // 监听主题变化
+    this.setupThemeListener();
+  },
 
+  beforeDestroy() {
+    // 清理全局事件监听
+    this.$root.$off('theme-changed');
+    
+    // 清理 storage 事件监听
+    if (this.themeListener) {
+      window.removeEventListener('storage', this.themeListener);
+    }
   },
 
   methods: {
@@ -278,6 +356,102 @@ export default {
         .finally(() => {
           this.refreshing = false;
         });
+    },
+    
+    // 更新主题状态
+    updateTheme() {
+      const theme = localStorage.getItem('theme');
+      if (theme) {
+        // 用户手动设置了主题
+        this.isDarkMode = theme === 'dark';
+      } else {
+        // 用户未设置，检查 DOM 或系统偏好
+        const hasDarkClass = document.body.classList.contains('dark-mode') || 
+                            document.documentElement.classList.contains('dark-mode');
+        if (hasDarkClass) {
+          this.isDarkMode = true;
+        } else {
+          // 最后检查系统偏好
+          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          this.isDarkMode = prefersDark;
+        }
+      }
+    },
+    
+    // 监听主题变化
+    setupThemeListener() {
+      // 监听全局主题变化事件（由父组件 admin.vue 触发）
+      this.$root.$on('theme-changed', (isDark) => {
+        this.isDarkMode = isDark;
+      });
+      
+      // 监听 storage 事件（跨标签页）
+      this.themeListener = (e) => {
+        if (e.key === 'theme') {
+          this.updateTheme();
+        }
+      };
+      window.addEventListener('storage', this.themeListener);
+    },
+    
+    // 获取封禁IP列表
+    getBlockedIps() {
+      this.loadingBlockedIps = true;
+      
+      this.$http.get(this.$constant.baseURL + "/captcha/getBlockedIps", {}, true)
+        .then(res => {
+          this.blockedIps = res.data || [];
+        })
+        .catch(error => {
+          console.error('获取封禁IP列表失败:', error);
+        })
+        .finally(() => {
+          this.loadingBlockedIps = false;
+        });
+    },
+    
+    // 刷新封禁IP列表
+    refreshBlockedIps() {
+      this.getBlockedIps();
+    },
+    
+    // 解除IP封禁
+    handleUnblock(row) {
+      this.$confirm(`确定要解除IP "${row.ip}" 的封禁吗？`, '确认操作', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        this.$set(this.unblockingIps, row.ip, true);
+        
+        this.$http.post(this.$constant.baseURL + "/captcha/unblockIp", { ip: row.ip }, true)
+          .then(res => {
+            this.$message({
+              message: '解除封禁成功！',
+              type: 'success'
+            });
+            // 从列表中移除
+            this.blockedIps = this.blockedIps.filter(item => item.ip !== row.ip);
+          })
+          .catch(error => {
+            this.$message({
+              message: '解除封禁失败: ' + error.message,
+              type: 'error'
+            });
+          })
+          .finally(() => {
+            this.$delete(this.unblockingIps, row.ip);
+          });
+      }).catch(() => {
+        // 取消操作
+      });
+    },
+    
+    // 根据剩余时间获取标签类型
+    getTimeTagType(minutes) {
+      if (minutes > 20) return 'danger';
+      if (minutes > 10) return 'warning';
+      return 'info';
     }
   }
 }
@@ -334,6 +508,68 @@ export default {
 
   .history-info >>> .el-table::before {
     height: unset;
+  }
+
+  /* ========== 深色模式适配 ========== */
+  .main-dark-mode .my-tag {
+    background: var(--lightYellow);
+    color: var(--black);
+  }
+
+  .main-dark-mode .history-title {
+    background: var(--lightGreen);
+    color: var(--white);
+  }
+
+  /* 所有标题文字 */
+  .main-dark-mode .history-name {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* 表格样式 */
+  .main-dark-mode >>> .el-table {
+    background-color: transparent !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .main-dark-mode >>> .el-table th,
+  .main-dark-mode >>> .el-table tr,
+  .main-dark-mode >>> .el-table td,
+  .main-dark-mode >>> .el-table__body-wrapper .el-table__body .el-table__row .cell {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .main-dark-mode >>> .el-table--enable-row-hover .el-table__body tr:hover > td {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .main-dark-mode >>> .el-table th.el-table__cell {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .main-dark-mode >>> .el-table .cell {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* 加载动画 */
+  .main-dark-mode >>> .el-loading-mask {
+    background-color: rgba(0, 0, 0, 0.8) !important;
+  }
+
+  .main-dark-mode >>> .el-loading-spinner .el-icon-loading {
+    color: var(--lightGreen) !important;
+  }
+
+  .main-dark-mode >>> .el-loading-spinner .el-loading-text {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  /* 刷新按钮 */
+  .main-dark-mode >>> .el-button--text {
+    color: #409EFF !important;
   }
 
 </style>

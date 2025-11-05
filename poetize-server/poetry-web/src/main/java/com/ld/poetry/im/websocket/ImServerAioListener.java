@@ -134,9 +134,6 @@ public class ImServerAioListener extends WsServerAioListener {
                     WsResponse wsResponse = WsResponse.fromText(imMessage.toJsonString(), CommonConst.CHARSET_NAME);
                     Tio.sendToGroup(tioWebsocketStarter.getServerTioConfig(), groupId, wsResponse);
                     
-                    if (log.isDebugEnabled()) {
-                        log.debug("广播群组{}在线用户数更新: {}", groupId, onlineCount);
-                    }
                 }
             }
         } catch (Exception e) {
@@ -172,9 +169,6 @@ public class ImServerAioListener extends WsServerAioListener {
                     WsResponse wsResponse = WsResponse.fromText(imMessage.toJsonString(), CommonConst.CHARSET_NAME);
                     Tio.sendToGroup(tioWebsocketStarter.getServerTioConfig(), groupId, wsResponse);
                     
-                    if (log.isDebugEnabled()) {
-                        log.debug("广播群组{}用户离开后在线用户数: {} -> {}", groupId, currentCount, onlineCount);
-                    }
                 }
             }
         } catch (Exception e) {

@@ -164,8 +164,6 @@ public class AdminController {
                     return PoetryResult.fail("网站信息不存在");
                 }
             } else {
-                log.debug("从缓存获取网站信息成功 - webName: {}, webTitle: {}",
-                        webInfo.getWebName(), webInfo.getWebTitle());
             }
 
             // 返回完整信息（包含randomAvatar, randomName, waifuJson等敏感配置）

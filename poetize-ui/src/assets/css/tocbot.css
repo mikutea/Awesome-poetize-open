@@ -5,27 +5,23 @@
     right: 3vh;
     background: var(--commentContent);
     border-radius: 8px;
-    z-index: 100;
+    z-index: 99;
     /* 性能优化: 只监听位置和透明度变化 */
     transition: opacity 1s ease, transform 1s ease;
     padding: 10px 10px 10px 5px;
     color: var(--maxGreyFont);
 }
 
+/* 动态目录标题 - 通过 JavaScript 设置 data-toc-title 属性 */
 .toc::before {
-    content: '🏖️目录';
+    content: attr(data-toc-title);
     font-size: 24px;
     line-height: 40px;
     margin-left: 55px;
 }
 
-/* 英文模式下的目录标题 */
-html[lang="en"] .toc::before {
-    content: '🏖️Index';
-}
-
-/* 中文模式下的目录标题 */
-html[lang="zh"] .toc::before {
+/* 默认标题（如果 JavaScript 未设置 data-toc-title） */
+.toc:not([data-toc-title])::before {
     content: '🏖️目录';
 }
 
@@ -85,4 +81,13 @@ html[lang="zh"] .toc::before {
     background: var(--lightGreen);
     padding: 4px 8px;
     border-radius: 5px;
+}
+
+/* 暗色模式适配 */
+body.dark-mode .toc::before {
+    color: #e0e0e0;
+}
+
+body.dark-mode .toc {
+    color: #e0e0e0;
 }

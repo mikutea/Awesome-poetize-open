@@ -2,15 +2,17 @@
   <div class="ai-model-config">
     <el-form :model="modelConfig" label-width="120px">
       <el-form-item label="AI服务商">
-        <el-select v-model="modelConfig.provider" placeholder="请选择AI服务商" @change="onProviderChange">
+        <el-select 
+          v-model="modelConfig.provider" 
+          placeholder="请选择AI服务商" 
+          @change="onProviderChange">
           <el-option label="OpenAI" value="openai"></el-option>
           <el-option label="Claude (Anthropic)" value="anthropic"></el-option>
-          <el-option label="Google Gemini" value="google"></el-option>
-          <el-option label="百度文心" value="baidu"></el-option>
-          <el-option label="阿里通义千问" value="alibaba"></el-option>
-          <el-option label="腾讯混元" value="tencent"></el-option>
+          <el-option label="DeepSeek" value="deepseek"></el-option>
+          <el-option label="硅基流动" value="siliconflow"></el-option>
           <el-option label="自定义API" value="custom"></el-option>
         </el-select>
+        <small class="help-text">其他服务商（如通义千问、文心一言等）请使用"自定义API"选项</small>
       </el-form-item>
 
       <el-form-item label="API密钥">
@@ -34,10 +36,10 @@
       <el-form-item label="模型名称">
         <el-select 
           v-model="modelConfig.model" 
-          :placeholder="modelConfig.provider === 'custom' ? '请输入自定义模型名称' : '请选择模型'" 
+          placeholder="请输入模型名称（如：gpt-5、claude-3-5-sonnet-20241022、deepseek-chat等）" 
           filterable 
           allow-create
-          :class="{'custom-model-select': modelConfig.provider === 'custom'}">
+          class="custom-model-select">
           <el-option 
             v-for="model in availableModels" 
             :key="model.value" 
@@ -45,18 +47,15 @@
             :value="model.value">
           </el-option>
         </el-select>
-        <small class="help-text" v-if="modelConfig.provider === 'custom'">
-          自定义API：请输入您的模型名称，支持任何兼容OpenAI格式的模型
-        </small>
-        <small class="help-text" v-else>
-          根据所选服务商自动显示可用模型
+        <small class="help-text">
+          支持任何模型名称，请根据您选择的服务商输入对应的模型标识符
         </small>
         <small class="help-text thinking-hint" v-if="isThinkingModelSelected">
           此模型支持思考模式，可在高级设置中启用以获得更深入的分析
         </small>
       </el-form-item>
 
-      <el-form-item label="API基础URL" v-if="modelConfig.provider === 'custom'">
+      <el-form-item label="API基础URL" v-if="!['openai', 'anthropic'].includes(modelConfig.provider)">
         <el-input 
           v-model="modelConfig.baseUrl" 
           placeholder="例如: https://api.example.com/v1">
@@ -82,6 +81,39 @@
           :step="100">
         </el-input-number>
         <small class="help-text">单次回复的最大长度</small>
+      </el-form-item>
+
+      <el-form-item label="Top P">
+        <el-slider 
+          v-model="modelConfig.topP" 
+          :min="0" 
+          :max="1" 
+          :step="0.01"
+          show-tooltip>
+        </el-slider>
+        <small class="help-text">核采样参数，控制输出多样性（0-1），默认1.0</small>
+      </el-form-item>
+
+      <el-form-item label="频率惩罚">
+        <el-slider 
+          v-model="modelConfig.frequencyPenalty" 
+          :min="0" 
+          :max="2" 
+          :step="0.1"
+          show-tooltip>
+        </el-slider>
+        <small class="help-text">降低重复词汇的频率（0-2），默认0</small>
+      </el-form-item>
+
+      <el-form-item label="存在惩罚">
+        <el-slider 
+          v-model="modelConfig.presencePenalty" 
+          :min="0" 
+          :max="2" 
+          :step="0.1"
+          show-tooltip>
+        </el-slider>
+        <small class="help-text">鼓励谈论新话题（0-2），默认0</small>
       </el-form-item>
 
       <el-form-item label="启用AI聊天">
@@ -122,6 +154,9 @@ export default {
         baseUrl: '',
         temperature: 0.7,
         maxTokens: 1000,
+        topP: 1.0,
+        frequencyPenalty: 0,
+        presencePenalty: 0,
         enabled: false,
         enableStreaming: false
       })
@@ -141,60 +176,16 @@ export default {
   
   computed: {
     availableModels() {
-      const modelMap = {
-        openai: [
-          { label: 'GPT-4', value: 'gpt-4' },
-          { label: 'GPT-4 Turbo', value: 'gpt-4-turbo-preview' },
-          { label: 'GPT-4o', value: 'gpt-4o' },
-          { label: 'o1-preview (思考模式)', value: 'o1-preview' },
-          { label: 'o1-mini (思考模式)', value: 'o1-mini' },
-          { label: 'GPT-3.5 Turbo', value: 'gpt-3.5-turbo' },
-          { label: 'GPT-3.5 Turbo 16K', value: 'gpt-3.5-turbo-16k' }
-        ],
-        anthropic: [
-          { label: 'Claude-3 Opus', value: 'claude-3-opus-20240229' },
-          { label: 'Claude-3 Sonnet', value: 'claude-3-sonnet-20240229' },
-          { label: 'Claude-3 Haiku', value: 'claude-3-haiku-20240307' }
-        ],
-        google: [
-          { label: 'Gemini Pro', value: 'gemini-pro' },
-          { label: 'Gemini Pro Vision', value: 'gemini-pro-vision' }
-        ],
-        baidu: [
-          { label: '文心一言', value: 'ernie-bot' },
-          { label: '文心一言 Turbo', value: 'ernie-bot-turbo' }
-        ],
-        alibaba: [
-          { label: '通义千问', value: 'qwen-turbo' },
-          { label: '通义千问 Plus', value: 'qwen-plus' }
-        ],
-        tencent: [
-          { label: '混元大模型', value: 'hunyuan' }
-        ],
-        custom: [
-          { label: 'GPT-3.5 Turbo (OpenAI兼容)', value: 'gpt-3.5-turbo' },
-          { label: 'GPT-4 (OpenAI兼容)', value: 'gpt-4' },
-          { label: 'GPT-4o (OpenAI兼容)', value: 'gpt-4o' },
-          { label: 'o1-preview (思考模式)', value: 'o1-preview' },
-          { label: 'o1-mini (思考模式)', value: 'o1-mini' },
-          { label: 'Claude-3 Sonnet (兼容)', value: 'claude-3-sonnet-20240229' },
-          { label: 'DeepSeek Chat', value: 'deepseek-chat' },
-          { label: 'DeepSeek Coder', value: 'deepseek-coder' },
-          { label: 'Qwen2.5-72B-Instruct (ModelScope)', value: 'Qwen/Qwen2.5-72B-Instruct' },
-          { label: 'Qwen2.5-32B-Instruct (ModelScope)', value: 'Qwen/Qwen2.5-32B-Instruct' },
-          { label: 'Moonshot v1', value: 'moonshot-v1-8k' },
-          { label: 'GLM-4', value: 'glm-4' },
-          { label: 'Qwen Turbo', value: 'qwen-turbo' },
-          { label: '自定义模型', value: 'custom-model' }
-        ]
-      };
-      return modelMap[this.modelConfig.provider] || [];
+      // 返回空数组，允许用户自由输入任何模型名称
+      return [];
     },
     
     isThinkingModelSelected() {
-      const thinkingModels = ['o1-preview', 'o1-mini'];
+      const thinkingModels = ['o1-preview', 'o1-mini', 'deepseek-reasoner'];
       return thinkingModels.includes(this.modelConfig.model) || 
              this.modelConfig.model.includes('o1') ||
+             this.modelConfig.model.includes('reasoner') ||
+             this.modelConfig.model.includes('DeepSeek-R1') ||
              this.modelConfig.model.includes('thinking');
     }
   },
@@ -202,16 +193,22 @@ export default {
   watch: {
     value: {
       handler(newVal) {
-        this.modelConfig = { ...newVal };
-        this.isApiKeyMasked = this.modelConfig.apiKey && this.modelConfig.apiKey.includes('*');
-        this.originalMaskedKey = this.isApiKeyMasked ? this.modelConfig.apiKey : '';
+        // 避免无限循环：只在值真正变化时更新
+        if (JSON.stringify(newVal) !== JSON.stringify(this.modelConfig)) {
+          this.modelConfig = { ...newVal };
+          this.isApiKeyMasked = this.modelConfig.apiKey && this.modelConfig.apiKey.includes('*');
+          this.originalMaskedKey = this.isApiKeyMasked ? this.modelConfig.apiKey : '';
+        }
       },
       deep: true
     },
     
     modelConfig: {
       handler(newVal) {
-        this.$emit('input', newVal);
+        // 避免无限循环：只在值真正变化时 emit
+        if (JSON.stringify(newVal) !== JSON.stringify(this.value)) {
+          this.$emit('input', newVal);
+        }
       },
       deep: true
     }
@@ -219,18 +216,7 @@ export default {
   
   methods: {
     onProviderChange() {
-      const models = this.availableModels;
-      if (models.length > 0) {
-        if (this.modelConfig.provider === 'custom' && this.modelConfig.model) {
-          // 保持现有模型名称不变
-        } else {
-          this.modelConfig.model = models[0].value;
-        }
-      } else if (this.modelConfig.provider === 'custom') {
-        if (!this.modelConfig.model) {
-          this.modelConfig.model = 'gpt-3.5-turbo';
-        }
-      }
+      // 清除测试结果
       this.testResult = null;
     },
     
@@ -240,7 +226,7 @@ export default {
 
       try {
         if (this.isApiKeyMasked || (this.modelConfig.apiKey && this.modelConfig.apiKey.includes('*'))) {
-          const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/testConnection', {
+          const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/test', {
             provider: this.modelConfig.provider,
             api_base: this.modelConfig.baseUrl,
             model: this.modelConfig.model,
@@ -268,7 +254,7 @@ export default {
             model: this.modelConfig.model
           };
 
-          const response = await this.$http.post(this.$constant.pythonBaseURL + '/ai/chat/testConnection', testData, true);
+          const response = await this.$http.post(this.$constant.baseURL + '/webInfo/ai/config/chat/test', testData, true);
 
           if (response.flag) {
             this.testResult = {
@@ -319,12 +305,27 @@ export default {
       }).catch(() => {
         // 用户取消操作
       });
-    }
+}
   }
 }
 </script>
 
 <style scoped>
+.ai-model-config {
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 10px;
+}
+
+/* 移动端对话框中不限制高度 */
+@media screen and (max-width: 768px) {
+  .ai-model-config {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 .help-text {
   color: #909399;
   font-size: 12px;
@@ -359,5 +360,77 @@ export default {
 
 .custom-model-select {
   width: 100%;
+}
+
+/* PC端样式 - 768px以上 */
+@media screen and (min-width: 769px) {
+  ::v-deep .el-form-item__label {
+    float: left !important;
+  }
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .ai-model-config {
+    padding: 0;
+  }
+
+  .ai-model-config .el-form-item {
+    margin-bottom: 15px;
+  }
+
+  /* 标签适配 - 垂直布局 */
+  .ai-model-config .el-form-item__label {
+    float: none !important;
+    width: 100% !important;
+    text-align: left !important;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 8px !important;
+    padding-bottom: 0 !important;
+  }
+
+  .ai-model-config .el-form-item__content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* 帮助文本字号优化 */
+  .help-text {
+    font-size: 11px;
+    line-height: 1.3;
+    margin-top: 3px;
+  }
+
+  .api-key-status {
+    font-size: 11px;
+  }
+
+  .test-success,
+  .test-error {
+    font-size: 11px;
+  }
+
+  /* 滑块容器 */
+  .ai-model-config .el-slider {
+    padding: 0 10px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .ai-model-config .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .ai-model-config .el-form-item__label {
+    font-size: 12px;
+  }
+
+  .help-text,
+  .api-key-status,
+  .test-success,
+  .test-error {
+    font-size: 10px;
+  }
 }
 </style> 

@@ -2,7 +2,8 @@
   <div class="card-container" v-if="!$common.isEmpty(resourcePathList)">
     <div v-for="(resourcePath, index) in resourcePathList"
          :key="index"
-         class="card-item wow shadow-box-mini">
+         class="card-item shadow-box-mini"
+         v-animate>
       <div class="card-image">
         <el-image class="my-el-image"
                   v-once

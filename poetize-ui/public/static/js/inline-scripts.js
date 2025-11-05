@@ -1,10 +1,3 @@
-// 初始化 WOW 动画
-(function() {
-  if (typeof WOW !== 'undefined') {
-    new WOW().init();
-  }
-})();
-
 // 看板娘拖拽功能，仅在启用看板娘功能时执行
 (function() {
   // 检查看板娘功能是否启用

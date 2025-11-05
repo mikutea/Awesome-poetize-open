@@ -30,7 +30,6 @@ public class TokenValidationUtil {
      */
     public static boolean isUserToken(String token) {
         if (!StringUtils.hasText(token)) {
-            log.debug("Token为空，验证失败");
             return false;
         }
 
@@ -38,17 +37,14 @@ public class TokenValidationUtil {
         SecureTokenGenerator.TokenValidationResult result = SecureTokenGenerator.validateToken(token);
 
         if (!result.isValid()) {
-            log.debug("用户token验证失败: {}", result.getErrorMessage());
             return false;
         }
 
         // 验证是否为用户token类型
         if (!result.isUserToken()) {
-            log.debug("Token类型不匹配，期望用户token但实际为: {}", result.getUserType());
             return false;
         }
 
-        log.debug("用户token验证通过 - 用户ID: {}", result.getUserId());
         return true;
     }
 
@@ -61,7 +57,6 @@ public class TokenValidationUtil {
      */
     public static boolean isAdminToken(String token) {
         if (!StringUtils.hasText(token)) {
-            log.debug("Token为空，验证失败");
             return false;
         }
 
@@ -69,17 +64,14 @@ public class TokenValidationUtil {
         SecureTokenGenerator.TokenValidationResult result = SecureTokenGenerator.validateToken(token);
 
         if (!result.isValid()) {
-            log.debug("管理员token验证失败: {}", result.getErrorMessage());
             return false;
         }
 
         // 验证是否为管理员token类型
         if (!result.isAdminToken()) {
-            log.debug("Token类型不匹配，期望管理员token但实际为: {}", result.getUserType());
             return false;
         }
 
-        log.debug("管理员token验证通过 - 用户ID: {}", result.getUserId());
         return true;
     }
 

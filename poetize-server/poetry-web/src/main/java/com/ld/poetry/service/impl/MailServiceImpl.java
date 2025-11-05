@@ -1,20 +1,15 @@
 package com.ld.poetry.service.impl;
 
-import com.alibaba.fastjson.JSON;
 import com.ld.poetry.entity.dto.MailConfigDTO;
 import com.ld.poetry.service.MailService;
 import com.ld.poetry.service.SysConfigService;
 import com.ld.poetry.service.SysMailConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.ResponseEntity;
-import org.springframework.core.ParameterizedTypeReference;
 
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;

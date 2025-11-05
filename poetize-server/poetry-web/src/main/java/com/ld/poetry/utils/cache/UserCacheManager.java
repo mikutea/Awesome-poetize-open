@@ -47,12 +47,10 @@ public class UserCacheManager {
                 if (userId != null) {
                     User user = cacheService.getCachedUser(userId);
                     if (user != null) {
-                        log.debug("从Redis缓存获取用户信息成功: userId={}, token={}", userId, token);
                         return user;
                     }
                 }
 
-                log.debug("Token {} 在Redis缓存中不存在，可能已过期", token);
                 return null;
             } catch (Exception e) {
                 log.error("从Redis缓存获取用户信息失败: token={}", token, e);
@@ -76,7 +74,6 @@ public class UserCacheManager {
             // 1. 先从Redis缓存获取
             User user = cacheService.getCachedUser(userId);
             if (user != null) {
-                log.debug("从Redis缓存获取用户信息成功: userId={}", userId);
                 return user;
             }
 
@@ -84,7 +81,6 @@ public class UserCacheManager {
             user = userService.getById(userId);
             if (user != null) {
                 cacheService.cacheUser(user);
-                log.debug("从数据库查询用户信息并缓存: userId={}", userId);
             }
             return user;
         } catch (Exception e) {
@@ -111,7 +107,6 @@ public class UserCacheManager {
             // 缓存用户会话到Redis
             cacheService.cacheUserSession(token, user.getId());
 
-            log.debug("缓存用户信息到Redis: userId={}, token={}", user.getId(), token);
         } catch (Exception e) {
             log.error("缓存用户信息失败: userId={}, token={}", user.getId(), token, e);
         }
@@ -139,7 +134,6 @@ public class UserCacheManager {
                 cacheService.evictUser(userId);
             }
 
-            log.debug("移除用户缓存: token={}, userId={}", token, userId);
         } catch (Exception e) {
             log.error("移除用户缓存失败: token={}", token, e);
         }
@@ -158,7 +152,6 @@ public class UserCacheManager {
         try {
             // 直接移除用户信息缓存
             cacheService.evictUser(userId);
-            log.debug("移除用户缓存: userId={}", userId);
         } catch (Exception e) {
             log.error("移除用户缓存失败: userId={}", userId, e);
         }
@@ -198,7 +191,6 @@ public class UserCacheManager {
     public void removeUserByToken(String token) {
         if (StringUtils.hasText(token)) {
             removeUserCache(token);
-            log.debug("移除用户缓存 - Token: {}", token);
         }
     }
 
@@ -209,7 +201,6 @@ public class UserCacheManager {
     public void removeUserById(Integer userId) {
         if (userId != null) {
             removeUserCacheById(userId);
-            log.debug("移除用户缓存 - 用户ID: {}", userId);
         }
     }
 
@@ -221,7 +212,6 @@ public class UserCacheManager {
     public void cacheUserByToken(String token, User user) {
         if (StringUtils.hasText(token) && user != null) {
             cacheUser(token, user);
-            log.debug("缓存用户信息 - Token: {}, 用户: {}", token, user.getUsername());
         }
     }
 
@@ -234,7 +224,6 @@ public class UserCacheManager {
         if (userId != null && user != null) {
             // 直接缓存用户信息到Redis
             cacheService.cacheUser(user);
-            log.debug("缓存用户信息 - 用户ID: {}, 用户: {}", userId, user.getUsername());
         }
     }
 }

@@ -40,6 +40,7 @@
                :visible.sync="showPicture"
                width="25%"
                :append-to-body="true"
+               custom-class="centered-dialog"
                :close-on-click-modal="false"
                destroy-on-close
                center>
@@ -52,12 +53,14 @@
 </template>
 
 <script>
-  const emoji = () => import( "../common/emoji");
+    import { useMainStore } from '@/stores/main';
+
+const emoji = () => import( "../common/emoji");
   const proButton = () => import( "../common/proButton");
   const uploadPicture = () => import( "../common/uploadPicture");
 
   export default {
-    components: {
+        components: {
       emoji,
       proButton,
       uploadPicture
@@ -74,10 +77,15 @@
         showEmoji: false,
         showPicture: false,
         picture: {
-          name: this.$store.state.currentUser.username,
+          name: "",
           url: ""
         }
       };
+    },
+    computed: {
+      mainStore() {
+        return useMainStore();
+      }
     },
     mounted() {
       // 监听恢复评论的事件
@@ -86,6 +94,11 @@
           this.commentContent = comment;
         }
       });
+      
+      // 初始化图片名称为当前用户名
+      if (this.mainStore.currentUser && this.mainStore.currentUser.username) {
+        this.picture.name = this.mainStore.currentUser.username;
+      }
     },
     beforeDestroy() {
       // 清除事件监听
@@ -93,7 +106,7 @@
     },
     methods: {
       openPicture() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
@@ -109,7 +122,9 @@
         this.savePicture();
       },
       savePicture() {
-        let img = "[" + this.picture.name + "," + this.picture.url + "]";
+        // 确保有用户名，如果没有则使用当前用户名
+        const username = this.picture.name || (this.mainStore.currentUser && this.mainStore.currentUser.username) || '匿名';
+        let img = "[" + username + "," + this.picture.url + "]";
         this.commentContent += img;
         this.picture.url = "";
         this.showPicture = false;
@@ -118,7 +133,7 @@
         this.commentContent += key;
       },
       showGraffiti() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           this.$message({
             message: "请先登录！",
             type: "error"
@@ -130,7 +145,7 @@
         this.$emit("showGraffiti");
       },
       submitComment() {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           // 保存评论内容和当前页面URL到localStorage
           const articleId = this.$route.params.id;
           const tempComment = {
@@ -186,14 +201,25 @@
     /* 不改变边框 */
     outline: none;
     border-radius: 4px;
+    background-color: var(--inputBackground);
     background-image: var(--commentURL);
     background-size: contain;
     background-repeat: no-repeat;
     background-position: 100%;
     margin-bottom: 10px;
+    color: var(--fontColor);
   }
 
   .comment-textarea:focus {
+    border-color: var(--themeBackground);
+  }
+
+  /* 深色模式下的额外样式 */
+  body.dark-mode .comment-textarea {
+    border-color: var(--borderColor);
+  }
+
+  body.dark-mode .comment-textarea:focus {
     border-color: var(--themeBackground);
   }
 

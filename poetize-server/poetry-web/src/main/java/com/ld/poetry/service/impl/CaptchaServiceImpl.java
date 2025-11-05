@@ -32,7 +32,7 @@ public class CaptchaServiceImpl implements CaptchaService {
     private static final long TOKEN_EXPIRY = 5; // 5分钟过期
     private static final long IP_COUNT_WINDOW = 5; // IP统计窗口：5分钟
     private static final long IP_BLOCK_DURATION = 30; // IP封禁时长：30分钟
-    private static final int MAX_VERIFY_PER_IP = 10; // 5分钟内最多验证10次
+    private static final int MAX_VERIFY_PER_IP = 15; // 5分钟内最多验证15次
     private static final int MAX_FINGERPRINT_SWITCHES = 3; // 允许的最大指纹切换次数
     
     @Override
@@ -43,7 +43,6 @@ public class CaptchaServiceImpl implements CaptchaService {
             // 检查是否启用验证码
             Boolean enable = (Boolean) config.get("enable");
             if (!Boolean.TRUE.equals(enable)) {
-                log.debug("验证码全局禁用，操作({})不需要验证码", action);
                 return false;
             }
             
@@ -51,7 +50,6 @@ public class CaptchaServiceImpl implements CaptchaService {
             Object actionValue = config.get(action);
             boolean required = actionValue instanceof Boolean ? (Boolean) actionValue : false;
             
-            log.debug("验证码检查 - 操作: {}, 需要验证: {}", action, required);
             return required;
         } catch (Exception e) {
             log.error("检查验证码需求失败", e);
@@ -79,21 +77,37 @@ public class CaptchaServiceImpl implements CaptchaService {
             if (clientIp != null && !clientIp.isEmpty()) {
                 // 检查IP是否被封禁
                 if (isIpBlocked(clientIp)) {
-                    log.warn("IP已被封禁: {}", clientIp);
+                    long remainingMinutes = getIpBlockRemainingTime(clientIp);
+                    log.warn("IP已被封禁: {}, 剩余{}分钟", clientIp, remainingMinutes);
                     result.put("success", false);
                     result.put("token", "");
-                    result.put("message", "操作过于频繁，请稍后再试");
+                    result.put("message", String.format("验证失败次数过多，已被临时限制 %d 分钟，请稍后再试", remainingMinutes));
+                    result.put("blocked", true);
+                    result.put("remainingMinutes", remainingMinutes);
                     return result;
                 }
                 
+                // 获取当前验证次数
+                int currentCount = getIpVerifyCount(clientIp);
+                int remainingAttempts = MAX_VERIFY_PER_IP - currentCount;
+                
                 // 检查IP验证频率
                 if (!checkIpRateLimit(clientIp)) {
-                    log.warn("IP验证频率过高: {}", clientIp);
+                    log.warn("IP验证频率过高: {}, 已达{}次", clientIp, currentCount);
                     blockIp(clientIp);
                     result.put("success", false);
                     result.put("token", "");
-                    result.put("message", "验证次数过多，已被临时限制");
+                    result.put("message", String.format("验证次数过多（%d次/%d分钟），已被临时限制 %d 分钟", 
+                            MAX_VERIFY_PER_IP, (int)IP_COUNT_WINDOW, (int)IP_BLOCK_DURATION));
+                    result.put("blocked", true);
+                    result.put("remainingMinutes", IP_BLOCK_DURATION);
                     return result;
+                }
+                
+                // 如果剩余次数较少，添加警告信息
+                if (remainingAttempts <= 3 && remainingAttempts > 0) {
+                    result.put("warning", String.format("提示：您还剩 %d 次验证机会（%d分钟内）", 
+                            remainingAttempts, (int)IP_COUNT_WINDOW));
                 }
             }
             
@@ -104,6 +118,10 @@ public class CaptchaServiceImpl implements CaptchaService {
             boolean isValid = true;
             List<String> validationDetails = new ArrayList<>();
             
+            // 回复评论模式：使用宽松的验证规则
+            if (Boolean.TRUE.equals(isReplyComment)) {
+            }
+            
             // 1. 点击时间分析
             if (clickDelay != null) {
                 if (clickDelay < 500) {
@@ -113,12 +131,16 @@ public class CaptchaServiceImpl implements CaptchaService {
                     isValid = false;
                     validationDetails.add(String.format("点击过慢: %dms > 60000ms (页面可能失效)", clickDelay));
                 }
-                log.debug("点击延迟: {}ms", clickDelay);
             }
             
-            // 2. 轨迹点数量检查
+            // 2. 轨迹点数量检查（回复评论时降低要求）
             int minTrackPoints = frontendMinPoints != null ? frontendMinPoints : 
                 getIntValue(checkboxConfig, "minTrackPoints", 3);
+            
+            // 回复评论时只要求最少1个轨迹点
+            if (Boolean.TRUE.equals(isReplyComment)) {
+                minTrackPoints = Math.min(minTrackPoints, 1);
+            }
             
             if (mouseTrack == null || mouseTrack.size() < minTrackPoints) {
                 isValid = false;
@@ -126,13 +148,16 @@ public class CaptchaServiceImpl implements CaptchaService {
                     mouseTrack != null ? mouseTrack.size() : 0, minTrackPoints));
             }
             
-            // 3. 直线率检查
-            double trackSensitivity = frontendSensitivity != null ? frontendSensitivity :
-                getDoubleValue(checkboxConfig, "trackSensitivity", 0.98);
-            
-            if (straightRatio != null && straightRatio > trackSensitivity) {
-                isValid = false;
-                validationDetails.add(String.format("轨迹过于直线: %.3f > %.3f", straightRatio, trackSensitivity));
+            // 3. 直线率检查（回复评论时跳过此检查）
+            if (!Boolean.TRUE.equals(isReplyComment)) {
+                double trackSensitivity = frontendSensitivity != null ? frontendSensitivity :
+                    getDoubleValue(checkboxConfig, "trackSensitivity", 0.98);
+                
+                if (straightRatio != null && straightRatio > trackSensitivity) {
+                    isValid = false;
+                    validationDetails.add(String.format("轨迹过于直线: %.3f > %.3f", straightRatio, trackSensitivity));
+                }
+            } else {
             }
             
             // 4. 浏览器指纹检测
@@ -144,8 +169,8 @@ public class CaptchaServiceImpl implements CaptchaService {
                 }
             }
             
-            // 5. 轨迹特征增强分析
-            if (mouseTrack != null && mouseTrack.size() >= 2) {
+            // 5. 轨迹特征增强分析（回复评论时跳过此检查）
+            if (!Boolean.TRUE.equals(isReplyComment) && mouseTrack != null && mouseTrack.size() >= 2) {
                 // 分析轨迹速度分布
                 double avgSpeed = calculateAverageSpeed(mouseTrack);
                 double speedVariance = calculateSpeedVariance(mouseTrack, avgSpeed);
@@ -164,8 +189,7 @@ public class CaptchaServiceImpl implements CaptchaService {
                     validationDetails.add(String.format("方向变化过少: %d (疑似直线移动)", directionChanges));
                 }
                 
-                log.debug("轨迹分析 - 平均速度: {}, 速度方差: {}, 方向变化: {}", 
-                    avgSpeed, speedVariance, directionChanges);
+            } else if (Boolean.TRUE.equals(isReplyComment)) {
             }
             
             log.info("验证结果: {}, IP: {}, 详情: {}", isValid, clientIp, validationDetails);
@@ -182,7 +206,6 @@ public class CaptchaServiceImpl implements CaptchaService {
                         TOKEN_EXPIRY, 
                         TimeUnit.MINUTES
                     );
-                    log.debug("验证令牌已存储到Redis: {}", token);
                 } catch (Exception e) {
                     log.error("存储验证令牌到Redis失败", e);
                 }
@@ -213,11 +236,9 @@ public class CaptchaServiceImpl implements CaptchaService {
             if (value != null) {
                 // 验证后删除令牌（一次性）
                 redisTemplate.delete(key);
-                log.debug("验证令牌有效并已删除: {}", token);
                 return true;
             }
             
-            log.debug("验证令牌无效或已过期: {}", token);
             return false;
         } catch (Exception e) {
             log.error("验证令牌失败", e);
@@ -239,19 +260,37 @@ public class CaptchaServiceImpl implements CaptchaService {
         try {
             // 0. IP频率检查
             if (clientIp != null && !clientIp.isEmpty()) {
+                // 检查IP是否被封禁
                 if (isIpBlocked(clientIp)) {
-                    log.warn("IP已被封禁: {}", clientIp);
+                    long remainingMinutes = getIpBlockRemainingTime(clientIp);
+                    log.warn("IP已被封禁: {}, 剩余{}分钟", clientIp, remainingMinutes);
                     result.put("success", false);
-                    result.put("message", "操作过于频繁，请稍后再试");
+                    result.put("message", String.format("验证失败次数过多，已被临时限制 %d 分钟，请稍后再试", remainingMinutes));
+                    result.put("blocked", true);
+                    result.put("remainingMinutes", remainingMinutes);
                     return result;
                 }
                 
+                // 获取当前验证次数
+                int currentCount = getIpVerifyCount(clientIp);
+                int remainingAttempts = MAX_VERIFY_PER_IP - currentCount;
+                
+                // 检查IP验证频率
                 if (!checkIpRateLimit(clientIp)) {
-                    log.warn("IP滑动验证频率过高: {}", clientIp);
+                    log.warn("IP滑动验证频率过高: {}, 已达{}次", clientIp, currentCount);
                     blockIp(clientIp);
                     result.put("success", false);
-                    result.put("message", "验证次数过多，已被临时限制");
+                    result.put("message", String.format("验证次数过多（%d次/%d分钟），已被临时限制 %d 分钟", 
+                            MAX_VERIFY_PER_IP, (int)IP_COUNT_WINDOW, (int)IP_BLOCK_DURATION));
+                    result.put("blocked", true);
+                    result.put("remainingMinutes", IP_BLOCK_DURATION);
                     return result;
+                }
+                
+                // 如果剩余次数较少，添加警告信息
+                if (remainingAttempts <= 3 && remainingAttempts > 0) {
+                    result.put("warning", String.format("提示：您还剩 %d 次验证机会（%d分钟内）", 
+                            remainingAttempts, (int)IP_COUNT_WINDOW));
                 }
             }
             
@@ -297,8 +336,6 @@ public class CaptchaServiceImpl implements CaptchaService {
                 // 检测加速度变化
                 double avgAcceleration = calculateAverageAcceleration(slideTrack);
                 
-                log.debug("滑动轨迹分析 - 平均速度: {}, 速度方差: {}, 回退次数: {}, 平均加速度: {}", 
-                    avgSpeed, speedVariance, backtrackCount, avgAcceleration);
                 
                 // 完全匀速且无回退 = 可疑
                 if (speedVariance < 0.1 && backtrackCount == 0 && slideTrack.size() > 5) {
@@ -354,7 +391,6 @@ public class CaptchaServiceImpl implements CaptchaService {
             publicConfig.put("slide", config.get("slide"));
             publicConfig.put("checkbox", config.get("checkbox"));
             
-            log.debug("返回公共验证码配置");
             return publicConfig;
         } catch (Exception e) {
             log.error("获取公共验证码配置失败", e);
@@ -415,6 +451,34 @@ public class CaptchaServiceImpl implements CaptchaService {
         } catch (Exception e) {
             log.error("检查IP封禁状态失败", e);
             return false;
+        }
+    }
+    
+    /**
+     * 获取IP封禁剩余时间（分钟）
+     */
+    private long getIpBlockRemainingTime(String ip) {
+        try {
+            String key = IP_BLOCK_PREFIX + ip;
+            Long ttl = redisTemplate.getExpire(key, TimeUnit.MINUTES);
+            return ttl != null && ttl > 0 ? ttl : 0;
+        } catch (Exception e) {
+            log.error("获取IP封禁剩余时间失败", e);
+            return 0;
+        }
+    }
+    
+    /**
+     * 获取IP当前验证次数
+     */
+    private int getIpVerifyCount(String ip) {
+        try {
+            String key = IP_VERIFY_COUNT_PREFIX + ip;
+            String countStr = redisTemplate.opsForValue().get(key);
+            return countStr != null ? Integer.parseInt(countStr) : 0;
+        } catch (Exception e) {
+            log.error("获取IP验证次数失败", e);
+            return 0;
         }
     }
     
@@ -491,7 +555,6 @@ public class CaptchaServiceImpl implements CaptchaService {
             String newFingerprintsJson = String.join(",", fingerprints);
             redisTemplate.opsForValue().set(key, newFingerprintsJson, 24, TimeUnit.HOURS);
             
-            log.debug("IP {} 指纹检查通过，已使用 {} 个不同指纹", ip, fingerprints.size());
             return true;
         } catch (Exception e) {
             log.error("检查指纹一致性失败", e);
@@ -788,6 +851,82 @@ public class CaptchaServiceImpl implements CaptchaService {
             return ((BigDecimal) value).doubleValue();
         }
         return defaultValue;
+    }
+    
+    /**
+     * 解除IP封禁
+     */
+    @Override
+    public boolean unblockIp(String ip) {
+        try {
+            String blockKey = IP_BLOCK_PREFIX + ip;
+            String countKey = IP_VERIFY_COUNT_PREFIX + ip;
+            
+            // 删除封禁记录
+            Boolean blockDeleted = redisTemplate.delete(blockKey);
+            // 删除计数记录
+            Boolean countDeleted = redisTemplate.delete(countKey);
+            
+            if (Boolean.TRUE.equals(blockDeleted)) {
+                log.info("IP封禁已解除: {}, 计数记录也已清除: {}", ip, countDeleted);
+                return true;
+            } else {
+                log.info("IP未被封禁: {}", ip);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("解除IP封禁失败: {}", ip, e);
+            return false;
+        }
+    }
+    
+    /**
+     * 获取所有被封禁的IP列表
+     */
+    @Override
+    public List<Map<String, Object>> getBlockedIpList() {
+        List<Map<String, Object>> blockedList = new ArrayList<>();
+        
+        try {
+            // 获取所有封禁IP的key
+            Set<String> keys = redisTemplate.keys(IP_BLOCK_PREFIX + "*");
+            
+            if (keys != null && !keys.isEmpty()) {
+                for (String key : keys) {
+                    String ip = key.replace(IP_BLOCK_PREFIX, "");
+                    
+                    // 获取剩余时间（秒）
+                    Long ttlSeconds = redisTemplate.getExpire(key, TimeUnit.SECONDS);
+                    
+                    if (ttlSeconds != null && ttlSeconds > 0) {
+                        Map<String, Object> ipInfo = new HashMap<>();
+                        ipInfo.put("ip", ip);
+                        ipInfo.put("remainingSeconds", ttlSeconds);
+                        ipInfo.put("remainingMinutes", (ttlSeconds + 59) / 60); // 向上取整
+                        
+                        // 获取验证失败次数（如果还在计数窗口内）
+                        String countKey = IP_VERIFY_COUNT_PREFIX + ip;
+                        String countStr = redisTemplate.opsForValue().get(countKey);
+                        int failCount = countStr != null ? Integer.parseInt(countStr) : 0;
+                        ipInfo.put("failCount", failCount);
+                        
+                        blockedList.add(ipInfo);
+                    }
+                }
+                
+                // 按剩余时间降序排序（时间长的在前）
+                blockedList.sort((a, b) -> {
+                    Long timeA = (Long) a.get("remainingSeconds");
+                    Long timeB = (Long) b.get("remainingSeconds");
+                    return timeB.compareTo(timeA);
+                });
+            }
+            
+            return blockedList;
+        } catch (Exception e) {
+            log.error("获取封禁IP列表失败", e);
+            return blockedList;
+        }
     }
 }
 

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ld.poetry.dao.SysAiConfigMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.ld.poetry.entity.SysAiConfig">
+        <id column="id" property="id"/>
+        <result column="config_type" property="configType"/>
+        <result column="config_name" property="configName"/>
+        <result column="enabled" property="enabled"/>
+        <result column="provider" property="provider"/>
+        <result column="api_key" property="apiKey"/>
+        <result column="api_base" property="apiBase"/>
+        <result column="model" property="model"/>
+        <result column="temperature" property="temperature"/>
+        <result column="max_tokens" property="maxTokens"/>
+        <result column="top_p" property="topP"/>
+        <result column="frequency_penalty" property="frequencyPenalty"/>
+        <result column="presence_penalty" property="presencePenalty"/>
+        <result column="chat_name" property="chatName"/>
+        <result column="chat_avatar" property="chatAvatar"/>
+        <result column="welcome_message" property="welcomeMessage"/>
+        <result column="placeholder_text" property="placeholderText"/>
+        <result column="theme_color" property="themeColor"/>
+        <result column="max_conversation_length" property="maxConversationLength"/>
+        <result column="enable_context" property="enableContext"/>
+        <result column="enable_typing_indicator" property="enableTypingIndicator"/>
+        <result column="response_delay" property="responseDelay"/>
+        <result column="enable_quick_actions" property="enableQuickActions"/>
+        <result column="enable_chat_history" property="enableChatHistory"/>
+        <result column="enable_streaming" property="enableStreaming"/>
+        <result column="rate_limit" property="rateLimit"/>
+        <result column="max_message_length" property="maxMessageLength"/>
+        <result column="require_login" property="requireLogin"/>
+        <result column="enable_content_filter" property="enableContentFilter"/>
+        <result column="custom_instructions" property="customInstructions" jdbcType="VARCHAR"/>
+        <result column="enable_thinking" property="enableThinking"/>
+        <result column="enable_tools" property="enableTools"/>
+        <result column="enable_memory" property="enableMemory"/>
+        <result column="mem0_api_key" property="mem0ApiKey"/>
+        <result column="memory_auto_save" property="memoryAutoSave"/>
+        <result column="memory_auto_recall" property="memoryAutoRecall"/>
+        <result column="memory_recall_limit" property="memoryRecallLimit"/>
+        <result column="translation_type" property="translationType"/>
+        <result column="default_source_lang" property="defaultSourceLang"/>
+        <result column="default_target_lang" property="defaultTargetLang"/>
+        <result column="include_articles" property="includeArticles"/>
+        <result column="baidu_config" property="baiduConfig"/>
+        <result column="custom_config" property="customConfig"/>
+        <result column="llm_config" property="llmConfig"/>
+        <result column="summary_config" property="summaryConfig"/>
+        <result column="extra_config" property="extraConfig"/>
+        <result column="remark" property="remark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        id, config_type, config_name, enabled, provider, api_key, api_base, model,
+        temperature, max_tokens, top_p, frequency_penalty, presence_penalty,
+        chat_name, chat_avatar, welcome_message, placeholder_text, theme_color,
+        max_conversation_length, enable_context, enable_typing_indicator, response_delay,
+        enable_quick_actions, enable_chat_history, enable_streaming, rate_limit,
+        max_message_length, require_login, enable_content_filter,
+        custom_instructions, enable_thinking, enable_tools,
+        enable_memory, mem0_api_key, memory_auto_save, memory_auto_recall, memory_recall_limit,
+        translation_type, default_source_lang, default_target_lang, include_articles,
+        baidu_config, custom_config, llm_config, summary_config, extra_config,
+        remark, create_time, update_time
+    </sql>
+
+    <!-- 根据配置类型和名称查询 -->
+    <select id="selectByTypeAndName" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM sys_ai_config
+        WHERE config_type = #{configType}
+        AND config_name = #{configName}
+        LIMIT 1
+    </select>
+
+    <!-- 根据配置类型查询所有 -->
+    <select id="selectByType" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM sys_ai_config
+        WHERE config_type = #{configType}
+        ORDER BY id ASC
+    </select>
+
+    <!-- 查询所有已启用的配置 -->
+    <select id="selectAllEnabled" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM sys_ai_config
+        WHERE enabled = 1
+        ORDER BY config_type, id ASC
+    </select>
+
+    <!-- 更新启用状态 -->
+    <update id="updateEnabled">
+        UPDATE sys_ai_config
+        SET enabled = #{enabled}
+        WHERE id = #{id}
+    </update>
+
+</mapper>
+

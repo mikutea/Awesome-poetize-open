@@ -3,7 +3,6 @@ import constant from "./constant";
 //处理url参数
 import qs from "qs";
 
-import store from "../store";
 import router from "../router";
 import { handleTokenExpire } from "./tokenExpireHandler";
 
@@ -43,72 +42,79 @@ async function getTranslationTimeout() {
       const timeout = response.data.data.llm?.timeout || 30;
       cachedTranslationConfig = { timeout };
       configCacheTime = now;
-      console.log(`获取到翻译配置超时时间: ${timeout}秒`);
       return timeout;
     }
   } catch (error) {
-    console.warn('获取翻译配置失败，使用默认超时时间:', error.message);
+    // 静默失败，使用默认值
   }
   
   // 如果获取失败，返回默认值
   return 30;
 }
 
+// 超时配置常量
+const TIMEOUT_CONFIG = {
+  DEFAULT: 60000,           // 默认60秒
+  SEO: 30000,               // SEO请求30秒
+  TRANSLATION: 120000,      // 翻译请求2分钟
+  ARTICLE_SAVE: 300000,     // 文章保存最少5分钟
+  ARTICLE_BUFFER: 30        // 文章保存缓冲时间（秒）
+};
+
 // 设置请求基本配置
 axios.defaults.baseURL = constant.baseURL;
-axios.defaults.timeout = 60000; // 设置60秒超时，从15秒改为60秒
+axios.defaults.timeout = TIMEOUT_CONFIG.DEFAULT;
+
+/**
+ * 根据URL路径设置超时时间
+ * @param {Object} config - axios请求配置
+ * @returns {Object} 处理后的配置
+ */
+function configureTimeout(config) {
+  if (!config.url) return config;
+  
+  const url = config.url;
+  const isDefaultTimeout = !config.timeout || config.timeout === TIMEOUT_CONFIG.DEFAULT;
+  
+  // SEO请求：短超时 + 重试机制
+  if (url.includes('/seo/')) {
+    config.timeout = TIMEOUT_CONFIG.SEO;
+    config.retry = 3;
+    config.retryDelay = 1000;
+    
+    // 防止请求卡住
+    const source = axios.CancelToken.source();
+    config.cancelToken = source.token;
+    setTimeout(() => source.cancel('SEO请求超时自动取消'), TIMEOUT_CONFIG.SEO + 5000);
+    
+    return config;
+  }
+  
+  // 文章保存/更新：动态超时（根据翻译配置）
+  if (url.includes('/article/saveArticle') || url.includes('/article/updateArticle')) {
+    if (isDefaultTimeout) {
+      const cachedTimeout = cachedTranslationConfig?.timeout || 30;
+      const dynamicTimeout = (cachedTimeout + TIMEOUT_CONFIG.ARTICLE_BUFFER) * 1000;
+      config.timeout = Math.max(dynamicTimeout, TIMEOUT_CONFIG.ARTICLE_SAVE);
+    }
+    return config;
+  }
+  
+  // 翻译API：长超时（AI处理需要更多时间）
+  if (url.includes('/api/translation/')) {
+    if (isDefaultTimeout) {
+      config.timeout = TIMEOUT_CONFIG.TRANSLATION;
+    }
+    return config;
+  }
+  
+  return config;
+}
 
 // 添加请求拦截器
 axios.interceptors.request.use(function (config) {
-  // 对Python API请求特殊处理，增加重试次数和超时设置
-  if (config.url && config.url.includes('/seo/')) {
-    config.timeout = 30000; // 增加SEO API超时时间
-    config.retry = 3; // 最大重试次数
-    config.retryDelay = 1000; // 重试间隔时间
-    
-    // 添加防止请求卡住的处理
-    const source = axios.CancelToken.source();
-    config.cancelToken = source.token;
-    
-    // 设置更长时间的取消令牌，确保请求不会无限挂起
-    setTimeout(() => {
-      source.cancel('SEO请求超时自动取消');
-    }, 35000); // 比timeout稍长，给重试留时间
-  }
-  
-  // 对文章保存和编辑接口设置更长的超时时间
-  if (config.url && (config.url.includes('/article/saveArticle') || config.url.includes('/article/updateArticle'))) {
-    if (!config.timeout || config.timeout === 60000) {
-      // 使用缓存的配置（如果有的话）
-      const cachedTimeout = cachedTranslationConfig?.timeout || 30;
-      const dynamicTimeout = (cachedTimeout + 30) * 1000; // 配置超时 + 30秒缓冲
-      config.timeout = Math.max(dynamicTimeout, 300000); // 最少5分钟
-      console.log(`文章保存请求设置超时时间: ${config.timeout / 1000}秒（基于配置${cachedTimeout}秒+30秒缓冲）`);
-    }
-  }
-  
-  // 对翻译相关API设置更长的超时时间（仅针对没有明确设置超时的请求）
-  if (config.url && config.url.includes('/api/translation/')) {
-    // 如果组件明确设置了超时时间，就不要覆盖
-    if (!config.timeout || config.timeout === 60000) {
-      config.timeout = 300000; // 翻译API默认设置5分钟超时
-      console.log(`翻译API请求设置默认超时时间: 300秒 - ${config.url}`);
-    } else {
-      console.log(`翻译API请求保持组件设置的超时时间: ${config.timeout / 1000}秒 - ${config.url}`);
-    }
-  }
-
-  // 对翻译API请求，如果组件中已经设置了超时时间，就保持不变；否则使用全局默认值
-  if (config.url && config.url.includes('/api/translation/')) {
-    // 如果config.timeout已经被组件设置了（不等于全局默认值），就使用组件设置的值
-    if (config.timeout && config.timeout !== 60000) {
-      console.log(`翻译API使用组件设置的超时时间: ${config.timeout/1000}秒 - ${config.url}`);
-    } else {
-      // 如果没有特殊设置，使用较长的默认超时时间给AI模型
-      config.timeout = 120000; // 2分钟默认超时
-      console.log(`翻译API使用默认长超时时间: 120秒 - ${config.url}`);
-    }
-  }
+  // 统一处理超时配置
+  config = configureTimeout(config);
 
   // 如果是验证码相关的请求，不需要token
   if (config.url && config.url.includes('/captcha/')) {
@@ -126,14 +132,10 @@ axios.interceptors.request.use(function (config) {
     }
     // 添加Bearer前缀
     config.headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-    console.log(`发送请求 ${config.url} 使用${isAdmin ? '管理员' : '用户'}token: ${token.substring(0, 10)}...`);
-  } else {
-    console.warn(`请求 ${config.url} 未找到${isAdmin ? '管理员' : '用户'}token`);
   }
 
   return config;
 }, function (error) {
-  console.error('请求拦截器错误:', error);
   return Promise.reject(error);
 });
 
@@ -142,12 +144,7 @@ axios.interceptors.response.use(function (response) {
   if (response.data !== null && response.data.hasOwnProperty("code") && response.data.code !== 200) {
     if (response.data.code === 300 || response.data.code === 401) {
       // token失效，使用统一的token过期处理逻辑
-      console.log('检测到token失效响应码:', response.data.code);
-
-      // 判断是否为管理员请求
       const isAdminRequest = response.config.isAdmin || false;
-
-      // 使用统一的token过期处理
       handleTokenExpire(isAdminRequest, router.currentRoute.fullPath, {
         showMessage: true
       });
@@ -159,25 +156,13 @@ axios.interceptors.response.use(function (response) {
   // 处理网络错误
   if (error.response) {
     // 服务器返回错误状态码
-    console.error('响应错误:', error.response.status, error.response.data);
     if (error.response.status === 401 || error.response.status === 403) {
       // token相关错误，使用统一的token过期处理逻辑
-      console.log('检测到HTTP状态码token错误:', error.response.status);
-
-      // 判断是否为管理员请求
       const isAdminRequest = error.config && error.config.isAdmin || false;
-
-      // 使用统一的token过期处理
       handleTokenExpire(isAdminRequest, router.currentRoute.fullPath, {
         showMessage: true
       });
     }
-  } else if (error.request) {
-    // 请求发出但没有收到响应
-    console.error('网络错误:', error.request);
-  } else {
-    // 请求配置出错
-    console.error('请求错误:', error.message);
   }
   return Promise.reject(error);
 });
@@ -258,9 +243,6 @@ export default {
     // 正确处理Authorization头，添加Bearer前缀
     if (token) {
       config.headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-      console.log(`上传请求使用${isAdmin ? '管理员' : '用户'}token: ${token.substring(0, 10)}...`);
-    } else {
-      console.error(`上传请求未找到${isAdmin ? '管理员' : '用户'}token`);
     }
     if (typeof option !== "undefined") {
       config.onUploadProgress = progressEvent => {

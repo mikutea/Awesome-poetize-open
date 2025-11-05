@@ -50,6 +50,11 @@ public class SecureTokenGenerator {
      * 安全随机数生成器
      */
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    
+    /**
+     * 标记是否已打印密钥警告（避免日志刷屏）
+     */
+    private static volatile boolean secretWarningPrinted = false;
 
     /**
      * 获取Token签名密钥
@@ -60,7 +65,11 @@ public class SecureTokenGenerator {
     private static String getTokenSecret() {
         String secret = System.getenv(TOKEN_SECRET_ENV);
         if (!StringUtils.hasText(secret)) {
-            log.warn("未配置TOKEN_SECRET_KEY环境变量，使用默认密钥（生产环境不安全）");
+            // 只在首次打印警告，避免日志刷屏
+            if (!secretWarningPrinted) {
+                secretWarningPrinted = true;
+                log.warn("未配置TOKEN_SECRET_KEY环境变量，使用默认密钥（生产环境不安全）- 此警告只显示一次");
+            }
             return DEFAULT_SECRET;
         }
         return secret;
@@ -117,7 +126,6 @@ public class SecureTokenGenerator {
             String prefix = "admin".equals(userType) ? CommonConst.ADMIN_ACCESS_TOKEN : CommonConst.USER_ACCESS_TOKEN;
             String finalToken = prefix + encodedToken;
             
-            log.debug("生成安全token成功 - 用户ID: {}, 类型: {}, token长度: {}", userId, userType, finalToken.length());
             
             return finalToken;
             
@@ -209,7 +217,6 @@ public class SecureTokenGenerator {
                 }
             }
 
-            log.debug("Token验证成功 - 用户ID: {}, 类型: {}", userId, userType);
 
             // 构建验证结果
             return TokenValidationResult.success(
@@ -380,7 +387,6 @@ public class SecureTokenGenerator {
             
             String wsToken = WS_TOKEN_PREFIX + encodedData;
             
-            log.debug("生成WebSocket token成功 - 用户ID: {}, 类型: {}, 有效期: 30分钟", userId, userType);
             
             return wsToken;
             
@@ -444,7 +450,6 @@ public class SecureTokenGenerator {
                 return null;
             }
 
-            log.debug("WebSocket token验证成功 - 用户ID: {}, 类型: {}", userId, userType);
             return userId;
             
         } catch (Exception e) {

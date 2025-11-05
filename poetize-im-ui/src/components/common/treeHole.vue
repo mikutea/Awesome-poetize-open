@@ -11,7 +11,8 @@
                     lazy
                     class="avatar-img"
                     :size="36"
-                    :src="avatar"/>
+                    :src="$common.getAvatarUrl(avatar)"
+                    :fallback-src="$common.getDefaultAvatar()"/>
           <div class="tree-hole-box"
                :style="{background: $constant.tree_hole_color[index % $constant.tree_hole_color.length]}">
             <div class="box-tag" v-if="index % 2 === 0 && !$common.mobile()"
@@ -35,6 +36,13 @@
         </div>
       </li>
     </ol>
+    
+    <!-- 空状态提示 -->
+    <div class="empty-state" v-else>
+      <div class="empty-text">{{ checkIsOwnCircle ? '这里还没有随笔' : 'TA还没有发表随笔' }}</div>
+      <div class="empty-hint" v-if="checkIsOwnCircle">点击下方按钮发表第一篇随笔吧～</div>
+    </div>
+    
     <div class="tree-hole-go">
       <i class="fa fa-paper-plane" @click="launch()"></i>
     </div>
@@ -49,6 +57,10 @@
       },
       avatar: {
         type: String
+      },
+      viewUserId: {
+        type: [Number, String],
+        default: null
       }
     },
 
@@ -56,7 +68,20 @@
       return {}
     },
 
-    computed: {},
+    computed: {
+      checkIsOwnCircle() {
+        const currentUserId = this.$store.state.currentUser?.id;
+        const targetUserId = this.viewUserId;
+        
+        console.log('[朋友圈] 当前用户ID:', currentUserId, '查看用户ID:', targetUserId);
+        
+        if (!currentUserId || !targetUserId) {
+          return true; // 默认显示自己的
+        }
+        
+        return Number(currentUserId) === Number(targetUserId);
+      }
+    },
 
     watch: {},
 
@@ -246,6 +271,43 @@
     cursor: pointer;
   }
 
+  /* 空状态样式 */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 120px 20px;
+    min-height: 400px;
+    animation: fadeIn 0.8s ease-in-out;
+  }
+
+  .empty-text {
+    font-size: 18px;
+    color: var(--fontColor);
+    margin-bottom: 15px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .empty-hint {
+    font-size: 14px;
+    color: var(--greyFont);
+    line-height: 1.8;
+  }
+
+  /* 空状态动画 */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   @media screen and (max-width: 1000px) {
     .tree-hole-box {
       width: auto;
@@ -272,6 +334,22 @@
     .tree-hole-content {
       width: calc(100% - 40px);
       margin: 0 auto 50px;
+    }
+    
+    /* 移动端空状态优化 */
+    .empty-state {
+      padding: 80px 20px;
+      min-height: 300px;
+    }
+    
+    .empty-text {
+      font-size: 16px;
+    }
+    
+    .empty-hint {
+      font-size: 13px;
+      text-align: center;
+      padding: 0 10px;
     }
   }
 

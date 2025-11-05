@@ -60,4 +60,24 @@ public class ResourcePathVO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
+
+    /**
+     * 按钮宽度（快捷入口专用，前端临时字段，不存数据库）
+     */
+    private String btnWidth;
+
+    /**
+     * 按钮高度（快捷入口专用，前端临时字段，不存数据库）
+     */
+    private String btnHeight;
+
+    /**
+     * 按钮圆角（快捷入口专用，前端临时字段，不存数据库）
+     */
+    private String btnRadius;
+
+    /**
+     * 额外背景层（侧边栏背景专用，前端临时字段，不存数据库）
+     */
+    private String extraBackground;
 }

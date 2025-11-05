@@ -8,8 +8,8 @@ import java.util.Map;
  * SEO静态文件服务接口
  * </p>
  *
- * @author sara
- * @since 2024-12-23
+ * @author LeapYa
+ * @since 2025-09-25
  */
 public interface SeoStaticService {
     

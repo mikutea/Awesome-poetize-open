@@ -143,7 +143,6 @@ export default {
       }
       
       // 只在开始轮询时输出一次日志
-      console.log('开始轮询任务状态，任务ID:', taskId);
       
       // 清理之前的定时器（如果存在）
       if (this.pollTimers[taskId]) {
@@ -217,7 +216,6 @@ export default {
           
           // 如果完成（成功或失败），停止轮询
           if (status.status === 'success') {
-            console.log('任务完成：', status.message);
             this.stopPolling(taskId);
             
             this.updateNotificationByTaskId(taskId, {
@@ -237,11 +235,9 @@ export default {
           } else if (status.status === 'processing') {
             // 进行中的状态不输出日志，减少噪音
           } else {
-            console.warn('未知任务状态:', status.status, '消息:', status.message);
           }
         } else {
           // 任务不存在或已过期
-          console.warn('任务不存在或已过期，停止轮询');
           this.stopPolling(taskId);
           
           this.updateNotificationByTaskId(taskId, {
@@ -440,6 +436,36 @@ export default {
 
 .notification-move {
   transition: transform 0.3s ease;
+}
+
+/* 暗色模式适配 */
+body.dark-mode .notification-item {
+  background: #2d2d2d !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+body.dark-mode .notification-item:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+body.dark-mode .notification-title {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .notification-message {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .notification-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .notification-close i {
+  color: #b0b0b0;
+}
+
+body.dark-mode .notification-progress {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* 响应式设计 */

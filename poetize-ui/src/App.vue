@@ -5,16 +5,23 @@
     <captcha-container />
     <!-- 全局异步通知组件 -->
     <async-notification ref="globalNotification" />
+    <!-- AI聊天（支持Live2D看板娘模式或简单按钮模式） -->
+    <!-- mode从后台配置读取，默认为 'live2d' -->
+    <Live2D :mode="waifuDisplayMode" />
   </div>
 </template>
 
 <script>
+  import { useMainStore } from '@/stores/main';
+
 import CaptchaContainer from '@/components/common/CaptchaContainer.vue';
+import Live2D from '@/components/live2d/index.vue';
 
 export default {
   name: "App",
   components: {
-    CaptchaContainer
+    CaptchaContainer,
+    Live2D
   },
   data() {
     return {
@@ -22,14 +29,22 @@ export default {
     };
   },
 
-  computed: {},
+  computed: {
+      mainStore() {
+        return useMainStore();
+      },
+    waifuDisplayMode() {
+      // 从 webInfo 中读取显示模式，默认为 'live2d'
+      return this.mainStore.webInfo?.waifuDisplayMode || 'live2d';
+    }
+  },
 
   watch: {
     '$route.path': function(newPath) {
       // 所有页面都使用网站标题
-      if (this.$store.state.webInfo && this.$store.state.webInfo.webTitle) {
+      if (this.mainStore.webInfo && this.mainStore.webInfo.webTitle) {
         // 直接使用webTitle字符串，不再需要从localStorage获取
-        const webTitle = this.$store.state.webInfo.webTitle;
+        const webTitle = this.mainStore.webInfo.webTitle;
         document.title = webTitle;
         window.OriginTitile = webTitle;
       }
@@ -50,11 +65,17 @@ export default {
     }
     
     // 初始化时设置网站标题
-    if (this.$store.state.webInfo && this.$store.state.webInfo.webTitle) {
+    if (this.mainStore.webInfo && this.mainStore.webInfo.webTitle) {
       // 直接使用webTitle字符串
-      document.title = this.$store.state.webInfo.webTitle;
-      window.OriginTitile = this.$store.state.webInfo.webTitle;
+      document.title = this.mainStore.webInfo.webTitle;
+      window.OriginTitile = this.mainStore.webInfo.webTitle;
     }
+    
+    // 确保导航栏初始状态正确（修复首次访问时导航栏不显示的问题）
+    this.mainStore.changeToolbarStatus( {
+      visible: true,
+      enter: false
+    });
   },
 
   mounted() {
@@ -64,7 +85,6 @@ export default {
     // 注册全局通知实例
     if (this.$refs.globalNotification) {
       this.$notify.setInstance(this.$refs.globalNotification);
-      console.log('全局通知组件已注册');
     }
   },
 

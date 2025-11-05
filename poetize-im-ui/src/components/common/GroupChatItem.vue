@@ -6,7 +6,8 @@
         <n-avatar object-fit="cover"
                   lazy
                   :size="40"
-                  :src="group.avatar"/>
+                  :src="$common.getAvatarUrl(group.avatar)"
+                  :fallback-src="$common.getDefaultAvatar()"/>
       </n-badge>
     </div>
     <div class="im-user-right">

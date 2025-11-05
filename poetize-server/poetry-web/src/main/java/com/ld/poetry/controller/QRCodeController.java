@@ -39,7 +39,6 @@ public class QRCodeController {
                 return ResponseEntity.badRequest().build();
             }
 
-            log.debug("请求文章二维码：文章ID [{}]", articleId);
             
             // 从缓存获取或生成二维码
             byte[] qrCode = qrCodeService.getOrGenerateArticleQRCode(articleId);
@@ -56,7 +55,6 @@ public class QRCodeController {
             // 设置ETag用于协商缓存
             headers.setETag("\"article-qr-" + articleId + "\"");
             
-            log.debug("成功返回文章二维码：文章ID [{}]，大小 [{}] bytes", articleId, qrCode.length);
             return new ResponseEntity<>(qrCode, headers, HttpStatus.OK);
             
         } catch (IllegalArgumentException e) {

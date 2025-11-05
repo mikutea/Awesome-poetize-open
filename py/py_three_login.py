@@ -56,17 +56,16 @@ def get_oauth_login_config():
             if response.status_code == 200:
                 result = response.json()
                 if result.get("code") == 200 and result.get("data"):
-                    logger.info("OAuth配置获取成功")
                     return result["data"]
                 else:
-                    logger.warning(f"Java API返回错误: {result.get('message', '未知错误')}")
+                    logger.warning(f"API返回错误: {result.get('message', '未知错误')}")
                     return None
             else:
-                logger.warning(f"Java API请求失败，状态码: {response.status_code}")
+                logger.warning(f"API请求失败，状态码: {response.status_code}")
                 return None
 
     except Exception as e:
-        logger.error(f"获取OAuth配置失败: {str(e)}")
+        logger.error(f"获取配置失败: {str(e)}")
         return None
 
 # 创建FastAPI应用
@@ -107,15 +106,15 @@ class OAuthService:
             return await self._handle_oauth2_login(oauth_provider, request)
             
         except ConfigurationError as e:
-            logger.warning(f"OAuth配置错误: {e.message}")
+            logger.warning(f"配置错误: {e.message}")
             return JSONResponse(
-                {"error": "未配置OAuth信息，请先在后台设置"}, 
+                {"error": "未配置信息，请先在后台设置"}, 
                 status_code=400
             )
         except OAuthError as e:
-            logger.error(f"OAuth登录失败: {e.message}")
+            logger.error(f"登录失败: {e.message}")
             return JSONResponse(
-                {"error": "OAuth服务暂时不可用"}, 
+                {"error": "服务暂时不可用"}, 
                 status_code=500
             )
     
@@ -134,8 +133,8 @@ class OAuthService:
             return RedirectResponse(auth_url)
             
         except Exception as e:
-            logger.error(f"Twitter登录失败: {str(e)}")
-            return JSONResponse({"error": "Twitter登录服务暂时不可用"}, status_code=500)
+            logger.error(f"登录失败: {str(e)}")
+            return JSONResponse({"error": "登录服务暂时不可用"}, status_code=500)
     
     async def _handle_oauth2_login(self, provider, request: Request) -> RedirectResponse:
         """处理OAuth 2.0登录"""
@@ -148,15 +147,14 @@ class OAuthService:
             try:
                 request.session[f"{provider.provider_name}_state"] = state
             except Exception as e:
-                logger.warning(f"无法存储到session: {e}")
-            
+                logger.error(f"备份state token失败: {str(e)}")
             # 生成授权URL
             auth_url = provider.get_auth_url(state)
             return RedirectResponse(auth_url)
             
         except Exception as e:
-            logger.error(f"OAuth 2.0登录失败: {str(e)}")
-            return JSONResponse({"error": "OAuth登录服务暂时不可用"}, status_code=500)
+            logger.error(f"登录失败: {str(e)}")
+            return JSONResponse({"error": "登录服务暂时不可用"}, status_code=500)
     
     async def handle_callback(self, provider: str, request: Request) -> RedirectResponse:
         """
@@ -177,7 +175,7 @@ class OAuthService:
             
             # 检查OAuth错误
             if error:
-                logger.warning(f"OAuth授权失败: provider={provider}, error={error}")
+                logger.warning(f"授权失败: provider={provider}, error={error}")
                 return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error}&platform={provider}")
             
             # 创建提供商实例
@@ -198,13 +196,13 @@ class OAuthService:
             return await self._process_login_result(user_data, provider, request)
             
         except ConfigurationError as e:
-            logger.error(f"OAuth配置错误: {e.message}")
+            logger.error(f"配置错误: {e.message}")
             return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=config_error&platform={provider}")
         except OAuthError as e:
-            logger.error(f"OAuth回调处理失败: {e.message}")
+            logger.error(f"回调处理失败: {e.message}")
             return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=oauth_error&platform={provider}")
         except Exception as e:
-            logger.error(f"OAuth回调异常: provider={provider}, error={str(e)}")
+            logger.error(f"回调异常: provider={provider}, error={str(e)}")
             return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=callback_error&platform={provider}")
     
     async def _validate_oauth2_state(self, state: str, provider: str) -> bool:
@@ -221,7 +219,6 @@ class OAuthService:
             return validation_result.get("success", False)
 
         except Exception as e:
-            logger.error(f"State验证异常: {str(e)}")
             return False
 
     async def _handle_twitter_callback(self, provider: TwitterProvider, request: Request) -> Dict[str, Any]:
@@ -231,7 +228,7 @@ class OAuthService:
         oauth_token_secret = request.session.get("x_oauth_token_secret")
 
         if not all([oauth_token, oauth_verifier, oauth_token_secret]):
-            raise OAuthError("Twitter回调参数不完整", "invalid_params", "x")
+            raise OAuthError("回调参数不完整", "invalid_params", "x")
 
         # 获取访问令牌
         access_token_data = await provider.get_access_token(
@@ -249,7 +246,7 @@ class OAuthService:
     async def _handle_oauth2_callback(self, provider, code: str) -> Dict[str, Any]:
         """处理OAuth 2.0回调"""
         if not code:
-            raise OAuthError(f"{provider.provider_name}回调缺少授权码", "missing_code", provider.provider_name)
+            raise OAuthError(f"回调缺少授权码", "missing_code", provider.provider_name)
 
         # 获取访问令牌
         access_token = await provider.get_access_token(code)
@@ -298,14 +295,12 @@ oauth_service = OAuthService(oauth_factory)
 @app.get('/login/{provider}')
 async def login_route(provider: str, request: Request):
     """OAuth登录入口"""
-    logger.info(f"启动 {provider} OAuth登录")
     return await oauth_service.initiate_login(provider, request)
 
 
 @app.get('/callback/{provider}')
 async def callback_route(provider: str, request: Request):
     """OAuth回调处理"""
-    logger.info(f"处理 {provider} OAuth回调")
     return await oauth_service.handle_callback(provider, request)
 
 
@@ -341,13 +336,11 @@ def register_third_login_api(fastapi_app: FastAPI):
     @fastapi_app.get('/login/{provider}')
     async def login_route_compat(provider: str, request: Request):
         """OAuth登录入口（兼容性路由）"""
-        logger.info(f"启动 {provider} OAuth登录")
         return await oauth_service.initiate_login(provider, request)
 
     @fastapi_app.get('/callback/{provider}')
     async def callback_route_compat(provider: str, request: Request):
         """OAuth回调处理（兼容性路由）"""
-        logger.info(f"处理 {provider} OAuth回调")
         return await oauth_service.handle_callback(provider, request)
 
     @fastapi_app.get('/health')
@@ -376,10 +369,8 @@ def determine_action_type_from_state_info(state_info: dict) -> str:
     """
     if state_info:
         action = state_info.get("action", "login")
-        print(f"✅ 从状态信息获取操作类型: {action}")
         return action
     else:
-        print("⚠️ 状态信息为空，默认为登录操作")
         return "login"
 
 def get_state_info_before_validation(state: str, expected_provider: str = None) -> dict:
@@ -399,34 +390,30 @@ def get_state_info_before_validation(state: str, expected_provider: str = None) 
 
     try:
         if not state:
-            logger.warning("OAuth回调缺少state参数，可能存在CSRF攻击风险")
+            logger.warning("回调缺少state参数，可能存在CSRF攻击风险")
             return None
 
         # 从Redis OAuth状态管理器安全地获取状态信息
         state_data = oauth_state_manager.get_state_info(state)
 
         if not state_data:
-            logger.warning(f"OAuth状态不存在或已过期: state={state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
             return None
 
         # 验证状态数据的完整性
         if not isinstance(state_data, dict):
-            logger.error(f"OAuth状态数据格式错误: type={type(state_data)}")
+            logger.error(f"状态数据格式错误: type={type(state_data)}")
             return None
 
         # 检查必要字段
         stored_provider = state_data.get('provider')
         if not stored_provider:
-            logger.error("OAuth状态数据缺少provider字段")
+            logger.error("状态数据缺少provider字段")
             return None
 
-        # 🔒 关键安全检查：验证provider匹配，防止CSRF攻击
+        # 验证provider匹配，防止CSRF攻击
         if expected_provider and stored_provider != expected_provider:
-            logger.warning(f"🚨 检测到潜在的CSRF攻击：OAuth provider不匹配！")
-            logger.warning(f"   期望provider: {expected_provider}")
-            logger.warning(f"   状态中的provider: {stored_provider}")
-            logger.warning(f"   state token: {state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
-            logger.warning(f"   这可能是攻击者尝试使用其他provider的state token进行CSRF攻击")
+            logger.warning(f"检测到潜在CSRF攻击: provider不匹配")
+            logger.warning(f"期望: {expected_provider}, 实际: {stored_provider}")
             return None
 
         # 检查过期时间（如果存在）
@@ -435,11 +422,9 @@ def get_state_info_before_validation(state: str, expected_provider: str = None) 
             import time
             current_time = time.time()
             if current_time > expires_at:
-                logger.warning(f"OAuth状态已过期: provider={stored_provider}, expired_at={expires_at}")
                 return None
 
-        # 安全地记录状态信息获取成功
-        logger.info(f"OAuth状态验证通过: provider={stored_provider}, state={state[:8]}***")
+        # 记录状态验证成功
 
         # 返回包含操作类型的状态信息，默认为登录操作
         # 注意：这里不删除state，保留给后续的正式验证流程
@@ -452,7 +437,7 @@ def get_state_info_before_validation(state: str, expected_provider: str = None) 
         }
 
     except Exception as e:
-        logger.error(f"获取OAuth状态信息时发生异常: {str(e)}")
+        logger.error(f"获取状态信息异常: {str(e)}")
         return None
 
 def should_delete_state_after_validation(action_type: str) -> bool:
@@ -470,11 +455,9 @@ def should_delete_state_after_validation(action_type: str) -> bool:
 
     if action_type == "bind":
         # 绑定操作：不删除状态token，让Java后端处理
-        logger.info("绑定操作：保留状态token供Java后端验证")
         return False
     else:
         # 登录操作：删除状态token（一次性使用）
-        logger.info("登录操作：验证后删除状态token")
         return True
 
 def secure_validate_oauth_state(state: str, provider: str, action_type: str = "login") -> dict:
@@ -494,7 +477,7 @@ def secure_validate_oauth_state(state: str, provider: str, action_type: str = "l
 
     try:
         if not state:
-            logger.warning(f"OAuth状态验证失败: 缺少state参数 - provider={provider}")
+            logger.warning(f"状态验证失败: 缺少state参数 - provider={provider}")
             return {
                 "success": False,
                 "error": "missing_state",
@@ -502,11 +485,11 @@ def secure_validate_oauth_state(state: str, provider: str, action_type: str = "l
             }
 
         if not provider:
-            logger.warning(f"OAuth状态验证失败: 缺少provider参数 - state={state[:8]}***")
+            logger.warning(f"状态验证失败: 缺少provider参数")
             return {
                 "success": False,
                 "error": "missing_provider",
-                "message": "缺少OAuth提供商信息"
+                "message": "缺少提供商信息"
             }
 
         # 根据操作类型决定是否消费state token
@@ -517,21 +500,17 @@ def secure_validate_oauth_state(state: str, provider: str, action_type: str = "l
             # 绑定操作：只验证不消费（让Java后端处理）
             state_data = oauth_state_manager.get_state_info(state)
             if state_data and state_data.get('provider') != provider:
-                logger.warning(f"   检测到潜在的CSRF攻击：OAuth provider不匹配！")
-                logger.warning(f"   期望provider: {provider}")
-                logger.warning(f"   状态中的provider: {state_data.get('provider')}")
-                logger.warning(f"   state token: {state[:8]}***{state[-4:] if len(state) > 12 else '***'}")
+                logger.warning(f"检测到潜在CSRF攻击: provider不匹配")
                 state_data = None
 
         if not state_data:
-            logger.warning(f"OAuth状态验证失败: state无效或已过期 - provider={provider}, state={state[:8]}***")
+            logger.warning(f"状态验证失败: state无效或已过期 - provider={provider}")
             return {
                 "success": False,
                 "error": "invalid_state",
                 "message": "安全验证失败，请重新授权"
             }
 
-        logger.info(f"OAuth状态验证成功: provider={provider}, action={action_type}, state={state[:8]}***")
         return {
             "success": True,
             "state_data": state_data,
@@ -540,7 +519,7 @@ def secure_validate_oauth_state(state: str, provider: str, action_type: str = "l
         }
 
     except Exception as e:
-        logger.error(f"OAuth状态验证异常: provider={provider}, action={action_type}, error={str(e)}")
+        logger.error(f"状态验证异常: provider={provider}, error={str(e)}")
         return {
             "success": False,
             "error": "validation_exception",
@@ -557,11 +536,9 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
     优化版本：减少超时时间，快速失败
     """
     try:
-        print(f"直接调用Java绑定接口: provider={provider}, code={code[:10]}..., state={state[:10]}...")
 
         # 从状态信息中获取用户ID用于日志记录
         user_id = state_info.get("userId") if state_info else None
-        print(f"状态信息: userId={user_id}, action={state_info.get('action') if state_info else 'unknown'}")
 
         # 优化的请求头和超时配置
         headers = {
@@ -571,7 +548,6 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
             'User-Agent': 'poetize-python/1.0.0'
         }
 
-        print(f"发送绑定请求到Java后端")
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -584,11 +560,10 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
                 headers=headers
             )
 
-        print(f"✅ Java绑定接口响应: status={response.status_code}")
         return response
 
     except httpx.RequestError as e:
-        print(f"API请求失败: {str(e)}")
+        logger.warn(f"API请求失败: {str(e)}")
         # 创建一个模拟的错误响应
         class MockResponse:
             def __init__(self, status_code, data):
@@ -603,7 +578,6 @@ async def call_java_bind_api_direct(provider: str, code: str, state: str, state_
 async def call_java_login_api(unified_data: dict):
     """调用Java后端的登录接口"""
     try:
-        print(f"🔑 调用Java登录接口: provider={unified_data.get('provider')}")
 
         async with httpx.AsyncClient() as client:
             headers = {
@@ -619,11 +593,10 @@ async def call_java_login_api(unified_data: dict):
                 timeout=5
             )
 
-        print(f"✅ Java登录接口响应: status={response.status_code}")
         return response
 
     except Exception as e:
-        print(f"❌ 调用Java登录接口失败: {e}")
+        logger.error(f"调用登录接口失败: {e}")
         # 创建一个模拟的错误响应
         class MockResponse:
             def __init__(self, status_code, data):
@@ -684,7 +657,7 @@ def add_new_provider_example():
     }
 
     oauth_factory.register_provider("linkedin", LinkedInProvider, linkedin_config_template)
-    print("成功添加LinkedIn OAuth提供商")
+    logger.info("成功添加LinkedIn OAuth提供商")
 
 
 if __name__ == '__main__':
@@ -699,5 +672,5 @@ if __name__ == '__main__':
     # 启动服务
     port = int(os.environ.get("PORT", 5001))  # 使用不同端口避免冲突
     debug = os.environ.get("ENV") == "development"
-    print(f"启动第三方登录服务，端口: {port}，调试模式: {debug}")
+    logger.info(f"启动服务，端口: {port}，调试模式: {debug}")
     uvicorn.run(app, host="0.0.0.0", port=port, debug=debug, access_log=False)

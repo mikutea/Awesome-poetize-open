@@ -7,7 +7,7 @@ import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.constants.CacheConstants;
 import com.ld.poetry.service.CacheService;
-import com.ld.poetry.service.CaptchaVerificationService;
+import com.ld.poetry.service.CaptchaService;
 import com.ld.poetry.service.CommentService;
 import com.ld.poetry.service.LocationService;
 import com.ld.poetry.utils.CommonQuery;
@@ -51,7 +51,7 @@ public class CommentController {
     private CacheService cacheService;
 
     @Autowired
-    private CaptchaVerificationService captchaVerificationService;
+    private CaptchaService captchaService;
 
 
     /**
@@ -73,7 +73,7 @@ public class CommentController {
             log.info("检测到验证码token，开始验证: {}",
                     commentVO.getVerificationToken().substring(0, Math.min(commentVO.getVerificationToken().length(), 10)) + "...");
 
-            boolean isTokenValid = captchaVerificationService.verifyToken(commentVO.getVerificationToken());
+            boolean isTokenValid = captchaService.verifyToken(commentVO.getVerificationToken());
             if (!isTokenValid) {
                 log.warn("验证码token验证失败，拒绝评论提交");
                 return PoetryResult.fail("验证码验证失败，请重新验证后再试");
@@ -81,14 +81,12 @@ public class CommentController {
 
             log.info("验证码token验证通过，允许评论提交");
         } else {
-            log.debug("未提供验证码token，按现有逻辑处理");
         }
 
         // 清除评论计数缓存
         try {
             String commentCountKey = CacheConstants.COMMENT_COUNT_PREFIX + commentVO.getSource().toString() + "_" + commentVO.getType();
             cacheService.deleteKey(commentCountKey);
-            log.debug("清除评论计数缓存: source={}, type={}", commentVO.getSource(), commentVO.getType());
         } catch (Exception e) {
             log.error("清除评论计数缓存失败: source={}, type={}", commentVO.getSource(), commentVO.getType(), e);
         }

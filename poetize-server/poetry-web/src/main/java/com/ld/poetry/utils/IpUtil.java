@@ -68,7 +68,6 @@ public class IpUtil {
                     String ip = extractValidIpFromHeader(request, headerName);
                     if (ip != null) {
                         successCount.incrementAndGet();
-                        log.debug("通过{}头部获取到有效IP: {}", headerName, ip);
                         return ip;
                     }
                 }
@@ -77,13 +76,11 @@ public class IpUtil {
                 String remoteAddr = request.getRemoteAddr();
                 if (isValidPublicIp(remoteAddr)) {
                     successCount.incrementAndGet();
-                    log.debug("通过RemoteAddr获取到有效IP: {}", remoteAddr);
                     return remoteAddr;
                 }
                 
                 // 如果是内网IP，但在开发环境可能是有效的
                 if (isValidIpFormat(remoteAddr)) {
-                    log.debug("获取到内网IP: {}，可能在开发环境或内网部署", remoteAddr);
                     successCount.incrementAndGet();
                     return remoteAddr;
                 }
@@ -257,27 +254,6 @@ public class IpUtil {
      * 记录详细的请求信息用于调试
      */
     private static void logDetailedRequestInfo(HttpServletRequest request) {
-        if (log.isDebugEnabled()) {
-            StringBuilder info = new StringBuilder("IP获取失败，请求详情: ");
-            info.append("URI=").append(request.getRequestURI()).append("; ");
-            info.append("Method=").append(request.getMethod()).append("; ");
-            info.append("RemoteAddr=").append(request.getRemoteAddr()).append("; ");
-            info.append("RemoteHost=").append(request.getRemoteHost()).append("; ");
-            
-            // 记录所有相关的请求头
-            java.util.Enumeration<String> headerNames = request.getHeaderNames();
-            while (headerNames.hasMoreElements()) {
-                String headerName = headerNames.nextElement();
-                String lowerName = headerName.toLowerCase();
-                if (lowerName.contains("ip") || lowerName.contains("forward") || 
-                    lowerName.contains("proxy") || lowerName.contains("client")) {
-                    info.append(headerName).append("=")
-                        .append(request.getHeader(headerName)).append("; ");
-                }
-            }
-            
-            log.debug(info.toString());
-        }
     }
     
     /**

@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -40,10 +41,10 @@ public class TranslationServiceImpl implements TranslationService {
     private final RestTemplate restTemplate;
     
     @Autowired
-    private com.ld.poetry.utils.PrerenderClient prerenderClient;
+    private com.ld.poetry.service.SitemapService sitemapService;
     
     @Autowired
-    private com.ld.poetry.service.SitemapService sitemapService;
+    private com.ld.poetry.service.SysAiConfigService sysAiConfigService;
     
     public TranslationServiceImpl() {
         this.restTemplate = new RestTemplate();
@@ -61,6 +62,13 @@ public class TranslationServiceImpl implements TranslationService {
                 articleId, skipAiTranslation, pendingTranslation != null && !pendingTranslation.isEmpty());
         
         try {
+            // 0. 检查翻译配置模式
+            com.ld.poetry.entity.SysAiConfig aiConfig = sysAiConfigService.getArticleAiConfig("default");
+            if (aiConfig != null && "none".equals(aiConfig.getTranslationType())) {
+                log.info("翻译模式为'不翻译'，跳过翻译处理，文章ID: {}", articleId);
+                return;
+            }
+            
             // 1. 获取文章内容
             Article article = articleMapper.selectById(articleId);
             if (article == null) {
@@ -76,9 +84,11 @@ public class TranslationServiceImpl implements TranslationService {
             }
 
             // 2. 获取翻译配置
-            Map<String, String> languageConfig = getLanguageConfig();
-            String sourceLanguage = languageConfig.get("source");
-            String targetLanguage = languageConfig.get("target");
+            Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+            String sourceLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
+            String targetLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_target_lang", "en") : "en";
 
             log.info("翻译配置 - 源语言: {}, 目标语言: {}", sourceLanguage, targetLanguage);
 
@@ -96,105 +106,45 @@ public class TranslationServiceImpl implements TranslationService {
                         boolean success = saveOrUpdateTranslation(articleId, translationLanguage,
                                                                 translatedTitle, translatedContent);
                         if (success) {
-                            log.info("暂存翻译保存成功，文章ID: {}, 目标语言: {}", articleId, translationLanguage);
-
-                            // 获取需要渲染的语言（使用系统配置的源语言 + 暂存翻译的目标语言）
-                            List<String> languagesToRender = getLanguagesToRender(sourceLanguage, translationLanguage);
-
-                            // 延迟触发静态预渲染，确保与事件监听器的预渲染不冲突
-                            // 等待5秒，确保事件驱动的预渲染已完成
-                            new Thread(() -> {
-                                try {
-                                    Thread.sleep(5000);
-                                    prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                                    prerenderClient.renderHomePage();
-                                    if (article.getSortId() != null) {
-                                        prerenderClient.renderCategoryPage(article.getSortId());
-                                    }
-                                    log.info("翻译完成后预渲染执行完成，文章ID: {}, 源语言: {}, 目标语言: {}, 渲染语言: {}",
-                                            articleId, sourceLanguage, translationLanguage, languagesToRender);
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    log.warn("翻译预渲染延迟执行被中断: {}", e.getMessage());
-                                } catch (Exception e) {
-                                    log.warn("翻译预渲染延迟执行失败: {}", e.getMessage());
-                                }
-                            }).start();
+                            log.info("暂存翻译保存成功，文章ID: {}, 目标语言: {}，预渲染将由事件监听器自动处理", 
+                                    articleId, translationLanguage);
                         } else {
                             log.error("暂存翻译保存失败，文章ID: {}, 目标语言: {}", articleId, translationLanguage);
                         }
                     }
                 } else {
-                    // 没有暂存翻译，但仍需要触发原文的预渲染
-                    log.info("跳过AI翻译且无暂存翻译，触发原文预渲染，文章ID: {}", articleId);
-
-                    List<String> languagesToRender = getLanguagesToRender(sourceLanguage, null);
-
-                    // 延迟触发静态预渲染，避免与事件监听器的预渲染冲突
-                    new Thread(() -> {
-                        try {
-                            Thread.sleep(3000); // 延迟3秒
-                            prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                            prerenderClient.renderHomePage();
-                            if (article.getSortId() != null) {
-                                prerenderClient.renderCategoryPage(article.getSortId());
-                            }
-                            log.info("跳过翻译预渲染执行完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            log.warn("跳过翻译预渲染延迟执行被中断: {}", e.getMessage());
-                        } catch (Exception e) {
-                            log.warn("跳过翻译预渲染延迟执行失败: {}", e.getMessage());
-                        }
-                    }).start();
+                    // 没有暂存翻译，预渲染将由事件监听器自动处理
+                    log.info("跳过AI翻译且无暂存翻译，预渲染将由事件监听器自动处理，文章ID: {}", articleId);
                 }
                 return;
             }
 
-            // 4. 翻译标题
-            String translatedTitle = translateText(article.getArticleTitle(), sourceLanguage, targetLanguage);
-            if (translatedTitle == null || translatedTitle.trim().isEmpty() ||
-                translatedTitle.equals(article.getArticleTitle())) {
-                log.error("标题翻译失败，文章ID: {}，原标题: {}", articleId, article.getArticleTitle());
-                return; // 翻译失败，不保存任何记录
+            // 4. 翻译文章（使用协程并行翻译标题和内容）
+            Map<String, String> translationResult = translateArticleOnly(
+                article.getArticleTitle(), 
+                article.getArticleContent(), 
+                skipAiTranslation, 
+                pendingTranslation
+            );
+            
+            // 如果翻译失败或被跳过，直接返回
+            if (translationResult == null || translationResult.isEmpty()) {
+                log.warn("文章翻译失败或被跳过，文章ID: {}", articleId);
+                return;
             }
+            
+            String translatedTitle = translationResult.get("title");
+            String translatedContent = translationResult.get("content");
+            String resultTargetLang = translationResult.get("language");
 
-            // 5. 翻译内容（分段处理长文本）
-            String translatedContent = translateLongText(article.getArticleContent(), sourceLanguage, targetLanguage);
-            if (translatedContent == null || translatedContent.trim().isEmpty() ||
-                translatedContent.equals(article.getArticleContent())) {
-                log.error("内容翻译失败，文章ID: {}，内容长度: {}", articleId,
-                         article.getArticleContent() != null ? article.getArticleContent().length() : 0);
-                return; // 翻译失败，不保存任何记录
-            }
-
-            // 6. 保存或更新翻译结果（使用事务和重试机制处理并发）
-            boolean success = saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent);
+            // 5. 保存或更新翻译结果（使用事务和重试机制处理并发）
+            boolean success = saveOrUpdateTranslation(articleId, resultTargetLang, translatedTitle, translatedContent);
             
             if (success) {
-                // 获取系统默认语言配置
-                List<String> languagesToRender = getLanguagesToRender(sourceLanguage, targetLanguage);
-
-                // 延迟触发静态预渲染，确保与事件监听器的预渲染不冲突
-                // 延迟时间设为5秒，确保事件监听器的预渲染（2秒延迟）已完成
-                new Thread(() -> {
-                    try {
-                        Thread.sleep(5000); // 延迟5秒，给事件预渲染充足时间
-                        prerenderClient.renderArticleWithLanguages(articleId, languagesToRender);
-                        // 重新渲染首页（显示最新文章）
-                        prerenderClient.renderHomePage();
-                        // 重新渲染相关分类页面
-                        if (article.getSortId() != null) {
-                            prerenderClient.renderCategoryPage(article.getSortId());
-                        }
-                        log.info("AI翻译完成后预渲染执行完成，文章ID: {}, 渲染语言: {}", articleId, languagesToRender);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        log.warn("AI翻译预渲染延迟执行被中断: {}", e.getMessage());
-                    } catch (Exception e) {
-                        log.warn("AI翻译预渲染延迟执行失败: {}", e.getMessage());
-                    }
-                }).start();
+                log.info("AI翻译保存成功，文章ID: {}, 目标语言: {}，预渲染将由事件监听器自动处理", 
+                        articleId, resultTargetLang);
+            } else {
+                log.error("AI翻译保存失败，文章ID: {}, 目标语言: {}", articleId, resultTargetLang);
             }
             
         } catch (Exception e) {
@@ -202,34 +152,125 @@ public class TranslationServiceImpl implements TranslationService {
         }
     }
 
-    /**
-     * 获取需要渲染的语言列表
-     * @param sourceLanguage 源语言
-     * @param targetLanguage 目标语言
-     * @return 需要渲染的语言列表
-     */
-    private List<String> getLanguagesToRender(String sourceLanguage, String targetLanguage) {
-        List<String> languages = new ArrayList<>();
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, String> translateArticleOnly(String title, String content, boolean skipAiTranslation, Map<String, String> pendingTranslation) {
+        
+        try {
+            // 0. 检查翻译配置模式
+            com.ld.poetry.entity.SysAiConfig aiConfig = sysAiConfigService.getArticleAiConfig("default");
+            if (aiConfig != null && "none".equals(aiConfig.getTranslationType())) {
+                log.info("翻译模式为'不翻译'，跳过翻译处理");
+                return null;
+            }
+            
+            // 1. 检查文章是否有内容
+            if (title == null || title.trim().isEmpty() ||
+                content == null || content.trim().isEmpty()) {
+                log.warn("文章标题或内容为空，跳过翻译");
+                return null;
+            }
 
-        // 始终包含源语言（通常是中文）
-        if (sourceLanguage != null && !languages.contains(sourceLanguage)) {
-            languages.add(sourceLanguage);
+            // 2. 获取翻译配置
+            Map<String, Object> defaultLangs = sysAiConfigService.getDefaultLanguages();
+            String sourceLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_source_lang", "zh") : "zh";
+            String targetLanguage = defaultLangs != null ? 
+                (String) defaultLangs.getOrDefault("default_target_lang", "en") : "en";
+
+            log.info("翻译配置 - 源语言: {}, 目标语言: {}", sourceLanguage, targetLanguage);
+
+            // 3. 处理跳过AI翻译的情况
+            if (skipAiTranslation) {
+                log.info("跳过AI自动翻译");
+                // 如果有暂存的翻译数据，返回它
+                if (pendingTranslation != null && !pendingTranslation.isEmpty()) {
+                    return pendingTranslation;
+                }
+                return null;
+            }
+
+            // 4. 使用TOON格式一次性翻译标题和内容
+            
+            // 构建TOON翻译请求
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("title", title);
+            requestBody.put("content", content);
+            requestBody.put("source_lang", sourceLanguage);
+            requestBody.put("target_lang", targetLanguage);
+            
+            // 设置请求头
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("X-Internal-Service", "poetize-java");
+            headers.set("X-Admin-Request", "true");
+            headers.set("User-Agent", "poetize-java/1.0.0");
+            
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
+            
+            // 调用Python端翻译服务（自动识别TOON格式）
+            String url = pythonServiceUrl + "/api/translation/translate";
+            
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url, HttpMethod.POST, request, 
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+            
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> responseBody = response.getBody();
+                Integer code = (Integer) responseBody.get("code");
+                
+                if (code != null && code == 200) {
+                    Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+                    if (data != null) {
+                        String translatedTitle = (String) data.get("translated_title");
+                        String translatedContent = (String) data.get("translated_content");
+                        Double tokenSavedPercent = data.get("token_saved_percent") != null ? 
+                            ((Number) data.get("token_saved_percent")).doubleValue() : null;
+                        
+                        // 验证翻译结果
+                        if (translatedTitle != null && !translatedTitle.trim().isEmpty() &&
+                            translatedContent != null && !translatedContent.trim().isEmpty() &&
+                            !translatedTitle.equals(title) && !translatedContent.equals(content)) {
+                            
+                            if (tokenSavedPercent != null && tokenSavedPercent > 0) {
+                                log.info("TOON翻译成功！相比传统方式节省了 {}% token", 
+                                    String.format("%.1f", tokenSavedPercent));
+                            } else {
+                                log.info("TOON翻译成功");
+                            }
+                            
+                            // 返回翻译结果
+                            Map<String, String> result = new HashMap<>();
+                            result.put("title", translatedTitle);
+                            result.put("content", translatedContent);
+                            result.put("language", targetLanguage);
+                            
+                            return result;
+                        } else {
+                            log.error("TOON翻译结果无效或未改变");
+                            return null;
+                        }
+                    }
+                } else {
+                    String message = (String) responseBody.get("message");
+                    log.error("TOON翻译失败: {}", message);
+                    return null;
+                }
+            }
+            
+            log.error("TOON翻译服务返回异常响应");
+            return null;
+            
+        } catch (Exception e) {
+            log.error("TOON翻译文章失败，错误: {}", e.getMessage(), e);
+            return null;
         }
+    }
 
-        // 包含目标语言（翻译后的语言）
-        if (targetLanguage != null && !languages.contains(targetLanguage)) {
-            languages.add(targetLanguage);
-        }
-
-        // 如果没有任何语言，默认添加中文
-        if (languages.isEmpty()) {
-            languages.add("zh");
-        }
-
-        log.debug("确定需要渲染的语言: 源语言={}, 目标语言={}, 渲染语言={}",
-                 sourceLanguage, targetLanguage, languages);
-
-        return languages;
+    @Override
+    public boolean saveTranslationResult(Integer articleId, String translatedTitle, String translatedContent, String targetLanguage) {
+        return saveOrUpdateTranslation(articleId, targetLanguage, translatedTitle, translatedContent);
     }
 
     /**
@@ -334,32 +375,6 @@ public class TranslationServiceImpl implements TranslationService {
         }
     }
     
-    /**
-     * 翻译长文本
-     */
-    private String translateLongText(String content, String sourceLang, String targetLang) {
-        if (content == null || content.trim().isEmpty()) {
-            return content;
-        }
-        
-        try {
-            // 直接翻译整个文本，保持上下文连贯性
-            String translatedContent = translateText(content, sourceLang, targetLang);
-            if (translatedContent != null && !translatedContent.trim().isEmpty() &&
-                !translatedContent.equals(content)) {
-                return translatedContent;
-            } else {
-                // 翻译失败时返回null，而不是原文
-                log.warn("长文本翻译失败，内容长度: {}", content.length());
-                return null;
-            }
-            
-        } catch (Exception e) {
-            log.error("长文本翻译失败: {}", e.getMessage(), e);
-            return content; // 翻译失败时返回原文
-        }
-    }
-    
     @Override
     public Map<String, String> getArticleTranslation(Integer articleId, String language) {
         Map<String, String> result = new HashMap<>();
@@ -382,7 +397,6 @@ public class TranslationServiceImpl implements TranslationService {
                 result.put("content", translation.getContent() != null ? translation.getContent() : "");
                 result.put("language", translation.getLanguage());
                 result.put("status", "success");
-                log.debug("成功获取文章翻译，文章ID: {}, 语言: {}", articleId, language);
             } else {
                 result.put("error", "未找到对应语言的翻译");
                 result.put("status", "not_found");
@@ -422,9 +436,7 @@ public class TranslationServiceImpl implements TranslationService {
                     .distinct()
                     .collect(Collectors.toList());
 
-                log.debug("成功获取文章可用翻译语言，文章ID: {}, 语言列表: {}", articleId, availableLanguages);
             } else {
-                log.debug("文章暂无翻译，文章ID: {}", articleId);
             }
 
         } catch (Exception e) {
@@ -508,7 +520,6 @@ public class TranslationServiceImpl implements TranslationService {
             boolean shouldSkip = existingTranslation != null;
 
             if (shouldSkip) {
-                log.debug("跳过自动翻译，文章ID: {}, 目标语言: {} (已存在翻译记录)", articleId, targetLanguage);
             }
 
             return shouldSkip;
@@ -520,6 +531,7 @@ public class TranslationServiceImpl implements TranslationService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public String translateText(String text, String sourceLang, String targetLang) {
         if (text == null || text.trim().isEmpty()) {
             return text;
@@ -536,13 +548,17 @@ public class TranslationServiceImpl implements TranslationService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Internal-Service", "poetize-java");
+            headers.set("X-Admin-Request", "true");
             headers.set("User-Agent", "poetize-java/1.0.0");
             
             HttpEntity<Map<String, Object>> request = new HttpEntity<>(requestBody, headers);
             
             // 调用Python端翻译服务
             String url = pythonServiceUrl + "/api/translation/translate";
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, request, Map.class);
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url, HttpMethod.POST, request, 
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
             
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 Map<String, Object> responseBody = response.getBody();
@@ -554,9 +570,6 @@ public class TranslationServiceImpl implements TranslationService {
                         String translatedText = (String) data.get("translated_text");
                         if (translatedText != null && !translatedText.trim().isEmpty() &&
                             !translatedText.equals(text)) {
-                            log.debug("翻译成功: {} -> {}",
-                                    text.length() > 50 ? text.substring(0, 50) + "..." : text,
-                                    translatedText.length() > 50 ? translatedText.substring(0, 50) + "..." : translatedText);
                             return translatedText;
                         } else {
                             log.warn("翻译服务返回无效结果，原文: {}, 翻译结果: {}",
@@ -619,67 +632,17 @@ public class TranslationServiceImpl implements TranslationService {
     }
 
     /**
-     * 获取翻译语言配置
-     * @return Map包含source和target语言配置
-     */
-    private Map<String, String> getLanguageConfig() {
-        Map<String, String> config = new HashMap<>();
-
-        try {
-            // 调用Python服务获取语言配置
-            String url = pythonServiceUrl + "/api/translation/default-lang";
-            @SuppressWarnings("rawtypes")
-            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> responseBody = response.getBody();
-                Integer code = (Integer) responseBody.get("code");
-
-                if (code != null && code == 200) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
-                    if (data != null) {
-                        String sourceLang = (String) data.get("default_source_lang");
-                        String targetLang = (String) data.get("default_target_lang");
-
-                        config.put("source", sourceLang != null && !sourceLang.trim().isEmpty() ? sourceLang : "zh");
-                        config.put("target", targetLang != null && !targetLang.trim().isEmpty() ? targetLang : "en");
-
-                        log.debug("成功获取翻译语言配置: {} -> {}", config.get("source"), config.get("target"));
-                        return config;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("获取翻译语言配置失败，使用默认值: {}", e.getMessage());
-        }
-
-        // 返回默认配置：中文 -> 英文
-        config.put("source", "zh");
-        config.put("target", "en");
-        return config;
-    }
-
-    @Override
-    public Map<String, String> getTranslationLanguageConfig() {
-        return getLanguageConfig();
-    }
-
-    /**
-     * 翻译操作后更新sitemap的辅助方法
+     * 翻译操作后更新sitemap的辅助方法（只清除缓存）
      * @param articleId 文章ID
      * @param operation 操作描述
      */
     private void updateSitemapForTranslation(Integer articleId, String operation) {
         try {
             if (sitemapService != null) {
-                String reason = String.format("文章翻译%s (文章ID=%d)", operation, articleId);
-                sitemapService.updateSitemapAndPush(reason);
-                log.debug("{}后已更新sitemap并推送到搜索引擎，文章ID: {}", operation, articleId);
+                sitemapService.updateArticleSitemap(articleId);
             }
         } catch (Exception e) {
-            log.warn("{}后更新sitemap和推送失败，不影响翻译操作，文章ID: {}, 错误: {}", operation, articleId, e.getMessage());
+            log.warn("{}后清除sitemap缓存失败，不影响翻译操作，文章ID: {}, 错误: {}", operation, articleId, e.getMessage());
         }
     }
 

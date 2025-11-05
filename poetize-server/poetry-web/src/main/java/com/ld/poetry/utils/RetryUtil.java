@@ -77,7 +77,6 @@ public class RetryUtil {
                 
                 // 如果是业务异常，不进行重试
                 if (e instanceof PoetryRuntimeException) {
-                    log.debug("{}遇到业务异常，不进行重试: {}", operationName, e.getMessage());
                     throw e;
                 }
                 

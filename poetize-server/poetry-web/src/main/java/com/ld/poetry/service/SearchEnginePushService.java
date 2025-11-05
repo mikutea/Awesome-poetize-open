@@ -36,7 +36,7 @@ public interface SearchEnginePushService {
     Map<String, Object> pushSitemapToAllEngines();
 
     /**
-     * 获取SEO配置（从Python端配置文件读取）
+     * 获取SEO配置（从数据库读取，带Redis缓存）
      * 
      * @return SEO配置
      */
@@ -57,8 +57,8 @@ public interface SearchEnginePushService {
     String[] getSupportedEngines();
 
     /**
-     * 清除SEO配置缓存
-     * 在SEO配置更新时调用，强制重新获取配置
+     * 清除SEO配置的Redis缓存
+     * 在SEO配置更新时调用，下次查询将从数据库重新加载
      */
     void clearSeoConfigCache();
 }

@@ -22,10 +22,14 @@ import java.util.Map;
 public interface ArticleService extends IService<Article> {
 
     PoetryResult saveArticle(ArticleVO articleVO);
+    
+    PoetryResult saveArticle(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
 
     PoetryResult deleteArticle(Integer id);
 
     PoetryResult updateArticle(ArticleVO articleVO);
+    
+    PoetryResult updateArticle(ArticleVO articleVO, boolean skipAiTranslation, Map<String, String> pendingTranslation);
 
     PoetryResult<Page> listArticle(BaseRequestVO baseRequestVO);
 

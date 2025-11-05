@@ -109,6 +109,12 @@ public class WebInfo implements Serializable {
     private Boolean enableWaifu;
 
     /**
+     * 看板娘显示模式 [live2d:Live2D看板娘, button:简洁按钮]
+     */
+    @TableField(value = "waifu_display_mode", exist = true)
+    private String waifuDisplayMode;
+
+    /**
      * 首页上拉高度
      */
     @TableField("home_page_pull_up_height")
@@ -122,6 +128,12 @@ public class WebInfo implements Serializable {
 
     @TableField(exist = false)
     private String defaultStoreType;
+
+    /**
+     * 文章总数（动态计算，不存储在数据库）
+     */
+    @TableField(exist = false)
+    private Integer articleCount;
 
     /**
      * API相关配置

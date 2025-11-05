@@ -128,7 +128,6 @@ public class MailUtil {
                 if (url.endsWith("/")) {
                     url = url.substring(0, url.length() - 1);
                 }
-                log.debug("从 web_info 表获取网站URL: {}", url);
                 return url;
             }
         } catch (Exception e) {
@@ -147,12 +146,10 @@ public class MailUtil {
             if (url.endsWith("/")) {
                 url = url.substring(0, url.length() - 1);
             }
-            log.debug("从环境变量获取网站URL: {}", url);
             return url;
         }
         
         // 3. 如果环境变量也未配置，返回默认URL
-        log.debug("使用默认网站URL: http://localhost");
         return "http://localhost";
     }
 
@@ -183,10 +180,8 @@ public class MailUtil {
                 if (currentUser != null) {
                     username = currentUser.getUsername();
                     userId = currentUser.getId();
-                    log.debug("从请求上下文恢复用户信息成功: userId={}, username={}", userId, username);
                 }
             } catch (Exception e) {
-                log.debug("从请求上下文恢复用户信息失败: {}", e.getMessage());
             }
         }
         
@@ -202,17 +197,13 @@ public class MailUtil {
         try {
             // 验证用户上下文（邮件发送通常不强制要求用户上下文）
             if (AsyncTaskUtil.hasUserContext()) {
-                log.debug("邮件发送任务 - 当前用户: {} (ID: {})", 
-                        AsyncTaskUtil.getCurrentUsername(), AsyncTaskUtil.getCurrentUserId());
             } else if (currentUser != null) {
                 // 如果异步上下文中没有，但我们已经获取到用户信息，则手动设置
                 AsyncUserContext.setUser(currentUser);
                 if (StringUtils.hasText(PoetryUtil.getToken())) {
                     AsyncUserContext.setToken(PoetryUtil.getToken());
                 }
-                log.debug("邮件发送任务 - 手动恢复用户上下文: {} (ID: {})", currentUser.getUsername(), currentUser.getId());
             } else {
-                log.debug("邮件发送任务 - 无用户上下文（系统邮件）");
             }
             
             // 使用MailService发送邮件，这样会根据配置的邮箱信息发送

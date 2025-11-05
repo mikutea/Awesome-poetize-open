@@ -102,9 +102,7 @@ export default {
     try {
       const { getBrowserFingerprint } = await import('@/utils/fingerprintUtil')
       this.browserFingerprint = await getBrowserFingerprint()
-      console.log('浏览器指纹已加载:', this.browserFingerprint)
     } catch (error) {
-      console.warn('浏览器指纹加载失败，将使用降级方案:', error)
     }
   },
   methods: {
@@ -125,7 +123,6 @@ export default {
       if (!this.isTrackingMouse) {
         this.isTrackingMouse = true;
         this.startTime = Date.now();
-        console.log('开始记录鼠标轨迹');
       }
 
       // 限制记录点数，避免过多消耗内存
@@ -190,25 +187,61 @@ export default {
       this.$http.post(this.$constant.baseURL + "/captcha/verify-checkbox", verifyData)
         .then(res => {
           this.verifying = false;
-          console.log("验证响应:", res.data);
           
-          // 检查返回的数据格式
-          if (res.data && res.data.success === true) {
-            // 直接返回success和token的格式
-            this.verificationToken = res.data.token;
-            this.verifySuccess();
-          } else if (res.data && res.data.code === 200 && res.data.data && res.data.data.token) {
-            // 返回code和data的格式
-            this.verificationToken = res.data.data.token;
+          // 处理返回的数据（支持两种格式）
+          let responseData = res.data;
+          if (res.data && res.data.code === 200 && res.data.data) {
+            responseData = res.data.data;
+          }
+          
+          // 检查是否被封禁
+          if (responseData && responseData.blocked) {
+            const remainingMinutes = responseData.remainingMinutes || 30;
+            this.$message({
+              message: responseData.message || `您的IP已被临时限制 ${remainingMinutes} 分钟，请稍后再试`,
+              type: 'error',
+              duration: 5000,
+              showClose: true
+            });
+            this.verifyFail();
+            return;
+          }
+          
+          // 显示警告信息（剩余次数少时）
+          if (responseData && responseData.warning) {
+            this.$message({
+              message: responseData.warning,
+              type: 'warning',
+              duration: 4000,
+              showClose: true
+            });
+          }
+          
+          // 检查验证是否成功
+          if (responseData && responseData.success === true) {
+            this.verificationToken = responseData.token;
             this.verifySuccess();
           } else {
-            console.error("验证失败，服务器返回:", res.data);
+            console.error("验证失败，服务器返回:", responseData);
+            // 显示具体的失败原因
+            if (responseData && responseData.message) {
+              this.$message({
+                message: responseData.message,
+                type: 'error',
+                duration: 3000
+              });
+            }
             this.verifyFail();
           }
         })
         .catch(error => {
           this.verifying = false;
           console.error("验证请求失败:", error);
+          this.$message({
+            message: '验证请求失败，请检查网络连接',
+            type: 'error',
+            duration: 3000
+          });
           this.verifyFail();
         });
     },
@@ -248,17 +281,10 @@ export default {
      * 判断是否符合人类行为模式（前端验证）
      */
     isHumanLike() {
-      console.log('验证人类行为模式:', {
-        trackLength: this.mouseTrack.length,
-        minRequired: this.getMinTrackPoints(),
-        isReplyComment: this.isReplyComment,
-        retryCount: this.retryCount
-      });
 
       // 1. 轨迹点数量检查 - 根据场景调整要求
       const minPoints = this.getMinTrackPoints();
       if (this.mouseTrack.length < minPoints) {
-        console.log('轨迹点数不足:', this.mouseTrack.length, '<', minPoints);
         return false;
       }
 
@@ -266,7 +292,6 @@ export default {
       const straightRatio = this.calculateStraightRatio();
       const sensitivity = this.getTrackSensitivity();
       if (straightRatio > sensitivity) {
-        console.log('轨迹过于直线:', straightRatio, '>', sensitivity);
         return false;
       }
 
@@ -274,11 +299,9 @@ export default {
       const timeSpent = this.checkTime - this.startTime;
       const minTime = this.isReplyComment ? 200 : 500;  // 回复评论场景降低到200ms
       if (timeSpent < minTime) {
-        console.log('动作过快:', timeSpent, '<', minTime);
         return false;
       }
 
-      console.log('验证通过');
       return true;
     },
 
@@ -309,7 +332,6 @@ export default {
         sensitivity = Math.max(0.70, sensitivity - decrement);  // 最低降到0.70
       }
 
-      console.log(`动态敏感度计算: 基础=${this.trackSensitivity}, 回复评论=${this.isReplyComment}, 重试=${this.retryCount}, 最终=${sensitivity.toFixed(3)}`);
       return sensitivity;
     },
     
@@ -334,7 +356,6 @@ export default {
       this.verificationToken = '';
       this.retryCount++;  // 增加重试计数
 
-      console.log('验证失败，重试次数:', this.retryCount);
 
       // 重置轨迹跟踪状态，准备下次验证
       this.resetTrackingState();
@@ -353,7 +374,6 @@ export default {
       this.startTime = 0;
       this.checkTime = 0;
       this.isTrackingMouse = false;
-      console.log('重置轨迹跟踪状态');
     },
     
     /**
@@ -371,7 +391,6 @@ export default {
       this.isTrackingMouse = false;
       this.retryCount = 0;  // 重置重试计数
 
-      console.log('刷新验证码，重置所有状态');
       this.$emit('refresh');
     },
     

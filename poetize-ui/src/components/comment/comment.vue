@@ -34,7 +34,9 @@
            v-for="(item, index) in comments"
            :key="index">
         <!-- 头像 -->
-        <el-avatar shape="square" class="commentInfo-avatar" :size="35" :src="item.avatar"></el-avatar>
+        <el-avatar shape="square" class="commentInfo-avatar" :size="35" :src="$common.getAvatarUrl(item.avatar)">
+          <img :src="$getDefaultAvatar()" />
+        </el-avatar>
 
         <div style="flex: 1;padding-left: 12px">
           <!-- 评论信息 -->
@@ -74,7 +76,9 @@
                    v-for="replyItem in item.childComments.records"
                    :key="replyItem.id">
                 <!-- 头像 -->
-                <el-avatar shape="square" class="commentInfo-avatar" :size="30" :src="replyItem.avatar"></el-avatar>
+                <el-avatar shape="square" class="commentInfo-avatar" :size="30" :src="$common.getAvatarUrl(replyItem.avatar)">
+                  <img :src="$getDefaultAvatar()" />
+                </el-avatar>
 
                 <div style="flex: 1;padding-left: 12px">
                   <!-- 评论信息 -->
@@ -167,6 +171,7 @@
                width="30%"
                :before-close="handleClose"
                :append-to-body="true"
+               custom-class="centered-dialog"
                :close-on-click-modal="false"
                destroy-on-close
                center>
@@ -181,6 +186,8 @@
 </template>
 
 <script>
+  import { useMainStore } from '@/stores/main';
+
   // const graffiti = () => import( "./graffiti");
   const commentBox = () => import( "./commentBox");
   const proPage = () => import( "../common/proPage");
@@ -231,7 +238,10 @@
       };
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     created() {
       // 🔧 关键修复：强制重置组件状态
@@ -239,7 +249,6 @@
       this.comments = [];
       this.isLoadingMore = false;
       this.hasMoreComments = true;
-      console.log(`🔄 组件状态已重置`);
 
       this.getComments(this.pagination);
       this.getTotal();
@@ -379,13 +388,11 @@
         const expandState = this.expandedComments[comment.id];
         if (!expandState) {
           // 🔧 修复：如果没有展开状态，返回所有平铺回复（用于调试）
-          console.log(`⚠️ 评论 ${comment.id} 没有展开状态，返回所有 ${comment.flatReplies.length} 条回复`);
           return comment.flatReplies;
         }
 
         const displayCount = expandState.displayCount || comment.flatReplies.length;
         const result = comment.flatReplies.slice(0, displayCount);
-        console.log(`📋 评论 ${comment.id} 显示 ${result.length}/${comment.flatReplies.length} 条回复`);
         return result;
       },
 
@@ -446,7 +453,6 @@
         if (!comments || !comments.length) return;
 
         comments.forEach((comment, index) => {
-          console.log(`📝 处理第${index + 1}个主评论 (ID: ${comment.id}):`, comment.username);
 
           // 🔧 新逻辑：只处理子评论统计信息，不加载子评论内容
           if (comment.childComments && comment.childComments.total > 0) {
@@ -677,6 +683,8 @@
                   // 初始加载或传统分页模式
                   this.comments = res.data.records;
                   this.hasMoreComments = res.data.records.length === pagination.size;
+                  // 非懒加载模式下也要重置isLoadingMore状态
+                  this.isLoadingMore = false;
                 }
                 pagination.total = res.data.total;
 
@@ -718,6 +726,12 @@
               this.$nextTick(() => {
                 this.$common.imgShow("#comment-content .pictureReg");
               });
+            } else {
+              // 即使没有评论数据，也要重置isLoadingMore状态
+              if (this.$common.isEmpty(floorComment)) {
+                this.isLoadingMore = false;
+                this.hasMoreComments = false;
+              }
             }
           })
           .catch((error) => {
@@ -756,13 +770,13 @@
             // 需要验证码：立即清空评论框，显示验证码组件
             this.clearCommentBox();
 
-            this.$store.commit('setVerifyParams', {
+            this.mainStore.setVerifyParams({
               action: 'comment',
               isReplyComment: false,  // 主评论
               onSuccess: (token) => this.saveCommentToServer(comment, token),
               onCancel: () => this.restorePendingComment()
             });
-            this.$store.commit('showCaptcha', true);
+            this.mainStore.showCaptcha(true);
           } else {
             // 不需要验证码，直接发表评论并清空评论框
             this.clearCommentBox();
@@ -785,8 +799,13 @@
               message: '保存成功！'
             });
 
-            // 评论提交成功后，清除待恢复的评论内容
+            // 🔧 修复：评论提交成功后，确保评论框被清空
             this.pendingCommentContent = null;
+            this.clearCommentBox();
+
+            // 重置懒加载状态，防止显示"正在加载更多评论..."
+            this.isLoadingMore = false;
+            this.hasMoreComments = true; // 重置为true，等待getComments更新
 
             this.pagination = {
               current: 1,
@@ -834,13 +853,13 @@
           if (required) {
             // 需要验证码：先关闭回复对话框，显示验证码组件
             this.handleClose();
-            this.$store.commit('setVerifyParams', {
+            this.mainStore.setVerifyParams({
               action: 'comment',
               isReplyComment: true,  // 回复评论
               onSuccess: (token) => this.saveReplyToServer(comment, floorComment, token),
               onCancel: () => this.restorePendingReply()
             });
-            this.$store.commit('showCaptcha', true);
+            this.mainStore.showCaptcha(true);
           } else {
             // 不需要验证码，直接发表回复并关闭对话框
             this.saveReplyToServer(comment, floorComment);
@@ -865,21 +884,14 @@
               message: '回复成功！'
             });
 
-            // 回复提交成功后，清除待恢复的回复内容
+            // 🔧 修复：回复提交成功后，确保对话框关闭
             this.pendingReplyContent = null;
+            this.handleClose();
 
-            // 🔧 修复：根据评论类型选择合适的刷新策略
-            console.log('🔄 评论提交成功，开始刷新显示');
-            console.log('评论信息:', {
-              parentCommentId: comment.parentCommentId,
-              floorCommentId: floorComment.id,
-              isSecondLevel: comment.parentCommentId === floorComment.id
-            });
-            console.log('楼层评论对象:', floorComment);
+            // 根据评论类型选择合适的刷新策略
 
             if (comment.parentCommentId === floorComment.id) {
               // 二级评论：直接回复一级评论，刷新楼层评论
-              console.log('📝 二级评论，使用传统刷新方式');
               let pagination = {
                 current: 1,
                 size: 5,
@@ -891,7 +903,6 @@
               this.getComments(pagination, floorComment);
             } else {
               // 三级及以上评论：回复的是子评论，需要使用懒加载接口刷新
-              console.log('📝 三级及以上评论，使用懒加载刷新方式');
               this.refreshNestedReplies(floorComment);
             }
 
@@ -914,11 +925,10 @@
        * @param {Object} floorComment - 楼层评论对象
        */
       async refreshNestedReplies(floorComment) {
-        console.log('🔄 开始刷新嵌套回复，楼层评论:', floorComment);
 
         // 🔧 添加楼层评论对象验证
         if (!floorComment || !floorComment.id) {
-          console.error('❌ 楼层评论对象无效:', floorComment);
+          console.error('楼层评论对象无效:', floorComment);
           return;
         }
 
@@ -937,7 +947,6 @@
             commentType: this.type
           };
 
-          console.log('🌐 发送刷新请求:', { url: fullUrl, body: requestBody });
           const response = await this.$http.post(fullUrl, requestBody);
 
           let childCommentsData = null;
@@ -948,7 +957,6 @@
           }
 
           if (childCommentsData && childCommentsData.records) {
-            console.log('📊 收到子评论数据:', childCommentsData);
 
             // 🔧 确保楼层评论有childComments属性
             if (!floorComment.childComments) {
@@ -965,15 +973,11 @@
             // 强制更新视图
             this.$forceUpdate();
 
-            console.log(`✅ 成功刷新楼层${floorComment.id}的嵌套回复，共${childCommentsData.records.length}条`);
-            console.log('🔍 更新后的楼层评论对象:', floorComment);
           } else {
-            console.warn('⚠️ 未收到有效的子评论数据:', childCommentsData);
           }
         } catch (error) {
-          console.error('❌ 刷新嵌套回复失败:', error);
+          console.error('刷新嵌套回复失败:', error);
           // 如果懒加载失败，回退到传统方式
-          console.log('🔄 回退到传统刷新方式');
           let pagination = {
             current: 1,
             size: 5,
@@ -987,7 +991,7 @@
       },
       replyDialog(comment, floorComment) {
         // 🔧 新策略：检查用户登录状态
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
           // 未登录用户：保存页面状态并直接跳转到登录页面
           this.savePageStateAndRedirectToLogin(comment, floorComment);
           return;
@@ -1062,7 +1066,6 @@
       // 恢复待提交的回复内容（验证码取消时调用）
       restorePendingReply() {
         if (this.pendingReplyContent) {
-          console.log('恢复回复内容:', this.pendingReplyContent.content);
 
           // 重新打开回复对话框并恢复状态
           this.replyComment = this.pendingReplyContent.replyComment;
@@ -1073,17 +1076,14 @@
           this.$nextTick(() => {
             setTimeout(() => {
               if (this.$refs.replyCommentBox) {
-                console.log('找到回复输入框组件，恢复内容');
                 this.$refs.replyCommentBox.restoreComment(this.pendingReplyContent.content);
               } else {
-                console.warn('未找到回复输入框组件引用');
               }
               // 清除待恢复的回复内容
               this.pendingReplyContent = null;
             }, 200); // 增加延迟确保组件完全渲染
           });
         } else {
-          console.log('没有待恢复的回复内容');
         }
       },
 
@@ -1092,10 +1092,8 @@
        * @param {Object} stateData - 保存的页面状态数据
        */
       handleRestorePageState(stateData) {
-        console.log('收到页面状态恢复事件:', stateData);
 
         if (!stateData || !stateData.replyContext) {
-          console.warn('页面状态数据格式不正确');
           return;
         }
 
@@ -1112,11 +1110,9 @@
         if (targetFloorComment) {
           if (context.floorComment.expanded && !targetFloorComment.expanded) {
             // 如果原本是展开的但现在未展开，则展开它
-            console.log('恢复楼层评论展开状态:', targetFloorComment.id);
             this.expandReplies(targetFloorComment);
           } else if (context.floorComment.expanded && targetFloorComment.expanded) {
             // 如果原本就是展开的且现在也是展开的，确保子评论数据是最新的
-            console.log('刷新已展开楼层评论的子评论数据:', targetFloorComment.id);
             this.refreshNestedReplies(targetFloorComment);
           }
         }
@@ -1131,11 +1127,10 @@
 
           if (!actualFloorComment) {
             if (retryCount < maxRetries) {
-              console.log(`⏳ 等待楼层评论加载，重试 ${retryCount + 1}/${maxRetries}`);
               setTimeout(() => waitForCommentAndOpenDialog(retryCount + 1), retryDelay);
               return;
             } else {
-              console.error('❌ 无法找到楼层评论，状态恢复失败');
+              console.error('无法找到楼层评论，状态恢复失败');
               return;
             }
           }
@@ -1154,8 +1149,6 @@
           // 打开回复对话框
           this.replyDialogVisible = true;
 
-          console.log('✅ 页面状态恢复完成，回复对话框已打开');
-          console.log('楼层评论对象:', this.floorComment);
         };
 
         // 延迟一点时间确保评论列表已更新，然后开始等待和打开对话框
@@ -1168,14 +1161,9 @@
        */
       loadMoreComments() {
         if (this.isLoadingMore || !this.hasMoreComments) {
-          console.log('🚫 跳过加载：', {
-            isLoadingMore: this.isLoadingMore,
-            hasMoreComments: this.hasMoreComments
-          });
           return;
         }
 
-        console.log('📥 开始加载更多评论，当前页：', this.pagination.current);
         this.isLoadingMore = true;
         this.pagination.current += 1;
 
@@ -1218,7 +1206,6 @@
 
           // 当滚动到距离底部scrollThreshold像素时触发加载
           if (scrollTop + windowHeight >= documentHeight - this.scrollThreshold) {
-            console.log('🔄 滚动触发懒加载');
             this.loadMoreComments();
           }
         }, 100); // 100ms防抖
@@ -1331,6 +1318,11 @@
     border-radius: 12px;
     color: var(--black);
     word-break: break-word;
+  }
+
+  /* 暗色模式下使用浅灰色背景 */
+  .dark-mode .commentInfo-content {
+    background: #D4D4D4 !important;
   }
 
   .pagination-wrap {

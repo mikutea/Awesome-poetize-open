@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-10-17
+## 修改时间: 2025-11-03
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.7.3
+## 版本: 1.9.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -76,7 +76,7 @@ RUN_IN_BACKGROUND=false
 DOMAINS=()
 PRIMARY_DOMAIN=""
 EMAIL="example@qq.com"
-ENABLE_HTTPS=false
+ENABLE_HTTPS=true
 CONFIG_FILE=".poetize-config"
 SAVE_CONFIG=false
 LOW_MEMORY_MODE=false
@@ -86,6 +86,7 @@ RUN_IN_BACKGROUND=false
 LOG_FILE="deploy.log"
 DISABLE_DOCKER_CACHE=true  # 默认禁用Docker构建缓存
 POETIZE_KEEP_GIT=false      # 默认删除Git仓库，不依赖git更新
+HTTP_PORT=""                # 自定义HTTP端口（支持任何域名）
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
@@ -195,9 +196,17 @@ print_summary() {
   if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     printf "${CYAN}本地开发环境访问地址${NC}\n"
     printf "${CYAN}%s${NC}\n" "$(printf '%*s' 20 '' | tr ' ' '-')"
-    printf "  网站首页: ${GREEN}http://%s${NC}\n" "$PRIMARY_DOMAIN"
-    printf "  聊天室: ${GREEN}http://%s/im${NC}\n" "$PRIMARY_DOMAIN"
-    printf "  管理后台: ${GREEN}http://%s/admin${NC}\n" "$PRIMARY_DOMAIN"
+    
+    # 构建访问地址（包含自定义端口）
+    local access_url="$PRIMARY_DOMAIN"
+    if [ -n "$HTTP_PORT" ] && [ "$HTTP_PORT" != "80" ]; then
+      access_url="$PRIMARY_DOMAIN:$HTTP_PORT"
+      printf "  ${YELLOW}使用自定义端口: $HTTP_PORT${NC}\n"
+    fi
+    
+    printf "  网站首页: ${GREEN}http://%s${NC}\n" "$access_url"
+    printf "  聊天室: ${GREEN}http://%s/im${NC}\n" "$access_url"
+    printf "  管理后台: ${GREEN}http://%s/admin${NC}\n" "$access_url"
   else
     printf "${CYAN}服务访问地址${NC}\n"
     printf "${CYAN}%s${NC}\n" "$(printf '%*s' 12 '' | tr ' ' '-')"
@@ -357,7 +366,7 @@ show_help() {
   echo "用法: $0 [选项]"
   echo ""
   echo "选项:"
-  echo "  -d, --domain DOMAIN     设置域名（可多次使用添加多个域名）"
+  echo "  -d, --domain DOMAIN     设置域名（支持 domain:port 格式，可多次使用添加多个域名）"
   echo "  -e, --email EMAIL       设置管理员邮箱（默认：example@qq.com）"
   echo "  -h, --help              显示此帮助信息"
   echo "  --config FILE           从文件加载配置"
@@ -367,13 +376,15 @@ show_help() {
   echo "  -b, --background        在后台运行脚本，输出重定向到日志文件"
   echo "  --log-file FILE         指定日志文件（默认为deploy.log）"
   echo "  --enable-docker-cache   启用Docker构建缓存（默认禁用以节省空间）"
+  echo "  --httpport PORT         设置HTTP端口（支持任何域名，使用自定义端口时会自动禁用HTTPS）"
+  echo "  --disable-https         禁用HTTPS（默认启用）"
   echo ""
   echo "Git仓库选项:"
   echo "  --keep-git              保留Git仓库（可选，支持git更新）"
   echo "  --no-git, --remove-git  删除Git仓库（默认，节省磁盘空间）"
   echo ""
   echo "示例:"
-  echo "  $0 --domain example.com --domain www.example.com --email admin@example.com --enable-https"
+  echo "  $0 --domain example.com --domain www.example.com --email admin@example.com"
   echo "  $0 --config .poetize-config"
   echo "  $0 --domain example.com --save-config"
   echo "  $0 --background         # 在后台运行，输出到deploy.log"
@@ -382,6 +393,11 @@ show_help() {
   echo "  $0 --no-git             # 部署时删除Git仓库，节省空间（默认）"
   echo "  $0 --keep-git           # 保留Git仓库，支持git更新功能"
   echo ""
+  echo "自定义端口示例:"
+  echo "  $0 --domain localhost:8089              # 本地开发环境"
+  echo "  $0 --domain example.com:8080            # 生产环境使用非标准端口"
+  echo "  $0 --domain example.com --httpport 8080 # 或者分开指定（效果相同）"
+  echo ""
 }
 
 # 解析命令行参数
@@ -389,15 +405,26 @@ parse_arguments() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       -d|--domain)
-        DOMAINS+=("$2")
+        # 支持 domain:port 格式，自动提取端口
+        local domain_input="$2"
+        if [[ "$domain_input" =~ ^([^:]+):([0-9]+)$ ]]; then
+          # 提取域名和端口
+          local extracted_domain="${BASH_REMATCH[1]}"
+          local extracted_port="${BASH_REMATCH[2]}"
+          DOMAINS+=("$extracted_domain")
+          HTTP_PORT="$extracted_port"
+          info "检测到域名:端口格式 - 域名: $extracted_domain, 端口: $extracted_port"
+        else
+          DOMAINS+=("$domain_input")
+        fi
         shift 2
         ;;
       -e|--email)
         EMAIL="$2"
         shift 2
         ;;
-      --enable-https)
-        ENABLE_HTTPS=true
+      --disable-https)
+        ENABLE_HTTPS=false
         shift
         ;;
       --config)
@@ -445,6 +472,10 @@ parse_arguments() {
       --keep-git)
         POETIZE_KEEP_GIT=true
         shift
+        ;;
+      --httpport)
+        HTTP_PORT="$2"
+        shift 2
         ;;
       *)
         error "未知选项: $1"
@@ -887,6 +918,109 @@ check_and_install_ipcalc() {
   fi
   
   return 0
+}
+
+# 检查并配置HTTPS模式（统一处理所有禁用HTTPS的情况）
+check_and_configure_https_mode() {
+  # 情况1：用户显式使用 --disable-https
+  if [ "$ENABLE_HTTPS" = false ]; then
+    info "检测到 --disable-https 参数，将禁用HTTPS"
+    return 0
+  fi
+  
+  # 情况2：使用了自定义端口（localhost:8089 或 --httpport）
+  if [ -n "$HTTP_PORT" ]; then
+    info "检测到自定义端口 $HTTP_PORT，将禁用HTTPS"
+    ENABLE_HTTPS=false
+    return 0
+  fi
+  
+  # 情况3：本地域名/IP（localhost、127.0.0.1 或其他IP地址）
+  if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    info "检测到本地域名/IP: $PRIMARY_DOMAIN，将禁用HTTPS"
+    ENABLE_HTTPS=false
+    return 0
+  fi
+  
+  # 其他情况：真实域名，启用HTTPS
+  info "检测到真实域名: $PRIMARY_DOMAIN，将启用HTTPS"
+  return 0
+}
+
+# 禁用certbot容器服务
+disable_certbot_service() {
+  info "禁用certbot容器..."
+  
+  # 方法：将certbot服务的整个配置块注释掉
+  # 使用awk来处理多行注释
+  awk '
+  /^  certbot:/ {
+    in_certbot = 1
+    print "  # " $0 " # 已禁用（不需要SSL证书）"
+    next
+  }
+  in_certbot {
+    # 检查是否到了下一个服务定义（以两个空格开头后跟非空格字符）
+    if (/^  [^ ]/) {
+      in_certbot = 0
+      print
+    } else if (/^$/) {
+      # 空行保持原样
+      print
+    } else {
+      # 注释掉certbot服务内的所有行
+      print "  #" $0
+    }
+    next
+  }
+  {
+    print
+  }
+  ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
+  
+  success "已禁用certbot容器"
+}
+
+# 配置自定义HTTP端口
+configure_http_port() {
+  # 如果没有指定HTTP_PORT，跳过配置
+  if [ -z "$HTTP_PORT" ]; then
+    return 0
+  fi
+  
+  # 验证端口号是否有效
+  if ! [[ "$HTTP_PORT" =~ ^[0-9]+$ ]] || [ "$HTTP_PORT" -lt 1 ] || [ "$HTTP_PORT" -gt 65535 ]; then
+    error "无效的端口号: $HTTP_PORT (必须是1-65535之间的数字)"
+    exit 1
+  fi
+  
+  info "配置自定义HTTP端口: $HTTP_PORT"
+  
+  # 修改docker-compose.yml中nginx服务的端口映射
+  # 将 "80:80/tcp" 改为 "$HTTP_PORT:80/tcp"
+  if grep -q '"80:80/tcp"' docker-compose.yml; then
+    sed_i "s/\"80:80\/tcp\"/\"$HTTP_PORT:80\/tcp\"/g" docker-compose.yml
+    success "已将HTTP端口映射修改为 $HTTP_PORT:80"
+  elif grep -q '- "80:80"' docker-compose.yml; then
+    sed_i "s/- \"80:80\"/- \"$HTTP_PORT:80\"/g" docker-compose.yml
+    success "已将HTTP端口映射修改为 $HTTP_PORT:80"
+  fi
+  
+  # 注释掉所有443端口配置
+  info "注释掉443端口配置..."
+  sed_i 's/^\([ ]*\)- "443:443\/tcp"/\1# - "443:443\/tcp"  # 已禁用HTTPS端口/g' docker-compose.yml
+  sed_i 's/^\([ ]*\)- "443:443\/udp"/\1# - "443:443\/udp"  # 已禁用HTTPS端口/g' docker-compose.yml
+  sed_i 's/^\([ ]*\)- "443:443"/\1# - "443:443"  # 已禁用HTTPS端口/g' docker-compose.yml
+  
+  success "已注释掉所有443端口配置"
+  
+  # 禁用certbot容器
+  disable_certbot_service
+  
+  # 显示访问地址信息
+  if [ "$HTTP_PORT" != "80" ]; then
+    info "访问地址将为: http://$PRIMARY_DOMAIN:$HTTP_PORT"
+  fi
 }
 
 # Docker CE 软件源列表 (格式："软件源名称@软件源地址")
@@ -3052,19 +3186,23 @@ init_deploy() {
   info "设置初始Nginx配置为HTTP模式..."
   cp docker/nginx/default.http.conf docker/nginx/default.conf
   
-  # 如果使用localhost，跳过certbot配置
-  if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    info "本地域名环境，跳过certbot配置"
-  else
-    # 更新docker-compose.yml中的certbot命令域名参数
+  # 配置自定义HTTP端口（如果指定了--httpport参数或域名:端口格式）
+  configure_http_port
+  
+  # 根据ENABLE_HTTPS配置certbot（ENABLE_HTTPS已在check_and_configure_https_mode中统一设置）
+  # 注意：如果有自定义端口，certbot已在configure_http_port中禁用，这里跳过
+  if [ "$ENABLE_HTTPS" = false ] && [ -z "$HTTP_PORT" ]; then
+    info "HTTPS已禁用，禁用certbot容器"
+    disable_certbot_service
+  elif [ "$ENABLE_HTTPS" = true ]; then
+    # HTTPS已启用，配置certbot参数
+    info "HTTPS已启用，配置certbot参数"
     DOMAINS_PARAM=""
     for domain in "${DOMAINS[@]}"; do
       DOMAINS_PARAM="$DOMAINS_PARAM -d $domain"
     done
     
     # 使用sed替换certbot命令行certbot-entrypoint.sh
-    info "尝试在docker/nginx/certbot-entrypoint.sh中替换邮箱和域名参数..."
-    # 直接替换邮箱和域名参数
     sed_i "s|--email your-email@example.com|--email $EMAIL|g" docker/nginx/certbot-entrypoint.sh
     sed_i "s|-d example.com -d www.example.com|$DOMAINS_PARAM|g" docker/nginx/certbot-entrypoint.sh
     
@@ -3987,12 +4125,27 @@ select_primary_domain() {
 # 提示用户输入域名
 prompt_for_domains() {
   echo -n "请输入域名 (多个域名用空格分隔，Ctrl+U可重新输入): "
-  read -a DOMAINS
+  read -a input_domains
   
-  if [ ${#DOMAINS[@]} -eq 0 ]; then
+  if [ ${#input_domains[@]} -eq 0 ]; then
     error "请至少提供一个域名"
     exit 1
   fi
+  
+  # 处理输入的域名，提取端口
+  DOMAINS=()
+  for domain_input in "${input_domains[@]}"; do
+    if [[ "$domain_input" =~ ^([^:]+):([0-9]+)$ ]]; then
+      # 提取域名和端口
+      local extracted_domain="${BASH_REMATCH[1]}"
+      local extracted_port="${BASH_REMATCH[2]}"
+      DOMAINS+=("$extracted_domain")
+      HTTP_PORT="$extracted_port"
+      success "检测到域名:端口格式 - 域名: $extracted_domain, 端口: $extracted_port"
+    else
+      DOMAINS+=("$domain_input")
+    fi
+  done
   
   # 选择合适的主域名（优先不带www的域名）
   select_primary_domain
@@ -4179,6 +4332,10 @@ apply_memory_optimizations() {
       MYSQL_MAX_CONNECTIONS="60"
       MYSQL_TABLE_OPEN_CACHE="256"
       
+      DRUID_INITIAL_SIZE="3"
+      DRUID_MIN_IDLE="3"
+      DRUID_MAX_ACTIVE="55"        # 60 - 5 = 55 (留5个余量)
+      
       JAVA_XMX="512m"
       JAVA_XMS="256m"
       JAVA_METASPACE="160m"
@@ -4199,6 +4356,10 @@ apply_memory_optimizations() {
       MYSQL_KEY_BUFFER_SIZE="64M"
       MYSQL_MAX_CONNECTIONS="80"
       MYSQL_TABLE_OPEN_CACHE="512"
+      
+      DRUID_INITIAL_SIZE="5"
+      DRUID_MIN_IDLE="5"
+      DRUID_MAX_ACTIVE="75"        # 80 - 5 = 75 (留5个余量)
       
       JAVA_XMX="768m"
       JAVA_XMS="512m"
@@ -4222,6 +4383,10 @@ apply_memory_optimizations() {
       MYSQL_MAX_CONNECTIONS="150"
       MYSQL_TABLE_OPEN_CACHE="1024"
       
+      DRUID_INITIAL_SIZE="10"
+      DRUID_MIN_IDLE="10"
+      DRUID_MAX_ACTIVE="140"       # 150 - 10 = 140 (留10个余量)
+      
       JAVA_XMX="1024m"
       JAVA_XMS="768m"
       JAVA_METASPACE="256m"
@@ -4244,6 +4409,10 @@ apply_memory_optimizations() {
       MYSQL_MAX_CONNECTIONS="200"
       MYSQL_TABLE_OPEN_CACHE="600"
       
+      DRUID_INITIAL_SIZE="15"
+      DRUID_MIN_IDLE="15"
+      DRUID_MAX_ACTIVE="190"       # 200 - 10 = 190 (留10个余量)
+      
       JAVA_XMX="1536m"
       JAVA_XMS="1024m"
       JAVA_METASPACE="384m"
@@ -4265,6 +4434,10 @@ apply_memory_optimizations() {
       MYSQL_KEY_BUFFER_SIZE="320M"
       MYSQL_MAX_CONNECTIONS="400"
       MYSQL_TABLE_OPEN_CACHE="1000"
+      
+      DRUID_INITIAL_SIZE="20"
+      DRUID_MIN_IDLE="20"
+      DRUID_MAX_ACTIVE="380"       # 400 - 20 = 380 (留20个余量)
       
       JAVA_XMX="2048m"
       JAVA_XMS="1536m"
@@ -4491,8 +4664,47 @@ EOF
     warning "未找到现有的JAVA_OPTS配置，跳过JVM参数优化"
   fi
   
+  # 4. 添加/更新Druid连接池环境变量
+  info "更新Druid连接池配置参数..."
+  
+  # 查找Java服务
+  if grep -q "java-backend:" docker-compose.yml; then
+    # 检查是否已有Druid配置
+    if grep -q "SPRING_DATASOURCE_DRUID_INITIAL_SIZE" docker-compose.yml; then
+      # 更新已有配置
+      info "更新现有Druid连接池配置..."
+      sed_i "s|SPRING_DATASOURCE_DRUID_INITIAL_SIZE=.*|SPRING_DATASOURCE_DRUID_INITIAL_SIZE=$DRUID_INITIAL_SIZE|g" docker-compose.yml
+      sed_i "s|SPRING_DATASOURCE_DRUID_MIN_IDLE=.*|SPRING_DATASOURCE_DRUID_MIN_IDLE=$DRUID_MIN_IDLE|g" docker-compose.yml
+      sed_i "s|SPRING_DATASOURCE_DRUID_MAX_ACTIVE=.*|SPRING_DATASOURCE_DRUID_MAX_ACTIVE=$DRUID_MAX_ACTIVE|g" docker-compose.yml
+      success "Druid连接池配置更新完成 (初始:$DRUID_INITIAL_SIZE, 最小:$DRUID_MIN_IDLE, 最大:$DRUID_MAX_ACTIVE)"
+    else
+      # 添加新配置到environment部分
+      info "添加Druid连接池配置到docker-compose.yml..."
+      
+      # 在SPRING_DATASOURCE_DRIVER_CLASS_NAME之后添加
+      if grep -q "SPRING_DATASOURCE_DRIVER_CLASS_NAME" docker-compose.yml; then
+        # 逐行添加，确保格式正确
+        sed_i "/SPRING_DATASOURCE_DRIVER_CLASS_NAME=/a\\      - SPRING_DATASOURCE_DRUID_INITIAL_SIZE=$DRUID_INITIAL_SIZE" docker-compose.yml
+        sed_i "/SPRING_DATASOURCE_DRUID_INITIAL_SIZE=/a\\      - SPRING_DATASOURCE_DRUID_MIN_IDLE=$DRUID_MIN_IDLE" docker-compose.yml
+        sed_i "/SPRING_DATASOURCE_DRUID_MIN_IDLE=/a\\      - SPRING_DATASOURCE_DRUID_MAX_ACTIVE=$DRUID_MAX_ACTIVE" docker-compose.yml
+        
+        # 验证添加是否成功
+        if grep -q "SPRING_DATASOURCE_DRUID_MAX_ACTIVE=$DRUID_MAX_ACTIVE" docker-compose.yml; then
+          success "Druid连接池配置添加成功 (初始:$DRUID_INITIAL_SIZE, 最小:$DRUID_MIN_IDLE, 最大:$DRUID_MAX_ACTIVE)"
+        else
+          warning "Druid连接池配置添加可能失败，请检查docker-compose.yml"
+        fi
+      else
+        warning "未找到SPRING_DATASOURCE_DRIVER_CLASS_NAME配置，无法添加Druid配置"
+      fi
+    fi
+  else
+    warning "未找到java-backend服务，跳过Druid配置"
+  fi
+  
   success "$MEMORY_MODE 内存模式优化配置完成"
   info "系统将使用动态优化的内存设置 (总内存: ${TOTAL_MEM_GB}GB)"
+  info "MySQL最大连接数: $MYSQL_MAX_CONNECTIONS, Druid连接池: $DRUID_MAX_ACTIVE"
 }
 
 # 添加一个函数用于检查和安装bc命令
@@ -5279,8 +5491,9 @@ modify_docker_compose_for_multi_instance() {
   sed_i "s/certbot-etc:/certbot-etc$suffix:/g" docker-compose.yml
   sed_i "s/certbot-var:/certbot-var$suffix:/g" docker-compose.yml
   sed_i "s/web-root:/web-root$suffix:/g" docker-compose.yml
-  sed_i "s/poetize_node_modules:/poetize_node_modules$suffix:/g" docker-compose.yml
-  sed_i "s/im_node_modules:/im_node_modules$suffix:/g" docker-compose.yml
+  # node_modules volumes 已移除（前端构建优化后不再需要）
+  # sed_i "s/poetize_node_modules:/poetize_node_modules$suffix:/g" docker-compose.yml
+  # sed_i "s/im_node_modules:/im_node_modules$suffix:/g" docker-compose.yml
   sed_i "s/poetize_ui_dist:/poetize_ui_dist$suffix:/g" docker-compose.yml
   sed_i "s/poetize_im_dist:/poetize_im_dist$suffix:/g" docker-compose.yml
   sed_i "s/poetize_uploads:/poetize_uploads$suffix:/g" docker-compose.yml
@@ -6405,8 +6618,13 @@ patch_dockerfile_mirror() {
     success "已将 uv 镜像源替换国内镜像站"
     
     patch_dockerfile_slim_mirror "docker/python/Dockerfile" 3
-    patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile" 4
-    patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile" 4
+    
+    # 前端多阶段构建：动态查找 FROM 行并插入镜像源
+    # 第一阶段（node:bookworm-slim）需要 Debian 镜像源
+    local ui_line=$(grep -n "FROM node.*bookworm-slim" docker/poetize-ui/Dockerfile | head -1 | cut -d: -f1)
+    local im_line=$(grep -n "FROM node.*bookworm-slim" docker/poetize-im-ui/Dockerfile | head -1 | cut -d: -f1)
+    [ -n "$ui_line" ] && patch_dockerfile_slim_mirror "docker/poetize-ui/Dockerfile" "$ui_line"
+    [ -n "$im_line" ] && patch_dockerfile_slim_mirror "docker/poetize-im-ui/Dockerfile" "$im_line"
   fi
   if [ -f "docker/java/Dockerfile" ] && [ -f "docker/nginx/Dockerfile" ]; then
     patch_dockerfile_alpine_mirror "docker/nginx/Dockerfile" 3
@@ -6414,6 +6632,13 @@ patch_dockerfile_mirror() {
     patch_dockerfile_alpine_mirror "docker/translation-model/Dockerfile" 5
     patch_dockerfile_alpine_mirror "docker/java/Dockerfile" 16
     patch_dockerfile_alpine_mirror "docker/prerender/Dockerfile" 5
+    
+    # 前端多阶段构建：第二阶段（alpine）需要 Alpine 镜像源
+    # 动态查找 FROM alpine 的位置，然后在下一行插入（+1）
+    local ui_alpine_line=$(grep -n "FROM alpine" docker/poetize-ui/Dockerfile | head -1 | cut -d: -f1)
+    local im_alpine_line=$(grep -n "FROM alpine" docker/poetize-im-ui/Dockerfile | head -1 | cut -d: -f1)
+    [ -n "$ui_alpine_line" ] && patch_dockerfile_alpine_mirror "docker/poetize-ui/Dockerfile" "$((ui_alpine_line + 1))"
+    [ -n "$im_alpine_line" ] && patch_dockerfile_alpine_mirror "docker/poetize-im-ui/Dockerfile" "$((im_alpine_line + 1))"
 
   fi
   if [ -f "docker/mysql/Dockerfile" ]; then
@@ -6690,16 +6915,8 @@ main() {
   # 更新docker-compose.yml中的邮箱
   sed_i "s/your-email@example\.com/$EMAIL/g" docker-compose.yml
   
-  # 处理本地域名情况
-  if [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    info "检测到本地域名/IP: $PRIMARY_DOMAIN"
-    warning "本地域名不支持自动SSL证书，将仅使用HTTP模式"
-    ENABLE_HTTPS=false
-    
-    # 调整certbot配置，使用自签名证书
-    info "修改certbot配置为测试模式..."
-    sed_i 's/force-renewal/force-renewal --test-cert/g' docker-compose.yml
-  fi
+  # 统一检查并配置HTTPS模式
+  check_and_configure_https_mode
   
   # 添加系统资源检查
   check_system_resources
@@ -6738,49 +6955,30 @@ main() {
   fi
   
   # 设置HTTPS（如果需要）
-  if [ "$ENABLE_HTTPS" = true ]; then
+  if [ "$ENABLE_HTTPS" = false ]; then
+    info "已禁用HTTPS，跳过SSL配置"
+  elif [ "$PRIMARY_DOMAIN" = "localhost" ] || [ "$PRIMARY_DOMAIN" = "127.0.0.1" ] || [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    info "本地域名环境不支持HTTPS，如需使用HTTPS请配置有效域名"
+  else
+    # 对于真实域名，启用HTTPS
+    info "检测到真实域名，正在启用HTTPS..."
     SSL_RESULT=$(setup_https)
     SSL_STATUS=$?
     
-    if [ $SSL_STATUS -eq 2 ]; then
+    if [ $SSL_STATUS -eq 0 ]; then
+      success "HTTPS已成功启用!"
+    elif [ $SSL_STATUS -eq 2 ]; then
       warning "SSL证书申请失败，但将继续以HTTP模式运行"
       
       # SSL证书申请失败，回退到HTTP协议
       revert_to_http_protocol
       
       info "您可以在部署完成后手动配置HTTPS"
-    elif [ $SSL_STATUS -ne 0 ]; then
-      warning "HTTPS配置过程中出现错误"
-      
-      # HTTPS配置失败，回退到HTTP协议
-      revert_to_http_protocol
-    fi
-  else
-    # 本地域名环境不支持HTTPS，跳过询问
-    if [ "$PRIMARY_DOMAIN" != "localhost" ] && [ "$PRIMARY_DOMAIN" != "127.0.0.1" ] && ! [[ "$PRIMARY_DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      # 对于真实域名，应该使用完整的setup_https流程
-      info "检测到真实域名，正在启用HTTPS..."
-      SSL_RESULT=$(setup_https)
-      SSL_STATUS=$?
-      
-      if [ $SSL_STATUS -eq 0 ]; then
-        success "HTTPS已成功启用!"
-        ENABLE_HTTPS=true
-      elif [ $SSL_STATUS -eq 2 ]; then
-        warning "SSL证书申请失败，但将继续以HTTP模式运行"
-        
-        # SSL证书申请失败，回退到HTTP协议
-        revert_to_http_protocol
-        
-        info "您可以在部署完成后手动配置HTTPS"
-      else
-        warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec --user root poetize-nginx /enable-https.sh"
-        
-        # HTTPS启用失败，回退到HTTP协议
-        revert_to_http_protocol
-      fi
     else
-      info "本地域名环境不支持HTTPS，如需使用HTTPS请配置有效域名"
+      warning "HTTPS启用失败。如果需要，请稍后手动运行: docker exec --user root poetize-nginx /enable-https.sh"
+      
+      # HTTPS启用失败，回退到HTTP协议
+      revert_to_http_protocol
     fi
   fi
 

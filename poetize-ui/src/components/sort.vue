@@ -1,8 +1,24 @@
 <template>
   <div>
-    <!-- 两句诗 -->
+    <!-- 分类头部 -->
     <div class="my-animation-slide-top">
-      <twoPoem></twoPoem>
+      <div class="poem-container myCenter my-animation-hideToShow" v-if="!$common.isEmpty(sort)">
+        <!-- 背景图片 -->
+        <el-image class="my-el-image poem-image"
+                  style="position: absolute;margin-top: -50px"
+                  v-once
+                  lazy
+                  :src="mainStore.webInfo.randomCover[Math.floor(Math.random() * mainStore.webInfo.randomCover.length)]"
+                  fit="cover">
+          <div slot="error" class="image-slot"></div>
+        </el-image>
+        <div class="poem-wrap">
+          <div><span>{{ sort.sortName }}</span></div>
+          <p class="poem">{{ sort.sortDescription }}</p>
+        </div>
+      </div>
+      <!-- 如果没有分类信息，显示默认的诗句 -->
+      <twoPoem v-else></twoPoem>
     </div>
 
     <div style="background: var(--background);padding-top: 40px;" class="my-animation-slide-bottom">
@@ -22,7 +38,7 @@
       <div class="article-wrap">
         <articleList :articleList="articles"></articleList>
         <div class="pagination-wrap">
-          <div @click="pageArticles()" class="pagination" v-if="pagination.total !== articles.length">
+          <div @click="pageArticles()" class="pagination" v-if="articles.length < pagination.total">
             下一页
           </div>
           <div v-else style="user-select: none">
@@ -37,7 +53,9 @@
 </template>
 
 <script>
-  const twoPoem = () => import( "./common/twoPoem");
+    import { useMainStore } from '@/stores/main';
+
+const twoPoem = () => import( "./common/twoPoem");
   const proTag = () => import( "./common/proTag");
   const articleList = () => import( "./articleList");
   const myFooter = () => import( "./common/myFooter");
@@ -67,7 +85,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {
       $route() {
@@ -102,7 +123,7 @@
       },
 
       getSort() {
-        let sortInfo = this.$store.state.sortInfo;
+        let sortInfo = this.mainStore.sortInfo;
         if (!this.$common.isEmpty(sortInfo)) {
           if (this.sortId) {
             // 有分类ID，查找对应分类
@@ -153,6 +174,39 @@
 </script>
 
 <style scoped>
+
+  .poem-container {
+    padding: 90px 0 40px;
+    position: relative;
+  }
+
+  .poem-wrap {
+    border-radius: 10px;
+    z-index: 10;
+    text-align: center;
+    letter-spacing: 4px;
+    font-weight: 300;
+    width: 100%;
+    max-width: 800px;
+  }
+
+  .poem-wrap div span {
+    padding: 5px 10px;
+    color: var(--white);
+    font-size: 2em;
+    border-radius: 5px;
+  }
+
+  .poem-wrap p {
+    width: 100%;
+    max-width: 800px;
+    color: var(--white);
+  }
+
+  .poem-wrap p.poem {
+    margin: 40px auto;
+    font-size: 1.5em;
+  }
 
   .sort-warp {
     width: 70%;

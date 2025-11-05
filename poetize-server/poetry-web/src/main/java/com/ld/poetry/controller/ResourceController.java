@@ -79,7 +79,6 @@ public class ResourceController {
                 existingResource.setStoreType(resource.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
-                log.info("更新已存在的资源记录: {}", resource.getPath());
             } else {
                 // 不存在则保存新记录
         resourceService.save(re);
@@ -109,8 +108,6 @@ public class ResourceController {
             
             // 检查是否为图片文件，如果是则进行压缩
             if (isImageFile(file.getContentType())) {
-                log.info("检测到图片文件，开始压缩: {}, 原始大小: {}KB", 
-                        originalFileName, originalSize / 1024);
                 
                 try {
                     ImageCompressUtil.CompressResult compressResult = ImageCompressUtil.smartCompress(file);
@@ -123,13 +120,8 @@ public class ResourceController {
                             compressResult.getData()
                     );
                     
-                    log.info("图片压缩成功: {} -> {}KB, 压缩率: {:.1f}%", 
-                            originalSize / 1024, 
-                            compressResult.getCompressedSize() / 1024,
-                            compressResult.getCompressionRatio());
                     
                 } catch (IOException e) {
-                    log.warn("图片压缩失败，使用原文件: {}", e.getMessage());
                     // 压缩失败时使用原文件
                 }
             }
@@ -137,6 +129,7 @@ public class ResourceController {
             fileVO.setFile(processedFile);
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO result = storeService.saveFile(fileVO);
+            log.info("文件上传成功 - 路径: {}", result.getVisitPath());
 
             Resource re = new Resource();
             re.setPath(result.getVisitPath());
@@ -161,7 +154,6 @@ public class ResourceController {
                 existingResource.setStoreType(fileVO.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
-                log.info("更新已存在的资源记录: {}", result.getVisitPath());
             } else {
                 // 不存在则保存新记录
             resourceService.save(re);
@@ -197,8 +189,6 @@ public class ResourceController {
         }
 
         try {
-            log.info("开始智能压缩上传: {}, 原始大小: {}KB, 目标大小: {}KB", 
-                    file.getOriginalFilename(), file.getSize() / 1024, targetSize / 1024);
             
             // 执行智能压缩
             ImageCompressUtil.CompressResult compressResult = 
@@ -239,11 +229,13 @@ public class ResourceController {
                 existingResource.setStoreType(fileVO.getStoreType());
                 existingResource.setUserId(PoetryUtil.getUserId());
                 resourceService.updateById(existingResource);
-                log.info("更新已存在的资源记录: {}", result.getVisitPath());
             } else {
                 // 不存在则保存新记录
             resourceService.save(re);
             }
+
+            log.info("智能压缩上传成功 - 路径: {}, 压缩率: {:.1f}%", 
+                    result.getVisitPath(), compressResult.getCompressionRatio());
 
             // 返回详细的压缩信息
             return PoetryResult.success(new Object() {

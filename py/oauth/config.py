@@ -142,7 +142,8 @@ class OAuthConfigManager:
             return provider_config
             
         except Exception as e:
-            print(f"获取{provider}动态配置时出错: {str(e)}")
+            import logging
+            logger = logging.getLogger(__name__)
             return None
     
     def _validate_provider_config(self, provider: str, config: Dict[str, Any]) -> None:

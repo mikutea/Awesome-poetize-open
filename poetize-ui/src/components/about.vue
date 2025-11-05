@@ -10,7 +10,7 @@
         <h1 style="font-size: 40px;font-weight: 500;letter-spacing: 5px;">两只毛驴鸣翠柳</h1>
         <!-- 对话框 -->
         <div class="about-box">
-          <h4>与 {{$store.state.webInfo.webName}} 对话中...</h4>
+          <h4>与 {{mainStore.webInfo.webName}} 对话中...</h4>
           <div v-if="sayShow" id="say-container"></div>
         </div>
       </div>
@@ -22,7 +22,9 @@
 </template>
 
 <script>
-  const twoPoem = () => import( "./common/twoPoem");
+    import { useMainStore } from '@/stores/main';
+
+const twoPoem = () => import( "./common/twoPoem");
   const myFooter = () => import( "./common/myFooter");
 
   export default {
@@ -53,7 +55,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -81,7 +86,6 @@
 
         const container = document.getElementById("say-container");
         if (!container) {
-          console.warn('say-container element not found');
           return;
         }
 
@@ -101,19 +105,15 @@
               try {
                 container.appendChild(frag);
               } catch (e) {
-                console.warn('添加fragment到container失败:', e);
               }
             }
                 } catch (e) {
-                  console.warn('添加fragment到container失败:', e);
                 }
               }
               } catch (e) {
-                console.warn('添加fragment到container失败:', e);
               }
             }
           } catch (e) {
-            console.warn('添加fragment到container失败:', e);
           }
         }
         if (index === 0) {
@@ -132,7 +132,6 @@
       say() {
         const container = document.getElementById("say-container");
         if (!container) {
-          console.warn('say-container element not found in say() method');
           return;
         }
 
@@ -159,11 +158,9 @@
                           try {
                             container.appendChild(frag);
                           } catch (e) {
-                            console.warn('添加fragment到container失败:', e);
                           }
                         }
                           } catch (e) {
-                            console.warn('添加fragment到container失败:', e);
                           }
                         }
                       }

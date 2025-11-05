@@ -350,12 +350,10 @@
         
         if (dragTime < this.thresholds.minDragTime || 
             dragTime > this.thresholds.maxDragTime) {
-          console.log('验证失败: 拖动时间', dragTime);
           return false;
         }
         
         if (this.velocities.length < this.thresholds.minVelocityChanges) {
-          console.log('验证失败: 速度变化次数不足', this.velocities.length);
           return false;
         }
         
@@ -363,12 +361,10 @@
           v > this.thresholds.suspiciousVelocity
         );
         if (hasAbnormalVelocity) {
-          console.log('验证失败: 存在异常高速');
           return false;
         }
         
         if (this.straightLineRatio > this.thresholds.maxStraightLineRatio) {
-          console.log('验证失败: 轨迹过于直线', this.straightLineRatio);
           return false;
         }
         

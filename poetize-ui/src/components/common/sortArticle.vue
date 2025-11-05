@@ -1,8 +1,11 @@
 <template>
   <div v-if="!$common.isEmpty(articleList)" class="recent-post-container">
-    <div class="recent-post-item shadow-box background-opacity wow"
+    <div class="recent-post-item shadow-box background-opacity"
          v-for="(article, index) in articleList"
          :key="index"
+         v-animate
+         draggable="true"
+         @dragstart="handleDragStart($event, article)"
          @click="goToArticle(article)">
       <!-- 封面 -->
       <div class="recent-post-item-image">
@@ -13,7 +16,7 @@
                   fit="cover">
           <div slot="error" class="image-slot myCenter" style="background-color: var(--lightGreen)">
             <div class="error-text">
-              <div>遇事不决，可问春风</div>
+              <div v-html="'「' + article.articleTitle + '」'"></div>
             </div>
           </div>
         </el-image>
@@ -88,16 +91,6 @@
                 fill="#3D3D63"></path>
             </svg> {{ article.commentCount }} 条评论
           </span>
-          <span>
-            <svg viewBox="0 0 1024 1024" width="14" height="14" style="vertical-align: -2px;">
-              <path
-                d="M510.671749 348.792894S340.102978 48.827055 134.243447 254.685563C-97.636714 486.565724 510.671749 913.435858 510.671749 913.435858s616.107079-419.070494 376.428301-658.749272c-194.095603-194.096626-376.428302 94.106308-376.428301 94.106308z"
-                fill="#FF713C"></path>
-              <path
-                d="M510.666632 929.674705c-3.267417 0-6.534833-0.983397-9.326413-2.950192-16.924461-11.872399-414.71121-293.557896-435.220312-529.448394-5.170766-59.482743 13.879102-111.319341 56.643068-154.075121 51.043536-51.043536 104.911398-76.930113 160.095231-76.930114 112.524796 0 196.878996 106.48115 228.475622 153.195078 33.611515-45.214784 122.406864-148.20646 234.04343-148.20646 53.930283 0 105.46603 24.205285 153.210428 71.941496 45.063335 45.063335 64.954361 99.200326 59.133795 160.920016C935.306982 641.685641 536.758893 915.327952 519.80271 926.859589a16.205077 16.205077 0 0 1-9.136078 2.815116zM282.857183 198.75574c-46.25344 0-92.396363 22.682605-137.127124 67.413365-36.149315 36.157501-51.614541 78.120218-47.25321 128.291898 17.575284 202.089671 352.199481 455.119525 412.332023 499.049037 60.434417-42.86732 395.406538-289.147446 414.567947-492.458945 4.933359-52.344159-11.341303-96.465029-49.759288-134.88199-41.431621-41.423435-85.24243-62.424748-130.242319-62.424748-122.041544 0-220.005716 152.203494-220.989114 153.742547-3.045359 4.806469-8.53335 7.883551-14.101159 7.534603a16.257266 16.257266 0 0 1-13.736863-8.184403c-0.902556-1.587148-91.569532-158.081365-213.690893-158.081364z"
-                fill="#885F44"></path>
-            </svg> {{ article.likeCount }} 点赞
-          </span>
         </div>
         <!-- 内容 -->
         <div class="recent-post-desc" v-html="getSummaryDisplay(article)"></div>
@@ -147,6 +140,22 @@
       }
     },
     methods: {
+      // 处理拖拽开始事件
+      handleDragStart(event, article) {
+        // 构建文章的完整URL
+        const baseUrl = window.location.origin;
+        const articlePath = `/article/${article.id}`;
+        const articleUrl = `${baseUrl}${articlePath}`;
+        
+        // 设置拖拽数据
+        event.dataTransfer.effectAllowed = 'link';
+        event.dataTransfer.setData('text/uri-list', articleUrl);
+        event.dataTransfer.setData('text/plain', articleUrl);
+        
+        // 设置拖拽时显示的文本
+        event.dataTransfer.setData('text/html', `<a href="${articleUrl}">${article.articleTitle}</a>`);
+      },
+      
       // 跳转到文章页面
       goToArticle(article) {
         // 使用简洁格式跳转到原文
@@ -258,6 +267,9 @@
     line-height: 1.8;
     letter-spacing: 4px;
     color: var(--white);
+    text-align: center;
+    padding: 20px;
+    word-break: break-word;
   }
 
   .hasVideo {

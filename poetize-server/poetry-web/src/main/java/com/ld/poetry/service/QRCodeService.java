@@ -56,7 +56,6 @@ public class QRCodeService {
         String cacheKey = CacheConstants.buildArticleQRCodeKey(articleId);
         Object cached = redisUtil.get(cacheKey);
         if (cached instanceof byte[]) {
-            log.debug("从缓存获取文章二维码：文章ID [{}]", articleId);
             return (byte[]) cached;
         }
 
@@ -93,11 +92,9 @@ public class QRCodeService {
         
         // 2. 构建文章URL
         String articleUrl = siteUrl + "/article/" + articleId;
-        log.debug("构建文章URL：{}", articleUrl);
 
         // 3. 获取网站Logo
         String logoUrl = getLogoUrl(siteUrl);
-        log.debug("使用Logo URL：{}", logoUrl);
 
         // 4. 生成带Logo的二维码
         return QRCodeUtil.generateQRCodeWithLogo(articleUrl, logoUrl);
@@ -116,7 +113,6 @@ public class QRCodeService {
             SeoConfig seoConfig = seoConfigService.getFullSeoConfig();
             if (seoConfig != null && StringUtils.hasText(seoConfig.getSiteLogo())) {
                 String logoUrl = seoConfig.getSiteLogo();
-                log.debug("从SEO配置获取Logo：{}", logoUrl);
                 return logoUrl;
             }
         } catch (Exception e) {
@@ -125,7 +121,6 @@ public class QRCodeService {
         
         // 使用默认Logo
         String defaultLogoUrl = siteUrl + "/poetize.jpg";
-        log.debug("使用默认Logo：{}", defaultLogoUrl);
         return defaultLogoUrl;
     }
 
@@ -139,7 +134,6 @@ public class QRCodeService {
         if (articleId != null && articleId > 0) {
             String cacheKey = CacheConstants.buildArticleQRCodeKey(articleId);
             redisUtil.del(cacheKey);
-            log.debug("清除文章二维码缓存：文章ID [{}]", articleId);
         }
     }
     

@@ -583,15 +583,16 @@ const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table
  */
 async function getSourceLanguage() {
   try {
-    logger.debug('从Python后端获取源语言配置');
-    const res = await axios.get(`${PYTHON_BACKEND_URL}/api/translation/default-lang`, {
-      timeout: 5000
+    logger.debug('从Java后端获取源语言配置');
+    const res = await axios.get(`${JAVA_BACKEND_URL}/webInfo/ai/config/articleAi/defaultLang`, {
+      timeout: 5000,
+      headers: INTERNAL_SERVICE_HEADERS
     });
 
     if (res.data && res.data.code === 200 && res.data.data) {
       const sourceLanguage = res.data.data.default_source_lang || 'zh';
 
-      logger.debug('已从Python后端获取源语言配置', {
+      logger.debug('已从Java后端获取源语言配置', {
         sourceLanguage,
         responseCode: res.data.code,
         fullConfig: res.data.data
@@ -599,17 +600,17 @@ async function getSourceLanguage() {
 
       return sourceLanguage;
     } else {
-      logger.warn('Python翻译配置API响应格式无效', {
+      logger.warn('Java翻译配置API响应格式无效', {
         responseCode: res.data?.code,
         hasData: !!res.data?.data
       });
     }
   } catch (error) {
-    logger.warn('从Python后端获取源语言配置失败，使用默认配置', {
+    logger.warn('从Java后端获取源语言配置失败，使用默认配置', {
       error: error.message,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      url: `${PYTHON_BACKEND_URL}/api/translation/default-lang`
+      url: `${JAVA_BACKEND_URL}/webInfo/ai/config/articleAi/defaultLang`
     });
   }
 
@@ -903,6 +904,29 @@ async function fetchRecentArticles(limit = 5) {
     return articles;
   } catch (error) {
     logger.warn('获取最新文章失败，使用空数组', { 
+      limit, 
+      error: error.message 
+    });
+    return [];
+  }
+}
+
+async function fetchRecommendArticles(limit = 5) {
+  try {
+    logger.debug('获取推荐文章', { limit });
+    const res = await axios.post(`${JAVA_BACKEND_URL}/article/listArticle`, {
+      current: 1,
+      size: limit,
+      recommendStatus: true
+    }, { 
+      timeout: 8000,
+      headers: INTERNAL_SERVICE_HEADERS
+    });
+    const articles = (res.data && res.data.data && res.data.data.records) || [];
+    logger.debug('推荐文章已获取', { count: articles.length, limit });
+    return articles;
+  } catch (error) {
+    logger.warn('获取推荐文章失败，使用空数组', { 
       limit, 
       error: error.message 
     });
@@ -1469,8 +1493,6 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
         100% { transform: translateX(100%); }
       }
       
-
-      
       /* 预渲染内容的响应式保护 */
       @media (max-width: 768px) {
         .article-detail, .home-prerender, .favorite-prerender, .sort-prerender, .sort-list-prerender {
@@ -1503,6 +1525,18 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       }
     } catch (error) {
       logger.warn('添加预加载链接失败', { error: error.message });
+    }
+  }
+
+  // 在修改DOM之前，提取原始HTML中body底部的所有script标签（字符串级别）
+  const bodyScriptsMatch = templateHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  let originalBodyScripts = '';
+  if (bodyScriptsMatch) {
+    const bodyContent = bodyScriptsMatch[1];
+    // 提取</div>（#app结束）之后的所有script标签
+    const appEndMatch = bodyContent.match(/<div\s+id\s*=\s*["']?app["']?[^>]*>.*?<\/div>([\s\S]*)/i);
+    if (appEndMatch) {
+      originalBodyScripts = appEndMatch[1];
     }
   }
 
@@ -1611,6 +1645,12 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
   // 确保生成的HTML具有良好的格式
   let html = dom.serialize();
   
+  // 恢复原始的body script标签（直接在字符串级别替换，避免JSDOM丢失）
+  if (originalBodyScripts.trim()) {
+    html = html.replace('</body>', `${originalBodyScripts}</body>`);
+    logger.debug('已恢复原始body script标签', { pageType });
+  }
+  
   // 处理 hreflang 链接（在序列化后直接操作字符串，避免转义问题）
   if (meta && typeof meta === 'object') {
     const hreflangLinks = [];
@@ -1650,32 +1690,33 @@ function buildHtmlTemplate({ title, meta, content, lang, pageType = 'article' })
       cssLinksCount: webpackCssMatches.length 
     });
   }
-  // 优化HTML输出格式，确保meta标签等有换行
-  html = html.replace(/<meta/g, '\n  <meta');
-  html = html.replace(/<link/g, '\n  <link');
-  html = html.replace(/<style/g, '\n  <style');
-  html = html.replace(/<\/style>/g, '\n  </style>');
-  html = html.replace(/<script/g, '\n  <script');
-  html = html.replace(/<\/script>/g, '\n  </script>');
-  
-  // 确保head和body标签有良好的缩进
-  html = html.replace(/<\/head>/g, '\n</head>');
-  html = html.replace(/<\/body>/g, '\n</body>');
-  
-  // 清理多余的连续空行
-  // 先清理包含空格的空行，直接移除它们
-  html = html.replace(/\n\s*\n/g, '\n');
-  // 然后清理多余的连续空行
-  html = html.replace(/\n{3,}/g, '\n\n');
+  // 只格式化head部分，避免在body中引入文本节点导致Vue水合失败
+  const headEnd = html.indexOf('</head>');
+  if (headEnd > 0) {
+    let headPart = html.substring(0, headEnd);
+    const rest = html.substring(headEnd);
+    
+    // 格式化head部分
+    headPart = headPart.replace(/<meta/g, '\n  <meta');
+    headPart = headPart.replace(/<link/g, '\n  <link');
+    headPart = headPart.replace(/<style/g, '\n  <style');
+    headPart = headPart.replace(/<\/style>/g, '</style>\n');
+    
+    // 清理head部分的多余空行
+    headPart = headPart.replace(/\n\s*\n/g, '\n');
+    
+    html = headPart + '\n</head>' + rest;
+  }
   
   return html;
 }
 
 // ===== 文章页面渲染函数 =====
-function buildHtml({ title, meta, content, lang }) {
+function buildHtml({ title, articleTitle, meta, content, lang }) {
   // 调试：确保参数格式正确
   console.log('buildHtml 参数:', {
     title: typeof title,
+    articleTitle: typeof articleTitle,
     meta: typeof meta,
     content: typeof content,
     lang: typeof lang,
@@ -1693,10 +1734,16 @@ function buildHtml({ title, meta, content, lang }) {
     hasSiteIcon512: !!safeMeta.site_icon_512
   });
   
+  // SEO优化：在内容前添加文章标题作为唯一的H1标签
+  // title: 用于 <title> 标签（文章标题 - 网站名）
+  // articleTitle: 用于 <h1> 标签（仅文章标题）
+  const h1Title = articleTitle || title;  // 如果没有单独的 articleTitle，使用完整 title
+  const contentWithTitle = `<h1 class="article-main-title">${h1Title}</h1>\n${content}`;
+  
   return buildHtmlTemplate({ 
-    title: title , 
+    title: title,  // <title> 标签：文章标题 - 网站名
     meta: safeMeta, 
-    content: content, // 直接使用内容，不额外包装
+    content: contentWithTitle,  // <h1> 标签：文章标题
     lang: lang || 'zh', 
     pageType: 'article' 
   });
@@ -1705,11 +1752,12 @@ function buildHtml({ title, meta, content, lang }) {
 // ===== 首页渲染函数 =====
 async function renderHomePage(lang = 'zh') {
   try {
-    const [webInfo, seoConfig, sortInfo, recentArticles] = await Promise.all([
+    const [webInfo, seoConfig, sortInfo, recentArticles, recommendArticles] = await Promise.all([
       fetchWebInfo(),
       fetchSeoConfig(),
       fetchSortInfo(), 
-      fetchRecentArticles(8)
+      fetchRecentArticles(8),
+      fetchRecommendArticles(5)
     ]);
 
     // 直接使用webInfo的标题数据，简化逻辑
@@ -1740,52 +1788,8 @@ async function renderHomePage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
 
-    // 构建首页内容（只包含静态SEO内容，动态内容由客户端加载）
-    const homeContent = `
-      <div class="home-prerender">
-        <div class="home-hero">
-          <h1>${webInfo.webName || webInfo.webTitle}</h1>
-          <p>${description}</p>
-        </div>
-        <div class="home-categories">
-          <h2>文章分类</h2>
-          <ul>
-            ${sortInfo.map(sort => `
-              <li>
-                <a href="/sort/${sort.id}" title="${sort.sortDescription || sort.sortName}">
-                  ${sort.sortName}
-                </a>
-              </li>
-            `).join('')}
-          </ul>
-        </div>
-        <div class="home-recent-articles">
-          <h2>最新文章</h2>
-          <ul>
-            ${recentArticles.map(article => `
-              <li>
-                <a href="/article/${article.id}" title="${article.articleTitle}">
-                  <h3>${article.articleTitle}</h3>
-                  ${article.summary ? `<p>${article.summary}</p>` : ''}
-                  <time>${article.createTime}</time>
-                </a>
-              </li>
-            `).join('')}
-          </ul>
-        </div>
-        <!-- 动态内容占位符，由客户端JavaScript填充 -->
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            // 标记这是预渲染页面，客户端需要动态加载内容
-            window.PRERENDER_DATA = {
-              type: 'home',
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    // 构建首页内容（压缩格式，避免产生文本节点导致Vue水合失败）
+    const homeContent = `<div class="home-prerender"><div class="home-hero"><h1>${webInfo.webName || webInfo.webTitle}</h1><p>${description}</p></div><div class="home-categories"><h2>文章分类</h2><ul>${sortInfo.map(sort => `<li><a href="/sort/${sort.id}" title="${sort.sortDescription || sort.sortName}">${sort.sortName}</a></li>`).join('')}</ul></div>${recommendArticles.length > 0 ? `<div class="home-recommend-articles"><h2>🔥推荐文章</h2><ul>${recommendArticles.map(article => `<li><a href="/article/${article.id}" title="${article.articleTitle}">${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" width="120" height="80" loading="lazy">` : ''}<div class="article-info"><h3>${article.articleTitle}</h3>${article.summary ? `<p>${article.summary}</p>` : ''}<time>${article.createTime}</time></div></a></li>`).join('')}</ul></div>` : ''}<div class="home-recent-articles"><h2>最新文章</h2><ul>${recentArticles.map(article => `<li><a href="/article/${article.id}" title="${article.articleTitle}"><h3>${article.articleTitle}</h3>${article.summary ? `<p>${article.summary}</p>` : ''}<time>${article.createTime}</time></a></li>`).join('')}</ul></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -1832,23 +1836,7 @@ async function renderAboutPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const aboutContent = `
-      <div class="about-prerender">
-        <div class="about-hero">
-          <h1>关于${ webInfo.webName || webInfo.webTitle }</h1>
-          <p>${description}</p>
-        </div>
-        <div class="about-content">
-          <div class="about-info">
-            ${webInfo.about ? `<div class="about-text">${webInfo.about}</div>` : ''}
-            <div class="contact-info">
-              <h3>联系方式</h3>
-              <p>邮箱: ${webInfo.email || '暂未提供'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    const aboutContent = `<div class="about-prerender"><div class="about-hero"><h1>关于${ webInfo.webName || webInfo.webTitle }</h1><p>${description}</p></div><div class="about-content"><div class="about-info">${webInfo.about ? `<div class="about-text">${webInfo.about}</div>` : ''}<div class="contact-info"><h3>联系方式</h3><p>邮箱: ${webInfo.email || '暂未提供'}</p></div></div></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: aboutContent, lang, pageType: 'about' });
   } catch (error) {
@@ -1889,17 +1877,7 @@ async function renderMessagePage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const messageContent = `
-      <div class="message-prerender">
-        <div class="message-hero">
-          <h1>留言板</h1>
-          <p>${description}</p>
-        </div>
-        <div class="message-form-placeholder">
-          <p>留言功能将在页面加载完成后可用</p>
-        </div>
-      </div>
-    `;
+    const messageContent = `<div class="message-prerender"><div class="message-hero"><h1>留言板</h1><p>${description}</p></div><div class="message-form-placeholder"><p>留言功能将在页面加载完成后可用</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: messageContent, lang, pageType: 'message' });
   } catch (error) {
@@ -1940,17 +1918,7 @@ async function renderWeiYanPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const weiYanContent = `
-      <div class="weiyan-prerender">
-        <div class="weiyan-hero">
-          <h1>微言</h1>
-          <p>${description}</p>
-        </div>
-        <div class="weiyan-list-placeholder">
-          <p>动态内容将在页面加载完成后显示</p>
-        </div>
-      </div>
-    `;
+    const weiYanContent = `<div class="weiyan-prerender"><div class="weiyan-hero"><h1>微言</h1><p>${description}</p></div><div class="weiyan-list-placeholder"><p>动态内容将在页面加载完成后显示</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: weiYanContent, lang, pageType: 'weiyan' });
   } catch (error) {
@@ -1991,17 +1959,7 @@ async function renderLovePage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const loveContent = `
-      <div class="love-prerender">
-        <div class="love-hero">
-          <h1>恋爱记录</h1>
-          <p>${description}</p>
-        </div>
-        <div class="love-timeline-placeholder">
-          <p>爱情时光轴将在页面加载完成后显示</p>
-        </div>
-      </div>
-    `;
+    const loveContent = `<div class="love-prerender"><div class="love-hero"><h1>恋爱记录</h1><p>${description}</p></div><div class="love-timeline-placeholder"><p>爱情时光轴将在页面加载完成后显示</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: loveContent, lang, pageType: 'love' });
   } catch (error) {
@@ -2042,17 +2000,7 @@ async function renderTravelPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const travelContent = `
-      <div class="travel-prerender">
-        <div class="travel-hero">
-          <h1>旅行日记</h1>
-          <p>${description}</p>
-        </div>
-        <div class="travel-list-placeholder">
-          <p>旅行记录将在页面加载完成后显示</p>
-        </div>
-      </div>
-    `;
+    const travelContent = `<div class="travel-prerender"><div class="travel-hero"><h1>旅行日记</h1><p>${description}</p></div><div class="travel-list-placeholder"><p>旅行记录将在页面加载完成后显示</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: travelContent, lang, pageType: 'travel' });
   } catch (error) {
@@ -2093,18 +2041,7 @@ async function renderPrivacyPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const privacyContent = `
-      <div class="privacy-prerender">
-        <div class="privacy-hero">
-          <h1>隐私政策</h1>
-          <p>${description}</p>
-        </div>
-        <div class="privacy-content">
-          <p>我们重视您的隐私，并致力于保护您的个人信息安全。</p>
-          <p>详细的隐私政策内容将在页面加载完成后显示。</p>
-        </div>
-      </div>
-    `;
+    const privacyContent = `<div class="privacy-prerender"><div class="privacy-hero"><h1>隐私政策</h1><p>${description}</p></div><div class="privacy-content"><p>我们重视您的隐私，并致力于保护您的个人信息安全。</p><p>详细的隐私政策内容将在页面加载完成后显示。</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: privacyContent, lang, pageType: 'privacy' });
   } catch (error) {
@@ -2146,17 +2083,7 @@ async function renderLetterPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
     
-    const letterContent = `
-      <div class="letter-prerender">
-        <div class="letter-hero">
-          <h1>信件</h1>
-          <p>${description}</p>
-        </div>
-        <div class="letter-list-placeholder">
-          <p>信件内容将在页面加载完成后显示</p>
-        </div>
-      </div>
-    `;
+    const letterContent = `<div class="letter-prerender"><div class="letter-hero"><h1>信件</h1><p>${description}</p></div><div class="letter-list-placeholder"><p>信件内容将在页面加载完成后显示</p></div></div>`;
     
     return buildHtmlTemplate({ title, meta, content: letterContent, lang, pageType: 'letter' });
   } catch (error) {
@@ -2205,61 +2132,11 @@ async function renderFriendsPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
 
-    const friendsContent = `
-      <div class="friends-prerender">
-        <div class="friends-hero">
-          <h1>友人帐</h1>
-          <p>留下你的网站吧，让我们建立友谊的桥梁</p>
-        </div>
-        
-        <div class="friends-main">
-          <!-- 本站信息 -->
-          <div class="site-info">
-            <h3>🌸本站信息</h3>
-            <blockquote>
-              <div>网站名称: ${siteInfo.title || webInfo.webName}</div>
-              <div>网址: ${baseUrl}</div>
-              <div>头像: ${siteInfo.cover || webInfo.avatar || 'https://s1.ax1x.com/2022/11/10/z9E7X4.jpg'}</div>
-              <div>描述: ${siteInfo.introduction || webInfo.webTitle || '这是一个 Vue2 Vue3 与 SpringBoot 结合的产物～'}</div>
-              <div>网站封面: ${siteInfo.remark || webInfo.backgroundImage || 'https://s1.ax1x.com/2022/11/10/z9VlHs.png'}</div>
-            </blockquote>
-          </div>
-          
-          <!-- 友链列表 -->
-          ${Object.keys(friends).length > 0 ? `
-            <div class="friends-list">
-              <h3>友情链接</h3>
-              ${Object.keys(friends).map(category => `
-                <div class="friend-category">
-                  <h4>${category}</h4>
-                  <ul>
-                    ${friends[category].map(friend => `
-                      <li>
-                        <a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">
-                          <img src="${friend.cover}" alt="${friend.title}" width="32" height="32" loading="lazy">
-                          <span>${friend.title}</span>
-                          <small>${friend.introduction}</small>
-                        </a>
-                      </li>
-                    `).join('')}
-                  </ul>
-                </div>
-              `).join('')}
-            </div>
-          ` : '<p>暂无友链，欢迎交换友链</p>'}
-        </div>
-        
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            window.PRERENDER_DATA = {
-              type: 'friends',
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    // 友链分类的标准key映射（兼容旧的emoji和新的emoji）
+    const eliteFriendsKey = friends['🌟青出于蓝'] ? '🌟青出于蓝' : (friends['♥️青出于蓝'] || null);
+    const regularFriendsKey = friends['🥇友情链接'] ? '🥇友情链接' : null;
+    
+    const friendsContent = `<div class="friends-prerender"><h1>友人帐</h1><p>留下你的网站吧，让我们建立友谊的桥梁</p>${eliteFriendsKey && friends[eliteFriendsKey] && friends[eliteFriendsKey].length > 0 ? `<h2>🌟青出于蓝</h2><ul>${friends[eliteFriendsKey].map(friend => `<li><a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">${friend.title} - ${friend.introduction}</a></li>`).join('')}</ul>` : ''}${regularFriendsKey && friends[regularFriendsKey] && friends[regularFriendsKey].length > 0 ? `<h2>🥇友情链接</h2><ul>${friends[regularFriendsKey].map(friend => `<li><a href="${friend.url}" target="_blank" rel="noopener" title="${friend.introduction}">${friend.title} - ${friend.introduction}</a></li>`).join('')}</ul>` : ''}<h2>✉️ 申请方式</h2><div><p>1. 添加本站链接</p><p>首先将本站链接添加至您的网站，信息如下：</p><p>网站名称：${siteInfo.title || webInfo.webName}</p><p>网站地址：${baseUrl}</p><p>网站描述：${siteInfo.introduction || webInfo.webTitle}</p><p>网站封面：${siteInfo.remark || ''}</p></div><div><p>2. 提交申请</p><p>点击下方信封 📮 填写您的网站信息提交申请</p></div><div><p>3. 等待审核</p><p>审核通过后将会添加至该页面中，请耐心等待</p></div><h2>⚠️ 温馨提示</h2><ul><li>不会添加带有广告营销和没有实质性内容的友链</li><li>申请之前请将本网站添加为您的友链</li><li>审核时间一般在一周内，请耐心等待</li></ul>${!eliteFriendsKey && !regularFriendsKey ? '<p>暂无友链，欢迎交换友链</p>' : ''}<div id="dynamic-content-placeholder" style="display:none;"><script>window.PRERENDER_DATA = {type: 'friends',lang: '${lang}',timestamp: ${Date.now()}};</script></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -2311,30 +2188,7 @@ async function renderMusicPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
 
-    const musicContent = `
-      <div class="music-prerender">
-        <div class="music-hero">
-          <h1>曲乐</h1>
-          <p>一曲肝肠断，天涯何处觅知音</p>
-        </div>
-        
-        <div class="music-main">
-          <div class="music-placeholder">
-            <p>音乐内容将在页面加载完成后显示</p>
-          </div>
-        </div>
-        
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            window.PRERENDER_DATA = {
-              type: 'music',
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    const musicContent = `<div class="music-prerender"><div class="music-hero"><h1>曲乐</h1><p>一曲肝肠断，天涯何处觅知音</p></div><div class="music-main"><div class="music-placeholder"><p>音乐内容将在页面加载完成后显示</p></div></div><div id="dynamic-content-placeholder" style="display:none;"><script>window.PRERENDER_DATA = {type: 'music',lang: '${lang}',timestamp: ${Date.now()}};</script></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -2387,43 +2241,7 @@ async function renderFavoritesPage(lang = 'zh') {
     addSeoIconFieldsToMeta(meta, seoConfig, baseUrl);
     addSearchEngineVerificationTags(meta, seoConfig);
 
-    const favoritesContent = `
-      <div class="favorites-prerender">
-        <div class="favorites-hero">
-          <h1>收藏夹</h1>
-          <p>将本网站添加到您的收藏夹吧，发现更多精彩内容</p>
-        </div>
-        
-        <div class="favorites-main">
-          ${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `
-            <div class="collect-category">
-              <h3>${category}</h3>
-              <ul>
-                ${collects[category].map(item => `
-                  <li>
-                    <a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}">
-                      <img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy">
-                      <span>${item.title}</span>
-                      <small>${item.introduction}</small>
-                    </a>
-                  </li>
-                `).join('')}
-              </ul>
-            </div>
-          `).join('') : '<p>暂无收藏夹</p>'}
-        </div>
-        
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            window.PRERENDER_DATA = {
-              type: 'favorites',
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    const favoritesContent = `<div class="favorites-prerender"><div class="favorites-hero"><h1>收藏夹</h1><p>将本网站添加到您的收藏夹吧，发现更多精彩内容</p></div><div class="favorites-main">${Object.keys(collects).length > 0 ? Object.keys(collects).map(category => `<div class="collect-category"><h3>${category}</h3><ul>${collects[category].map(item => `<li><a href="${item.url}" target="_blank" rel="noopener" title="${item.introduction}"><img src="${item.cover}" alt="${item.title}" width="32" height="32" loading="lazy"><span>${item.title}</span><small>${item.introduction}</small></a></li>`).join('')}</ul></div>`).join('') : '<p>暂无收藏夹</p>'}</div><div id="dynamic-content-placeholder" style="display:none;"><script>window.PRERENDER_DATA = {type: 'favorites',lang: '${lang}',timestamp: ${Date.now()}};</script></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -2480,52 +2298,7 @@ async function renderDefaultSortPage(lang = 'zh') {
     addSearchEngineVerificationTags(meta, seoConfig);
 
     // 构建默认分类页面内容
-    const defaultSortContent = `
-      <div class="sort-list-prerender">
-        <div class="sort-hero">
-          <h1>文章分类</h1>
-          <p>探索不同主题的文章内容</p>
-        </div>
-        
-        <div class="sort-categories">
-          ${Array.isArray(sortList) && sortList.length > 0 ? `
-            <div class="categories-grid">
-              ${sortList.map(sort => `
-                <div class="category-card">
-                  <a href="/sort/${sort.id}" title="${sort.sortDescription || sort.sortName}">
-                    <h3>${sort.sortName}</h3>
-                    <p>${sort.sortDescription || '暂无描述'}</p>
-                    <div class="category-stats">
-                      <span class="article-count">${sort.countOfSort || 0} 篇文章</span>
-                      ${sort.labels && sort.labels.length > 0 ? `<span class="label-count">${sort.labels.length} 个标签</span>` : ''}
-                    </div>
-                    ${sort.labels && sort.labels.length > 0 ? `
-                      <div class="category-labels">
-                        ${sort.labels.slice(0, 3).map(label => `
-                          <span class="label-tag">${label.labelName}</span>
-                        `).join('')}
-                        ${sort.labels.length > 3 ? '<span class="label-more">...</span>' : ''}
-                      </div>
-                    ` : ''}
-                  </a>
-                </div>
-              `).join('')}
-            </div>
-          ` : '<p class="no-categories">暂无分类</p>'}
-        </div>
-        
-        <!-- 动态内容占位符 -->
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            window.PRERENDER_DATA = {
-              type: 'sort-list',
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    const defaultSortContent = `<div class="sort-list-prerender"><div class="sort-hero"><h1>文章分类</h1><p>探索不同主题的文章内容</p></div><div class="sort-categories">${Array.isArray(sortList) && sortList.length > 0 ? `<div class="categories-grid">${sortList.map(sort => `<div class="category-card"><a href="/sort/${sort.id}" title="${sort.sortDescription || sort.sortName}"><h3>${sort.sortName}</h3><p>${sort.sortDescription || '暂无描述'}</p><div class="category-stats"><span class="article-count">${sort.countOfSort || 0} 篇文章</span>${sort.labels && sort.labels.length > 0 ? `<span class="label-count">${sort.labels.length} 个标签</span>` : ''}</div>${sort.labels && sort.labels.length > 0 ? `<div class="category-labels">${sort.labels.slice(0, 3).map(label => `<span class="label-tag">${label.labelName}</span>`).join('')}${sort.labels.length > 3 ? '<span class="label-more">...</span>' : ''}</div>` : ''}</a></div>`).join('')}</div>` : '<p class="no-categories">暂无分类</p>'}</div><div id="dynamic-content-placeholder" style="display:none;"><script>window.PRERENDER_DATA = {type: 'sort-list',lang: '${lang}',timestamp: ${Date.now()}};</script></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -2587,67 +2360,7 @@ async function renderSortPage(sortId, labelId = null, lang = 'zh') {
     addSearchEngineVerificationTags(meta, seoConfig);
 
     // 构建分类页面内容
-    const sortContent = `
-      <div class="sort-prerender">
-        <div class="sort-hero">
-          <h1>${sortData.sortName}</h1>
-          <p>${sortData.sortDescription || ''}</p>
-        </div>
-        
-        <div class="sort-articles">
-          <h2>文章列表</h2>
-          ${articles.length > 0 ? `
-            <ul class="article-list">
-              ${articles.map(article => `
-                <li class="article-item">
-                  <a href="/article/${article.id}" title="${article.articleTitle}">
-                    ${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" loading="lazy">` : ''}
-                    <div class="article-info">
-                      <h3>${article.articleTitle}</h3>
-                      ${article.summary ? `<p>${article.summary}</p>` : ''}
-                      <div class="article-meta">
-                        <time>${article.createTime}</time>
-                        <span class="view-count">阅读 ${article.viewCount || 0}</span>
-                        ${article.label ? `<span class="label">${article.label.labelName}</span>` : ''}
-                      </div>
-                    </div>
-                  </a>
-                </li>
-              `).join('')}
-            </ul>
-          ` : '<p>暂无文章</p>'}
-        </div>
-        
-        <!-- 标签筛选 -->
-        ${sortData.labels && sortData.labels.length > 0 ? `
-          <div class="sort-labels">
-            <h3>标签筛选</h3>
-            <ul>
-              ${sortData.labels.map(label => `
-                <li>
-                  <a href="/sort/${sortId}?labelId=${label.id}" title="${label.labelDescription || label.labelName}">
-                    ${label.labelName} (${label.countOfLabel || 0})
-                  </a>
-                </li>
-              `).join('')}
-            </ul>
-          </div>
-        ` : ''}
-        
-        <!-- 动态内容占位符 -->
-        <div id="dynamic-content-placeholder" style="display:none;">
-          <script>
-            window.PRERENDER_DATA = {
-              type: 'sort',
-              sortId: ${sortId},
-              labelId: ${labelId || 'null'},
-              lang: '${lang}',
-              timestamp: ${Date.now()}
-            };
-          </script>
-        </div>
-      </div>
-    `;
+    const sortContent = `<div class="sort-prerender"><div class="sort-hero"><h1>${sortData.sortName}</h1><p>${sortData.sortDescription || ''}</p></div><div class="sort-articles"><h2>文章列表</h2>${articles.length > 0 ? `<ul class="article-list">${articles.map(article => `<li class="article-item"><a href="/article/${article.id}" title="${article.articleTitle}">${article.articleCover ? `<img src="${article.articleCover}" alt="${article.articleTitle}" loading="lazy">` : ''}<div class="article-info"><h3>${article.articleTitle}</h3>${article.summary ? `<p>${article.summary}</p>` : ''}<div class="article-meta"><time>${article.createTime}</time><span class="view-count">阅读 ${article.viewCount || 0}</span>${article.label ? `<span class="label">${article.label.labelName}</span>` : ''}</div></div></a></li>`).join('')}</ul>` : '<p>暂无文章</p>'}</div>${sortData.labels && sortData.labels.length > 0 ? `<div class="sort-labels"><h3>标签筛选</h3><ul>${sortData.labels.map(label => `<li><a href="/sort/${sortId}?labelId=${label.id}" title="${label.labelDescription || label.labelName}">${label.labelName} (${label.countOfLabel || 0})</a></li>`).join('')}</ul></div>` : ''}<div id="dynamic-content-placeholder" style="display:none;"><script>window.PRERENDER_DATA = {type: 'sort',sortId: ${sortId},labelId: ${labelId || 'null'},lang: '${lang}',timestamp: ${Date.now()}};</script></div></div>`;
 
     return buildHtmlTemplate({ 
       title, 
@@ -2791,7 +2504,16 @@ async function renderIds(ids = [], options = {}) {
             }, {})
           });
 
-          let html = buildHtml({ title: meta.title || articleTitle , meta, content: contentHtml, lang });
+          // 构建完整的页面标题：文章标题 - 网站名
+          const pageTitle = `${meta.title || articleTitle} - ${siteName}`;
+          
+          let html = buildHtml({ 
+            title: pageTitle,  // <title> 标签：文章标题 - 网站名
+            articleTitle: meta.title || articleTitle,  // <h1> 标签：文章标题
+            meta, 
+            content: contentHtml, 
+            lang 
+          });
           
           const dir = path.join(OUTPUT_ROOT, 'article', id.toString());
           fs.mkdirSync(dir, { recursive: true });
@@ -3808,7 +3530,7 @@ app.listen(PORT, () => {
       PRERENDER_OUTPUT: process.env.PRERENDER_OUTPUT || 'default'
     }
   });
-  console.log(`🚀 Prerender worker 监听于端口 ${PORT}`);
+  console.log(`Prerender worker 监听于端口 ${PORT}`);
 });
 
 // 添加一个通用函数来确保图片URL是绝对路径

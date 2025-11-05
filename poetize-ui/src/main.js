@@ -1,573 +1,146 @@
+/**
+ * 应用入口文件
+ * 负责 Vue 应用初始化、插件注册和全局配置
+ */
+
 import Vue from 'vue'
 import App from './App.vue'
 import router from './router'
-import store from './store'
 import ElementUI from 'element-ui'
+import { createPinia, PiniaVuePlugin } from 'pinia'
+
+// 工具函数
 import http from './utils/request'
 import common from './utils/common'
 import constant from './utils/constant'
-import mavonEditor from 'mavon-editor'
 import initAntiDebug from './utils/anti-debug'
-// 导入字体加载器
 import { loadFonts } from './utils/font-loader'
+import { getDefaultAvatar, getAvatarUrl } from './utils/default-avatar'
+import animateDirective from './utils/animateDirective'
 
-//引入js
-// 优化Live2D加载逻辑，功能关闭时完全不加载任何资源
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      // 检查看板娘是否启用
-     const checkWaifuEnabled = () => {
-       try {
-         // 从本地存储获取配置
-         const webInfoStr = localStorage.getItem('webInfo');
-         if (webInfoStr) {
-           const webInfoData = JSON.parse(webInfoStr);
-           // 只检查新格式
-           if (webInfoData.data) {
-             return webInfoData.data.enableWaifu === true;
-           }
-         }
-         return store.state.webInfo.enableWaifu === true;
-       } catch (e) {
-         console.error('检查看板娘状态出错:', e);
-         return false;
-       }
-     };
-      
-    // 只在启用状态下加载看板娘的CSS和JS
-      if (checkWaifuEnabled()) {
-      console.log('看板娘功能已启用，开始加载资源');
-      
-      // 1. 加载CSS文件
-      const loadCss = (url) => {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = url;
-        // 安全地添加link元素到head
-        if (link && link.nodeType === Node.ELEMENT_NODE && document.head && typeof document.head.appendChild === 'function') {
-          try {
-            document.head.appendChild(link);
-          } catch (e) {
-            console.warn('添加link元素失败:', e);
-          }
-        }
-      };
-      
-      loadCss(constant.live2d_path + 'waifu.css');
-      
-      // 2. 动态加载JS
-        import('./utils/live2d').then(() => {
-          console.log('看板娘加载成功');
-          
-          // 注册刷新页面时的事件处理
-          window.addEventListener('pageshow', (event) => {
-            // 如果是从缓存加载的页面，检查看板娘状态
-            if (event.persisted) {
-              console.log('页面从缓存恢复，检查看板娘状态');
-              // 触发看板娘检查事件
-              document.dispatchEvent(new Event('checkWaifu'));
-            }
-          });
-          
-          // 监听路由变化，确保在切换页面时看板娘正常显示
-          const checkWaifuOnRouteChange = () => {
-            setTimeout(() => {
-              document.dispatchEvent(new Event('checkWaifu'));
-            }, 1000);
-          };
-          
-          // 监听路由变化和历史记录变化
-          window.addEventListener('popstate', checkWaifuOnRouteChange);
-          
-          // 监听vue-router的路由变化
-          if (router.afterEach) {
-            router.afterEach((to, from) => {
-              if (to.path !== from.path) {
-                checkWaifuOnRouteChange();
-              }
-            });
-          }
-        }).catch(error => {
-          console.warn('看板娘加载失败，但不影响主要功能:', error);
-        });
-      } else {
-      console.log('看板娘功能已禁用，跳过所有相关资源的加载');
-      }
-  }, 500); // 将延迟从2000毫秒减少到500毫秒，加快页面加载
-  });
+// 业务模块
+import { notificationManager } from './utils/notification'
+import { initVueErrorHandler, initPromiseErrorHandler } from './utils/error-handler'
+import { initGrayMode } from './utils/gray-mode'
+import { initImageLoader } from './utils/image-loader'
+import { registerServiceWorker } from './utils/pwa-manager'
 
+// Stores
+import { useMainStore } from './stores/main'
+
+// 组件
+import AsyncNotification from './components/common/AsyncNotification.vue'
+
+// 样式文件
 import './utils/title'
-//引入css
 import './assets/css/animation.css'
 import './assets/css/index.css'
 import './assets/css/tocbot.css'
 import './assets/css/color.css'
 import './assets/css/markdown-highlight.css'
 import './assets/css/font-awesome.min.css'
-import 'mavon-editor/dist/css/index.css'
+import './assets/css/admin-dark-mode.css'
+import './assets/css/centered-dialog.css'
+import './assets/css/article-style-protection.css'
 
-import {vueBaberrage} from 'vue-baberrage'
-import AsyncNotification from './components/common/AsyncNotification.vue'
+// ==================== Vue 配置 ====================
+Vue.config.productionTip = false
 
-// 初始化反调试逻辑 - 通过生产模式环境变量控制
-const disposeAntiDebug = initAntiDebug({ 
-  enableInDev: process.env.VUE_APP_PRODUCTION_MODE === 'true' 
-});
-
+// 插件注册
+Vue.use(PiniaVuePlugin)
 Vue.use(ElementUI)
-Vue.use(vueBaberrage)
-Vue.use(mavonEditor)
-
-// 全局注册异步通知组件
 Vue.component('AsyncNotification', AsyncNotification)
 
+// 注册全局指令
+Vue.directive('animate', animateDirective)
+
+// 全局属性挂载
 Vue.prototype.$http = http
 Vue.prototype.$common = common
 Vue.prototype.$constant = constant
+Vue.prototype.$bus = new Vue()
+Vue.prototype.$notify = notificationManager
+Vue.prototype.$getDefaultAvatar = getDefaultAvatar
+Vue.prototype.$getAvatarUrl = getAvatarUrl
 
-// 创建事件总线
-Vue.prototype.$bus = new Vue();
+// ==================== 初始化模块 ====================
 
-// 创建全局通知实例（用于非组件环境调用）
-let globalNotificationInstance = null;
-Vue.prototype.$notify = {
-  // 获取或创建通知实例
-  getInstance() {
-    if (!globalNotificationInstance) {
-      // 如果还没有实例，返回一个占位对象
-      return {
-        addNotification: () => console.warn('通知组件尚未初始化'),
-        updateNotificationByTaskId: () => console.warn('通知组件尚未初始化'),
-        removeNotification: () => console.warn('通知组件尚未初始化'),
-        clearAllNotifications: () => console.warn('通知组件尚未初始化')
-      };
-    }
-    return globalNotificationInstance;
-  },
-  
-  // 设置全局实例
-  setInstance(instance) {
-    globalNotificationInstance = instance;
-  },
-  
-  // 便捷方法
-  loading(title, message, taskId) {
-    const notificationId = this.getInstance().addNotification({
-      title,
-      message,
-      type: 'loading',
-      duration: 0,
-      taskId
-    });
-    
-    // 如果有taskId，自动启动轮询
-    if (taskId && this.getInstance().startPolling) {
-      console.log('自动启动轮询，任务ID:', taskId);
-      this.getInstance().startPolling(taskId);
-    }
-    
-    return notificationId;
-  },
-  
-  success(title, message, duration = 2000) {
-    return this.getInstance().addNotification({
-      title,
-      message,
-      type: 'success',
-      duration
-    });
-  },
-  
-  error(title, message, duration = 5000) {
-    return this.getInstance().addNotification({
-      title,
-      message,
-      type: 'error',
-      duration
-    });
-  },
-  
-  info(title, message, duration = 3000) {
-    return this.getInstance().addNotification({
-      title,
-      message,
-      type: 'info',
-      duration
-    });
-  },
-  
-  updateByTaskId(taskId, updates) {
-    return this.getInstance().updateNotificationByTaskId(taskId, updates);
+// 错误处理
+initVueErrorHandler(Vue)
+initPromiseErrorHandler()
+
+// 初始化 Pinia
+const pinia = createPinia()
+
+// 创建主 store 实例
+const mainStore = useMainStore(pinia)
+
+// 灰度模式 - 使用 Pinia store
+initGrayMode(mainStore)
+
+// 字体加载
+if (mainStore.sysConfig) {
+  loadFonts(mainStore.sysConfig).catch(err => {
+    console.error('加载字体失败:', err)
+  })
+}
+
+// 监听 sysConfig 变化
+mainStore.$subscribe((mutation, state) => {
+  if (state.sysConfig) {
+    loadFonts(state.sysConfig).catch(err => console.error('加载字体失败:', err))
   }
-};
+})
 
-// 添加全局错误处理
-Vue.config.errorHandler = (err, vm, info) => {
-  // 检查是否为appendChild错误
-  if (err.message && (err.message.includes('appendChild') || err.message.includes('node type'))) {
-    console.warn('非关键DOM操作错误已被捕获（不影响功能）:', err.message);
-    // 不进一步处理，避免影响用户体验
-    return;
-  }
-  
-  // 对看板娘特定错误进行处理
-  if (err.message && err.message.includes('live2d')) {
-    console.warn('看板娘相关错误已捕获，不影响系统使用');
-    return;
-  }
-  
-  // 其他错误正常记录
-  console.error('Vue错误:', err);
-  console.error('错误信息:', info);
-};
-
-// 捕获未处理的Promise错误
-window.addEventListener('unhandledrejection', event => {
-  console.warn('未处理的Promise错误:', event.reason);
-  
-  // 处理多种可能的非关键错误
-  const errorStr = event.reason && event.reason.toString ? event.reason.toString() : '';
-  
-  // 处理DOM相关错误
-  if (errorStr.includes('appendChild') || errorStr.includes('node type')) {
-    console.warn('非关键DOM操作Promise错误已捕获（不影响功能）');
-    event.preventDefault();
-    return;
-  }
-  
-  // 处理看板娘错误
-  if (errorStr.includes('live2d')) {
-    console.warn('看板娘相关Promise错误已捕获，不影响系统使用');
-    event.preventDefault();
-  }
-});
-
-Vue.config.productionTip = false
-
-// 灰度模式：全局开关与侦听
-function applyGrayMode() {
-  try {
-    const enable = store.state.webInfo && store.state.webInfo.enableGrayMode;
-    const rootEl = document.documentElement;
-    if (enable) {
-      rootEl.classList.add('gray-mode');
-      // 保险：构建后若 gray-mode 样式被裁剪，直接设置滤镜
-      rootEl.style.filter = 'grayscale(100%)';
-    } else {
-      rootEl.classList.remove('gray-mode');
-      rootEl.style.filter = '';
-    }
-  } catch (e) {
-    console.warn('灰度模式应用失败:', e);
+// 反调试（生产环境）
+const disposeAntiDebug = initAntiDebug({ 
+  enableInDev: process.env.VUE_APP_PRODUCTION_MODE === 'true' 
+})
+if (disposeAntiDebug) {
+  window.__disableAntiDebug = () => {
+    disposeAntiDebug()
+    delete window.__disableAntiDebug
   }
 }
 
-// 初次进入时尝试应用
-applyGrayMode();
-
-// 监听 webInfo 的灰度开关变化
-store.watch(
-  (state) => state.webInfo && state.webInfo.enableGrayMode,
-  () => {
-    // 当开关变化时重新应用
-    applyGrayMode();
-  },
-  { immediate: false }
-);
-
-// 初始加载字体
-if (store.state.sysConfig) {
-  loadFonts(store.state.sysConfig).catch(err => {
-    console.error('加载字体失败:', err);
-  });
-}
-
-// 监听系统配置变化，重新加载字体
-store.watch(
-  (state) => state.sysConfig,
-  (newConfig) => {
-    if (newConfig) {
-      console.log('系统配置更新，重新加载字体...');
-      loadFonts(newConfig).catch(err => {
-        console.error('加载字体失败:', err);
-      });
-    }
-  },
-  { deep: true }
-);
+// ==================== 创建 Vue 实例 ====================
 
 const app = new Vue({
   router,
-  store,
+  pinia,
   render: h => h(App)
 })
 
-// 通过检查 window.PRERENDER_DATA 来判断是否需要注水
+// ==================== 挂载应用 ====================
+
+// 判断是否为预渲染页面（SSR 注水）
 if (window.PRERENDER_DATA) {
-  // 注水模式：平滑接管已有的DOM
   app.$mount('#app', true)
-  console.log('客户端注水模式启动')
 } else {
-  // 正常挂载模式：用于开发环境或非预渲染页面
   app.$mount('#app')
-  console.log('客户端正常挂载模式启动')
 }
 
-// Vue应用挂载完成后触发事件，用于防止FOUC
+// ==================== 应用挂载后初始化 ====================
+
 app.$nextTick(() => {
-  // 标记Vue应用已完成挂载
+  // 触发应用挂载完成事件
   window.dispatchEvent(new CustomEvent('app-mounted', {
     detail: {
       timestamp: Date.now(),
       prerendered: !!window.PRERENDER_DATA,
       mountType: window.PRERENDER_DATA ? 'hydration' : 'normal'
     }
-  }));
+  }))
   
-  // 添加样式切换类，确保平滑过渡
-  const appElement = document.getElementById('app');
+  // 添加挂载完成标记
+  const appElement = document.getElementById('app')
   if (appElement) {
-    appElement.classList.add('vue-mounted');
+    appElement.classList.add('vue-mounted')
   }
   
-  // 处理图片加载状态（包括预渲染和正常页面）
-  const handleAllImages = () => {
-    const images = document.querySelectorAll('img');
-    images.forEach(img => {
-      // 立即处理已完成加载的图片
-      if (img.complete && img.naturalWidth > 0) {
-        img.classList.add('loaded');
-      } else if (img.src.startsWith('data:') || img.src.startsWith('blob:')) {
-        // data URL 和 blob URL 立即标记为已加载
-        img.classList.add('loaded');
-      } else if (img.src) {
-        // 为未完成加载的图片添加事件监听
-        img.addEventListener('load', function() {
-          this.classList.add('loaded');
-        }, { once: true });
-        img.addEventListener('error', function() {
-          this.classList.add('loaded');
-          console.warn('Vue应用中图片加载失败:', this.src);
-        }, { once: true });
-        
-        // 设置超时确保图片不会永远隐藏
-        setTimeout(() => {
-          if (!img.classList.contains('loaded')) {
-            img.classList.add('loaded');
-            console.warn('Vue应用中图片加载超时，强制显示:', img.src);
-          }
-        }, 3000); // 3秒超时（比预渲染的短一些）
-      } else {
-        // 没有src的图片直接标记为已加载
-        img.classList.add('loaded');
-      }
-    });
-  };
+  // 初始化图片懒加载
+  initImageLoader()
   
-  // 立即处理当前图片
-  handleAllImages();
-  
-  // 监听动态添加的图片
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === 1) { // 元素节点
-            if (node.tagName === 'IMG') {
-              // 新添加的img元素
-              const img = node;
-              if (img.complete && img.naturalWidth > 0) {
-                img.classList.add('loaded');
-              } else if (img.src && !img.src.startsWith('data:') && !img.src.startsWith('blob:')) {
-                img.addEventListener('load', function() {
-                  this.classList.add('loaded');
-                }, { once: true });
-                img.addEventListener('error', function() {
-                  this.classList.add('loaded');
-                }, { once: true });
-              } else {
-                img.classList.add('loaded');
-              }
-            } else {
-              // 检查新添加元素内部的img
-              const nestedImages = node.querySelectorAll ? node.querySelectorAll('img') : [];
-              nestedImages.forEach(img => {
-                if (!img.classList.contains('loaded')) {
-                  if (img.complete && img.naturalWidth > 0) {
-                    img.classList.add('loaded');
-                  } else if (img.src && !img.src.startsWith('data:') && !img.src.startsWith('blob:')) {
-                    img.addEventListener('load', function() {
-                      this.classList.add('loaded');
-                    }, { once: true });
-                    img.addEventListener('error', function() {
-                      this.classList.add('loaded');
-                    }, { once: true });
-                  } else {
-                    img.classList.add('loaded');
-                  }
-                }
-              });
-            }
-          }
-        });
-      }
-    });
-  });
-  
-  // 开始观察DOM变化
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-  
-  if (window.PRERENDER_DATA) {
-    console.log('预渲染页面客户端接管完成，FOUC防护已激活');
-  }
-  
-  // ===== PWA Service Worker 注册 =====
-  registerServiceWorker();
-});
-
-// 提供钩子便于在特殊场景下禁用反调试
-if (disposeAntiDebug) {
-  window.__disableAntiDebug = () => {
-    disposeAntiDebug();
-    delete window.__disableAntiDebug;
-  };
-}
-
-// Service Worker 注册函数
-function registerServiceWorker() {
-  // 检查浏览器是否支持Service Worker
-  if (!('serviceWorker' in navigator)) {
-    console.warn('PWA: 当前浏览器不支持Service Worker');
-    return;
-  }
-  
-  // 注册Service Worker
-  navigator.serviceWorker.register('/sw.js')
-    .then(function(registration) {
-      console.log('✅ PWA: Service Worker注册成功', registration.scope);
-      
-      // 检查是否有等待中的Service Worker
-      if (registration.waiting) {
-        console.log('PWA: 发现新版本Service Worker');
-        handleSwUpdate(registration.waiting);
-      }
-      
-      // 监听Service Worker更新
-      registration.addEventListener('updatefound', function() {
-        console.log('PWA: Service Worker更新中...');
-        
-        const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', function() {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('PWA: 新版本已安装，等待激活');
-              handleSwUpdate(newWorker);
-            }
-          });
-        }
-      });
-      
-      // 监听Service Worker状态变化
-      registration.addEventListener('controllerchange', function() {
-        console.log('PWA: Service Worker已切换到新版本');
-        // 可以在这里通知用户页面将重新加载
-      });
-    })
-    .catch(function(error) {
-      console.warn('❌ PWA: Service Worker注册失败', error);
-    });
-  
-  // 监听Service Worker消息
-  navigator.serviceWorker.addEventListener('message', function(event) {
-    if (event.data && event.data.type === 'SW_UPDATED') {
-      console.log('PWA: Service Worker已更新');
-    }
-  });
-}
-
-// 获取PWA通知图标
-async function getPwaNotificationIcon() {
-  try {
-    // 优先级：Manifest图标 > SEO配置图标 > 网站头像 > 默认图标
-    
-    // 1. 尝试从manifest.json获取图标（最准确的PWA图标）
-    try {
-      const manifestResponse = await fetch('/manifest.json');
-      if (manifestResponse.ok) {
-        const manifest = await manifestResponse.json();
-        if (manifest.icons && manifest.icons.length > 0) {
-          // 优先选择192x192或更大的图标，适合通知显示
-          const preferredIcon = manifest.icons.find(icon => 
-            icon.sizes && (icon.sizes.includes('192x192') || icon.sizes.includes('256x256') || icon.sizes.includes('512x512'))
-          );
-          if (preferredIcon) return preferredIcon.src;
-          
-          // 如果没有合适尺寸，使用第一个图标
-          return manifest.icons[0].src;
-        }
-      }
-    } catch (e) {
-      console.warn('从manifest.json获取图标失败:', e);
-    }
-    
-    // 2. 尝试从缓存的SEO配置获取PWA图标
-    const cachedSeoConfig = localStorage.getItem('seoConfig');
-    if (cachedSeoConfig) {
-      try {
-        const seoConfig = JSON.parse(cachedSeoConfig);
-        if (seoConfig.site_icon_192) return seoConfig.site_icon_192;
-        if (seoConfig.site_icon_512) return seoConfig.site_icon_512;
-        if (seoConfig.site_icon) return seoConfig.site_icon;
-        if (seoConfig.apple_touch_icon) return seoConfig.apple_touch_icon;
-      } catch (e) {
-        console.warn('解析SEO配置缓存失败:', e);
-      }
-    }
-    
-    // 3. 使用网站信息中的头像
-    const webInfo = store.state.webInfo || {};
-    if (webInfo.avatar) return webInfo.avatar;
-    
-    // 4. 默认图标
-    return '/poetize.jpg';
-  } catch (error) {
-    console.warn('获取PWA图标失败，使用默认图标:', error);
-    return '/poetize.jpg';
-  }
-}
-
-// 处理Service Worker更新
-async function handleSwUpdate(worker) {
-  try {
-    // 使用Vue的全局通知系统
-    Vue.prototype.$notify.info(
-      'PWA更新', 
-      '应用有新版本可用，刷新页面以使用最新功能', 
-      5000
-    );
-  } catch (error) {
-    // 降级到浏览器原生通知
-    console.log('PWA: 检测到新版本，建议刷新页面');
-    
-    // 尝试使用浏览器通知API（如果可用）
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        const icon = await getPwaNotificationIcon();
-        new Notification('PWA更新', {
-          body: '应用有新版本可用，刷新页面以使用最新功能',
-          icon: icon
-        });
-        console.log('PWA: 已显示浏览器通知，图标:', icon);
-      } catch (e) {
-        // 图标获取失败时仍显示通知，只是没有图标
-        new Notification('PWA更新', {
-          body: '应用有新版本可用，刷新页面以使用最新功能'
-        });
-        console.log('PWA: 已显示浏览器通知（无图标）');
-      }
-    }
-  }
-}
+  // 注册 PWA Service Worker
+  registerServiceWorker(Vue.prototype.$notify.info)
+})

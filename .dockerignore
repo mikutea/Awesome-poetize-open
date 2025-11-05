@@ -1,15 +1,80 @@
-# 排除前端项目的node_modules目录
-**/node_modules
-**/dist
-**/.git
-**/.github
-**/.vscode
-**/.idea
-**/.DS_Store
-**/npm-debug.log
-**/yarn-debug.log
-**/yarn-error.log
-**/.env.local
-**/.env.development.local
-**/.env.test.local
-**/.env.production.local 
+# ========================================
+# Docker 构建忽略文件
+# 减少构建上下文大小，提升构建速度
+# ========================================
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# 文档和说明
+*.md
+README*
+LICENSE
+docs/
+poetize_picture/
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志文件
+*.log
+logs/
+deploy.log
+
+# 临时文件
+.tmp/
+tmp/
+temp/
+*.tmp
+
+# Node.js (会在构建时重新安装)
+**/node_modules/
+**/dist/
+**/.cache/
+**/.npm/
+**/.yarn/
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+**/*.egg-info/
+**/.pytest_cache/
+**/.tox/
+
+# Java 构建产物
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.ear
+
+# 配置文件（运行时生成）
+.config/
+.poetize-config
+*.env
+.env.*
+
+# Docker 相关
+docker-compose.override.yml
+Dockerfile.dev
+
+# 数据库和缓存数据
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# 其他构建产物
+**/build/
+**/coverage/
+**/.next/
+**/.nuxt/

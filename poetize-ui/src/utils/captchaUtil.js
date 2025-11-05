@@ -17,18 +17,15 @@ export function checkCaptchaRequired(action) {
         if (res && res.data && res.data.code === 200) {
           // 正确解析API返回的{required: true/false}格式
           const required = res.data.data && res.data.data.required === true;
-          console.log(`验证码检查 - 操作: ${action}, 需要验证: ${required}`);
           resolve(required);
         } else {
           // 如果API出错，默认不需要验证（修改：使验证码出错时跳过验证，确保用户能登录）
-          console.log(`验证码API返回错误码: ${res && res.data ? res.data.code : 'unknown'}, 默认不需要验证`);
           resolve(false);
         }
       })
       .catch(error => {
         console.error('验证码检查失败:', error);
         // 如果网络错误，默认不需要验证（确保在验证码服务失败时用户仍能登录）
-        console.log('验证码服务不可用，默认不需要验证');
         resolve(false);
       });
   });

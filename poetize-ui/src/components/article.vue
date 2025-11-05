@@ -9,8 +9,7 @@
                   lazy
                   :src="article.articleCover"
                   fit="cover">
-          <div slot="error" class="image-slot">
-            <div class="article-image"></div>
+          <div slot="error" class="image-slot" style="background-color: var(--lightGreen)">
           </div>
         </el-image>
 
@@ -108,22 +107,12 @@
                 fill="#3D3D63"></path>
             </svg>
             <span>&nbsp;{{ article.commentCount }}</span>
-            <span>·</span>
-            <svg viewBox="0 0 1024 1024" width="14" height="14" style="vertical-align: -2px;">
-              <path
-                d="M510.671749 348.792894S340.102978 48.827055 134.243447 254.685563C-97.636714 486.565724 510.671749 913.435858 510.671749 913.435858s616.107079-419.070494 376.428301-658.749272c-194.095603-194.096626-376.428302 94.106308-376.428301 94.106308z"
-                fill="#FF713C"></path>
-              <path
-                d="M510.666632 929.674705c-3.267417 0-6.534833-0.983397-9.326413-2.950192-16.924461-11.872399-414.71121-293.557896-435.220312-529.448394-5.170766-59.482743 13.879102-111.319341 56.643068-154.075121 51.043536-51.043536 104.911398-76.930113 160.095231-76.930114 112.524796 0 196.878996 106.48115 228.475622 153.195078 33.611515-45.214784 122.406864-148.20646 234.04343-148.20646 53.930283 0 105.46603 24.205285 153.210428 71.941496 45.063335 45.063335 64.954361 99.200326 59.133795 160.920016C935.306982 641.685641 536.758893 915.327952 519.80271 926.859589a16.205077 16.205077 0 0 1-9.136078 2.815116zM282.857183 198.75574c-46.25344 0-92.396363 22.682605-137.127124 67.413365-36.149315 36.157501-51.614541 78.120218-47.25321 128.291898 17.575284 202.089671 352.199481 455.119525 412.332023 499.049037 60.434417-42.86732 395.406538-289.147446 414.567947-492.458945 4.933359-52.344159-11.341303-96.465029-49.759288-134.88199-41.431621-41.423435-85.24243-62.424748-130.242319-62.424748-122.041544 0-220.005716 152.203494-220.989114 153.742547-3.045359 4.806469-8.53335 7.883551-14.101159 7.534603a16.257266 16.257266 0 0 1-13.736863-8.184403c-0.902556-1.587148-91.569532-158.081365-213.690893-158.081364z"
-                fill="#885F44"></path>
-            </svg>
-            <span>&nbsp;{{ article.likeCount }}</span>
           </div>
         </div>
 
         <div class="article-info-news"
              @click="weiYanDialogVisible = true"
-             v-if="!$common.isEmpty($store.state.currentUser) && $store.state.currentUser.id === article.userId">
+             v-if="!$common.isEmpty(mainStore.currentUser) && mainStore.currentUser.id === article.userId">
           <svg width="30" height="30" viewBox="0 0 1024 1024">
             <path d="M0 0h1024v1024H0V0z" fill="#202425" opacity=".01"></path>
             <path
@@ -167,7 +156,9 @@
           </div>
           <!-- 分类 -->
           <div class="article-sort">
-            <span @click="$router.push('/sort/' + article.sortId + '?labelId=' + article.labelId)">{{ article.sort.sortName +" ▶ "+ article.label.labelName}}</span>
+            <span draggable="true" 
+                  @dragstart="handleSortDragStart($event)"
+                  @click="$router.push('/sort/' + article.sortId + '?labelId=' + article.labelId)">{{ article.sort.sortName +" · "+ article.label.labelName}}</span>
           </div>
           <!-- 作者信息 -->
           <blockquote>
@@ -195,7 +186,7 @@
           </div>
 
           <!-- 评论 -->
-          <div v-if="article.commentStatus === true">
+          <div v-if="article.commentStatus === true && enableComment">
             <comment :type="'article'" :source="article.id" :userId="article.userId"></comment>
           </div>
         </div>
@@ -215,29 +206,32 @@
                width="80%"
                :append-to-body="true"
                class="article-copy"
+               custom-class="centered-dialog"
                center>
       <div style="display: flex;align-items: center;flex-direction: column">
-        <el-avatar shape="square" :size="35" :src="$store.state.webInfo.avatar"></el-avatar>
+        <el-avatar shape="square" :size="35" :src="$common.getAvatarUrl(mainStore.webInfo.avatar)">
+          <img :src="$getDefaultAvatar()" />
+        </el-avatar>
         <div class="copyright-container">
           <p>
-            {{ $store.state.webInfo.webName }}是指运行在{{ $constant.host }}域名及相关子域名上的网站，本条款描述了{{ $store.state.webInfo.webName }}的网站版权声明：
+            {{ mainStore.webInfo.webName }}是指运行在{{ $constant.host }}域名及相关子域名上的网站，本条款描述了{{ mainStore.webInfo.webName }}的网站版权声明：
           </p>
           <ul>
             <li>
-              {{ $store.state.webInfo.webName }}提供的所有文章、展示的图片素材等内容部分来源于互联网平台，仅供学习参考。如有侵犯您的版权，请联系{{ $store.state.webInfo.webName }}负责人，{{ $store.state.webInfo.webName }}承诺将在一个工作日内改正。
+              {{ mainStore.webInfo.webName }}提供的所有文章、展示的图片素材等内容部分来源于互联网平台，仅供学习参考。如有侵犯您的版权，请联系{{ mainStore.webInfo.webName }}负责人，{{ mainStore.webInfo.webName }}承诺将在一个工作日内改正。
             </li>
             <li>
-              {{ $store.state.webInfo.webName }}不保证网站内容的全部准确性、安全性和完整性，请您在阅读、下载及使用过程中自行确认，{{ $store.state.webInfo.webName }}亦不承担上述资源对您造成的任何形式的损失或伤害。
+              {{ mainStore.webInfo.webName }}不保证网站内容的全部准确性、安全性和完整性，请您在阅读、下载及使用过程中自行确认，{{ mainStore.webInfo.webName }}亦不承担上述资源对您造成的任何形式的损失或伤害。
             </li>
-            <li>未经{{ $store.state.webInfo.webName }}允许，不得盗链、盗用本站内容和资源。</li>
+            <li>未经{{ mainStore.webInfo.webName }}允许，不得盗链、盗用本站内容和资源。</li>
             <li>
-              {{ $store.state.webInfo.webName }}旨在为广大用户提供更多的信息；{{ $store.state.webInfo.webName }}不保证向用户提供的外部链接的准确性和完整性，该外部链接指向的不由本站实际控制的任何网页上的内容，{{ $store.state.webInfo.webName }}对其合法性亦概不负责，亦不承担任何法律责任。
-            </li>
-            <li>
-              {{ $store.state.webInfo.webName }}中的文章/视频（包括转载文章/视频）的版权仅归原作者所有，若作者有版权声明或文章从其它网站转载而附带有原所有站的版权声明者，其版权归属以附带声明为准；文章仅代表作者本人的观点，与{{ $store.state.webInfo.webName }}立场无关。
+              {{ mainStore.webInfo.webName }}旨在为广大用户提供更多的信息；{{ mainStore.webInfo.webName }}不保证向用户提供的外部链接的准确性和完整性，该外部链接指向的不由本站实际控制的任何网页上的内容，{{ mainStore.webInfo.webName }}对其合法性亦概不负责，亦不承担任何法律责任。
             </li>
             <li>
-              {{ $store.state.webInfo.webName }}自行编写排版的文章均采用
+              {{ mainStore.webInfo.webName }}中的文章/视频（包括转载文章/视频）的版权仅归原作者所有，若作者有版权声明或文章从其它网站转载而附带有原所有站的版权声明者，其版权归属以附带声明为准；文章仅代表作者本人的观点，与{{ mainStore.webInfo.webName }}立场无关。
+            </li>
+            <li>
+              {{ mainStore.webInfo.webName }}自行编写排版的文章均采用
               <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" style="color: #38f;text-decoration: none;">
                 知识共享署名-非商业性使用-相同方式共享 4.0 国际许可协议
               </a>
@@ -308,16 +302,15 @@
     <el-dialog title="卡片分享"
                :visible.sync="shareCardDialogVisible"
                width="500px"
-               :top="shareCardDialogTop"
                :append-to-body="true"
-               custom-class="share-card-dialog"
+               custom-class="share-card-dialog centered-dialog"
                center>
       <div class="share-card-container">
         <!-- 卡片预览 -->
         <div class="share-card-preview" ref="shareCard" id="shareCard">
           <!-- 作者头像 -->
           <div class="card-avatar-container">
-            <img :src="article.avatar || $store.state.webInfo.avatar || '/poetize.jpg'" 
+            <img :src="$common.getAvatarUrl(article.avatar)" 
                  alt="作者头像" 
                  class="card-avatar" />
           </div>
@@ -349,7 +342,7 @@
             
             <!-- 品牌标识和二维码 -->
             <div class="card-bottom">
-              <div class="card-brand">{{ $store.state.webInfo.webTitle || 'POETIZE' }}</div>
+              <div class="card-brand">{{ mainStore.webInfo.webTitle || 'POETIZE' }}</div>
               <div class="card-qrcode" ref="qrcode"></div>
             </div>
           </div>
@@ -366,7 +359,9 @@
 </template>
 
 <script>
-  const myFooter = () => import( "./common/myFooter");
+    import { useMainStore } from '@/stores/main';
+
+const myFooter = () => import( "./common/myFooter");
   const comment = () => import( "./comment/comment");
   const process = () => import( "./common/process");
   const commentBox = () => import( "./comment/commentBox");
@@ -374,6 +369,20 @@
   const videoPlayer = () => import( "./common/videoPlayer");
   import MarkdownIt from 'markdown-it';
   import axios from 'axios';
+  import { getLanguageMapping, preloadLanguageMapping, getTocTitle } from '@/utils/languageUtils';
+  // 导入资源加载器
+  import { 
+    loadMermaidResources, 
+    isMermaidLoaded,
+    loadEChartsResources,
+    isEChartsLoaded,
+    loadHighlightResources,
+    isHighlightJsLoaded,
+    loadClipboardResources,
+    isClipboardLoaded,
+    loadKatexResources,
+    isKatexLoadedGlobal
+  } from '@/components/live2d/utils/resourceLoader';
 
   export default {
     components: {
@@ -417,7 +426,10 @@
         languageMap: {}, // 语言映射
         availableLanguages: [], // 文章实际可用的翻译语言
         availableLanguageButtons: [], // 动态生成的语言按钮列表
-        shareCardDialogVisible: false // 卡片分享弹窗显示状态
+        shareCardDialogVisible: false, // 卡片分享弹窗显示状态
+        tocbotRefreshed: false, // 标记tocbot是否已在首次滚动时刷新
+        tocbotRefreshTimer: null, // tocbot刷新定时器
+        loadingArticleId: null // 正在加载的文章ID（用于防止异步回调干扰）
       };
     },
 
@@ -454,18 +466,8 @@
         // 重置组件状态，防止缓存问题
         this.resetComponentState();
         
-        // 先初始化语言映射
-        this.languageMap = {
-          'zh': '中文',
-          'zh-TW': '繁體中文',
-          'en': 'English',
-          'ja': '日本語',
-          'ko': '한국어',
-          'fr': 'Français',
-          'de': 'Deutsch',
-          'es': 'Español',
-          'ru': 'Русский'
-        };
+        // 先初始化语言映射（从数据库统一配置读取）
+        this.languageMap = await getLanguageMapping();
 
         // 然后初始化语言设置，确保语言状态正确
         await this.initializeLanguageSettings();
@@ -475,7 +477,6 @@
           this.articleContentHtml = "";
           this.articleContentKey = Date.now();
 
-          console.log('Created钩子：语言初始化完成，开始加载文章，当前语言:', this.currentLang);
           this.getArticle(localStorage.getItem("article_password_" + this.id));
 
           if ("0" !== localStorage.getItem("showSubscribe")) {
@@ -498,7 +499,6 @@
         this.$nextTick(() => {
           // 延迟触发事件，确保页面元素已加载
           setTimeout(() => {
-            console.log('文章页面触发看板娘检查事件');
             if (document && document.dispatchEvent) {
               document.dispatchEvent(new Event('checkWaifu'));
             }
@@ -508,11 +508,20 @@
 
     mounted() {
       window.addEventListener("scroll", this.onScrollPage);
-      this.getTocbot();
+      // 注意：不在这里调用getTocbot()，因为文章内容还没加载
+      // getTocbot()会在getArticle()完成后的$nextTick中调用
+
+      // 监听主题切换事件
+      this.$root.$on('themeChanged', this.handleThemeChange);
 
       // 添加全局事件委托处理语言切换按钮点击
       this.setupLanguageSwitchEventDelegation();
       
+      // 注意：不需要实现JavaScript动态检测遮挡的响应式逻辑
+      // 原因：通过CSS层叠上下文（.article-head z-index: 10 和 .article-container z-index: 1）
+      // 已经彻底解决了语言切换按钮被遮挡的问题，无需动态调整按钮位置
+      // 同时已注释掉 @media (max-width: 1050px) 中隐藏按钮的CSS规则
+        
       // 添加看板娘初始化检查
       this.$nextTick(() => {
         // 检查当前配置是否启用看板娘
@@ -527,9 +536,8 @@
                 return webInfoData.data.enableWaifu === true;
               }
             }
-            return this.$store.state.webInfo.enableWaifu === true;
+            return this.mainStore.webInfo.enableWaifu === true;
           } catch (e) {
-            console.error('检查看板娘状态出错:', e);
             return false;
           }
         };
@@ -555,8 +563,6 @@
         setTimeout(() => {
           if (checkWaifuEnabled()) {
             if (!checkLive2DLoaded() || !checkWaifuVisible()) {
-              console.log('检测到看板娘加载异常，尝试重新初始化');
-              
               // 使用事件驱动方式加载看板娘，避免直接操作DOM
               if (!localStorage.getItem("waifu-display")) {
                 // 触发检查事件，让live2d.js完成初始化
@@ -570,7 +576,7 @@
       // 检查是否有临时保存的评论
       this.checkTempComment();
 
-      // 🔧 新策略：检查是否有保存的页面状态
+      // 检查是否有保存的页面状态
       this.checkPageState();
 
       // 监听路由变化，检查是否从登录页面返回
@@ -582,7 +588,7 @@
           });
         }
 
-        // 🔧 新策略：检查回复操作恢复标记
+        // 检查回复操作恢复标记
         if (newQuery.hasReplyAction === 'true') {
           // 从登录页面返回且带有回复操作标记
           this.$nextTick(() => {
@@ -594,6 +600,9 @@
 
     destroyed() {
       window.removeEventListener("scroll", this.onScrollPage);
+
+      // 移除主题切换事件监听
+      this.$root.$off('themeChanged', this.handleThemeChange);
 
       // 清理语言切换事件监听器
       if (this.languageSwitchHandler) {
@@ -623,8 +632,6 @@
         const oldLang = oldParams.lang;
         
         if (newId && newId !== this.id) {
-          console.log('路由参数变化，从文章', oldId, '切换到文章', newId);
-          
           // 重置组件状态，防止显示旧数据
           this.resetComponentState();
           
@@ -636,10 +643,8 @@
           this.initializeLanguageSettings().then(() => {
             // 语言初始化完成后再获取文章
             const password = localStorage.getItem("article_password_" + this.id);
-            console.log('获取文章密码:', password ? '有密码' : '无密码');
             this.getArticle(password);
           }).catch(error => {
-            console.error('语言初始化失败，使用默认设置:', error);
             // 即使语言初始化失败，也要获取文章
             const password = localStorage.getItem("article_password_" + this.id);
             this.getArticle(password);
@@ -651,17 +656,14 @@
           });
         } else if (newId === this.id && newLang !== oldLang) {
           // 同一文章，仅语言参数变化
-          console.log('同一文章，语言参数变化:', oldLang, '->', newLang);
           this.lang = newLang;
           
           if (newLang && this.languageMap[newLang]) {
             if (this.currentLang !== newLang) {
-              console.log('切换到URL指定的语言:', newLang);
               this.switchLanguage(newLang);
             }
           } else {
             // 如果语言参数无效，切换到默认源语言
-            console.log('语言参数无效，切换到默认源语言:', this.sourceLanguage);
             this.switchLanguage(this.sourceLanguage);
           }
         }
@@ -670,49 +672,70 @@
     },
 
     computed: {
+      mainStore() {
+        return useMainStore();
+      },
       articleTitle() {
         // 如果当前语言不是源语言且已有翻译标题，则显示翻译标题，否则显示原始标题
         return (this.currentLang !== this.sourceLanguage && this.translatedTitle) ? this.translatedTitle : this.article.articleTitle;
       },
       
-      // 动态计算对话框距离顶部的距离
+      // 全局评论开关 - 从系统配置中读取
+      enableComment() {
+        const sysConfig = this.mainStore.sysConfig;
+        // 默认为 true，如果配置不存在或配置值为 'true' 则显示评论
+        if (!sysConfig || !sysConfig.enableComment) {
+          return true;
+        }
+        return sysConfig.enableComment === 'true' || sysConfig.enableComment === true;
+      },
+      
+      // 对话框居中由 centered-dialog.css 全局样式处理（移除了自定义top计算）
       shareCardDialogTop() {
-        const screenHeight = window.innerHeight;
-        // 预估对话框高度约750px（含标题、内容、按钮）
-        const dialogHeight = 750;
-        
-        // 如果屏幕高度小于对话框高度，靠顶显示
-        if (screenHeight <= dialogHeight + 100) {
-          return '3vh';
-        }
-        
-        // 计算居中位置
-        const centeredTop = (screenHeight - dialogHeight) / 2;
-        
-        // 转换为vh单位
-        const topVh = (centeredTop / screenHeight) * 100;
-        
-        // 根据不同屏幕大小限制范围
-        if (screenHeight < 800) {
-          return Math.max(3, Math.min(8, topVh)) + 'vh';
-        } else if (screenHeight < 1000) {
-          return Math.max(5, Math.min(12, topVh)) + 'vh';
-        } else {
-          return Math.max(8, Math.min(15, topVh)) + 'vh';
-        }
+        return '15vh'; // 保留作为fallback，但实际由centered-dialog.css的flex居中处理
       }
     },
 
     beforeDestroy() {
       // 组件销毁时清理状态，防止影响下一个文章组件
-      console.log('文章组件销毁，清理状态');
       this.clearComponentState();
+      
+      // 销毁tocbot实例
+      if (window.tocbot) {
+        try {
+          window.tocbot.destroy();
+        } catch (e) {
+          // 忽略销毁失败
+        }
+      }
+      
+      // 清理定时器
+      if (this.tocbotRefreshTimer) {
+        clearTimeout(this.tocbotRefreshTimer);
+        this.tocbotRefreshTimer = null;
+      }
     },
 
     methods: {
+      // 处理分类标签拖拽开始事件
+      handleSortDragStart(event) {
+        // 构建分类页面的完整URL
+        const baseUrl = window.location.origin;
+        const sortPath = `/sort/${this.article.sortId}?labelId=${this.article.labelId}`;
+        const sortUrl = `${baseUrl}${sortPath}`;
+        
+        // 设置拖拽数据
+        event.dataTransfer.effectAllowed = 'link';
+        event.dataTransfer.setData('text/uri-list', sortUrl);
+        event.dataTransfer.setData('text/plain', sortUrl);
+        
+        // 设置拖拽时显示的文本
+        const title = `${this.article.sort.sortName} · ${this.article.label.labelName}`;
+        event.dataTransfer.setData('text/html', `<a href="${sortUrl}">${title}</a>`);
+      },
+      
       // 重置组件状态，防止缓存问题
       resetComponentState() {
-        console.log('重置文章组件状态');
         this.article = {};
         this.translatedTitle = '';
         this.translatedContent = '';
@@ -737,6 +760,25 @@
         this.metaTags = null;
         this.metaTagRetryCount = 0;
         this.isLoadingMeta = false;
+        
+        // 重置目录相关状态
+        this.tocbotRefreshed = false;
+        if (this.tocbotRefreshTimer) {
+          clearTimeout(this.tocbotRefreshTimer);
+          this.tocbotRefreshTimer = null;
+        }
+        
+        // 重置正在加载的文章ID（防止旧文章的异步回调影响新文章）
+        this.loadingArticleId = null;
+        
+        // 销毁旧的tocbot实例（路由切换时）
+        if (window.tocbot) {
+          try {
+            window.tocbot.destroy();
+          } catch (e) {
+            // 忽略销毁失败的错误
+          }
+        }
       },
 
       // 清理组件状态
@@ -763,7 +805,7 @@
           center: true
         }).then(() => {
           // 用户确认订阅意图后，检查登录状态
-          if (this.$common.isEmpty(this.$store.state.currentUser)) {
+          if (this.$common.isEmpty(this.mainStore.currentUser)) {
             // 未登录，显示登录提示并立即跳转到登录页面
             this.$message({
               message: "请先登录！",
@@ -812,7 +854,7 @@
         })
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
-              this.$store.commit("loadCurrentUser", res.data);
+              this.mainStore.loadCurrentUser( res.data);
             }
             this.subscribe = !this.subscribe;
 
@@ -847,7 +889,7 @@
             localStorage.removeItem('pendingSubscribe');
 
             // 检查用户是否已登录
-            if (!this.$common.isEmpty(this.$store.state.currentUser)) {
+            if (!this.$common.isEmpty(this.mainStore.currentUser)) {
               // 延迟执行订阅操作，确保页面数据已加载完成
               this.$nextTick(() => {
                 setTimeout(() => {
@@ -857,7 +899,6 @@
             }
           }
         } catch (error) {
-          console.error('解析待执行订阅意图失败:', error);
           localStorage.removeItem('pendingSubscribe');
         }
       },
@@ -873,11 +914,11 @@
         this.getArticle(this.password);
       },
       deleteTreeHole(id) {
-        if (this.$common.isEmpty(this.$store.state.currentUser)) {
-          this.$message({
-            message: "请先登录！",
-            type: "error"
-          });
+        if (this.$common.isEmpty(this.mainStore.currentUser)) {
+          // 使用统一的登录跳转函数
+          this.$common.redirectToLogin(this.$router, {
+            message: '请先登录！'
+          }, this);
           return;
         }
 
@@ -962,36 +1003,155 @@
             element.style.top = '90px';
           }
         });
+        
+        // 在用户首次滚动时刷新tocbot，确保位置计算准确
+        if (!this.tocbotRefreshed && window.tocbot && window.tocbot.refresh) {
+          if (this.tocbotRefreshTimer) {
+            clearTimeout(this.tocbotRefreshTimer);
+          }
+          this.tocbotRefreshTimer = setTimeout(() => {
+            if (window.tocbot && window.tocbot.refresh) {
+              window.tocbot.refresh();
+              this.tocbotRefreshed = true;
+            }
+          }, 50);
+        }
       },
       getTocbot() {
-        let script = document.createElement('script');
-        script.type = 'text/javascript';
-        script.src = this.$constant.tocbot;
-        // 安全地添加script元素到head
-        const head = document.getElementsByTagName('head')[0];
-        if (script && script.nodeType === Node.ELEMENT_NODE && head && typeof head.appendChild === 'function') {
+        // 检查是否有旧内容（用于判断是否需要过渡效果）
+        const tocContainer = document.getElementById('toc');
+        const hasOldContent = tocContainer && tocContainer.children.length > 0;
+        
+        // 如果有旧内容，添加过渡效果避免闪烁
+        if (hasOldContent) {
+          const tocElements = document.querySelectorAll('.toc');
+          tocElements.forEach(el => {
+            el.style.transition = 'opacity 0.15s ease-out';
+            el.style.opacity = '0.3'; // 降低透明度而不是完全隐藏
+          });
+        }
+        
+        // 销毁之前的实例
+        if (window.tocbot) {
           try {
-            head.appendChild(script);
+            window.tocbot.destroy();
           } catch (e) {
-            console.warn('添加script元素失败:', e);
           }
         }
 
-        script.onload = function () {
-          tocbot.init({
-            tocSelector: '#toc',
-            contentSelector: '.entry-content',
-            headingSelector: 'h1, h2, h3, h4, h5',
-            scrollSmooth: true,
-            fixedSidebarOffset: 'auto',
-            scrollSmoothOffset: -100,
-            hasInnerContainers: false
+        const initTocbot = () => {
+          this.$nextTick(() => {
+            // 验证DOM元素
+            const entryContent = document.querySelector('.entry-content');
+            if (!entryContent) {
+              setTimeout(() => initTocbot(), 50);
+              return;
+            }
+            
+            const headings = entryContent.querySelectorAll('h1, h2, h3, h4, h5');
+            if (headings.length === 0) {
+              setTimeout(() => initTocbot(), 50);
+              return;
+            }
+            
+            if (window.tocbot) {
+              try {
+                window.tocbot.destroy();
+                
+                // 初始化目录
+                window.tocbot.init({
+                  tocSelector: '#toc',
+                  contentSelector: '.entry-content',
+                  headingSelector: 'h1, h2, h3, h4, h5',
+                  scrollSmooth: true,
+                  fixedSidebarOffset: 'auto',
+                  scrollSmoothOffset: -100,
+                  hasInnerContainers: false,
+                  headingsOffset: 100,
+                  scrollSmoothDuration: 420,
+                  includeHtml: false,
+                  onClick: function(e) {
+                    e.preventDefault();
+                  }
+                });
+                
+                // 动态设置目录标题（根据当前语言）
+                this.$nextTick(() => {
+                  const tocElement = document.querySelector('.toc');
+                  if (tocElement) {
+                    const tocTitle = getTocTitle(this.currentLang || 'zh');
+                    tocElement.setAttribute('data-toc-title', `🏖️${tocTitle}`);
+                  }
+                });
+                
+                // 强制重排并刷新
+                const forceReflow = () => {
+                  const toc = document.getElementById('toc');
+                  const content = document.querySelector('.entry-content');
+                  if (toc) void toc.offsetHeight;
+                  if (content) void content.offsetHeight;
+                };
+                
+                this.$nextTick(() => {
+                  forceReflow();
+                  if (window.tocbot && window.tocbot.refresh) {
+                    window.tocbot.refresh();
+                  }
+                  
+                  // 目录初始化完成，恢复显示
+                  requestAnimationFrame(() => {
+                    const tocElements = document.querySelectorAll('.toc');
+                    tocElements.forEach(el => {
+                      el.style.transition = 'opacity 0.2s ease-in';
+                      el.style.opacity = '1';
+                    });
+                  });
+                });
+              } catch (e) {
+                // 即使失败也要恢复显示，避免目录永久半透明
+                const tocElements = document.querySelectorAll('.toc');
+                tocElements.forEach(el => {
+                  el.style.opacity = '1';
+                });
+              }
+            } else {
+              // tocbot还未加载，延迟重试
+              setTimeout(() => initTocbot(), 50);
+            }
           });
+        };
+
+        // 加载并初始化tocbot
+        if (window.tocbot) {
+          initTocbot();
+        } else {
+          const existingScript = document.querySelector(`script[src="${this.$constant.tocbot}"]`);
+          if (existingScript) {
+            existingScript.addEventListener('load', initTocbot);
+          } else {
+            let script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = this.$constant.tocbot;
+            script.onload = initTocbot;
+            script.onerror = () => {}; // 忽略加载失败
+            
+            const head = document.getElementsByTagName('head')[0];
+            if (script && script.nodeType === Node.ELEMENT_NODE && head && typeof head.appendChild === 'function') {
+              try {
+                head.appendChild(script);
+              } catch (e) {
+              }
+            }
+          }
         }
+        
+        // 移动端隐藏目录
         if (this.$common.mobile()) {
-          const tocElements = document.querySelectorAll('.toc');
-          tocElements.forEach(element => {
-            element.style.display = 'none';
+          this.$nextTick(() => {
+            const tocElements = document.querySelectorAll('.toc');
+            tocElements.forEach(element => {
+              element.style.display = 'none';
+            });
           });
         }
       },
@@ -1010,7 +1170,6 @@
         this.isLoadingMeta = true;
         const timeout = setTimeout(() => {
           if (this.isLoadingMeta) {
-            console.warn('获取文章元标签超时，停止等待');
             this.isLoadingMeta = false;
             this.setDefaultMetaTags();
           }
@@ -1042,7 +1201,6 @@
                   // 添加简单的自动重试，最多重试2次
                   if (!this.metaTagRetryCount || this.metaTagRetryCount < 2) {
                     this.metaTagRetryCount = (this.metaTagRetryCount || 0) + 1;
-                    console.log(`尝试第${this.metaTagRetryCount}次重新获取元标签...`);
                     setTimeout(() => {
                       this.getArticleMeta();
                     }, 1500); // 1.5秒后重试
@@ -1106,7 +1264,6 @@
             try {
               document.head.appendChild(meta);
             } catch (e) {
-              console.warn('添加meta元素失败:', e);
             }
           }
         };
@@ -1127,62 +1284,68 @@
         addMetaTag('article:modified_time', this.metaTags['article:modified_time'], true);
       },
       getArticle(password) {
-        console.log('开始获取文章，ID:', this.id);
         this.isLoading = true;
+        
+        // 设置正在加载的文章ID（在this.id更新之后调用，所以this.id已经是新文章ID）
+        this.loadingArticleId = this.id;
         
         // 重置状态，防止显示旧数据
         this.article = {};
         this.articleContentHtml = '';
         this.translatedTitle = '';
         this.translatedContent = '';
+        this.tocbotRefreshed = false; // 重置tocbot刷新标志
         
         // 使用Promise.all并行处理所有请求
+        // 如果当前语言不是源语言，在第一次请求时就带上语言参数
+        const articleParams = {id: this.id, password: password};
+        if (this.currentLang && this.currentLang !== this.sourceLanguage) {
+          articleParams.language = this.currentLang;
+        }
+        
         Promise.all([
-          this.$http.get(this.$constant.baseURL + "/article/getArticleById", {id: this.id, password: password}),
+          this.$http.get(this.$constant.baseURL + "/article/getArticleById", articleParams),
           this.$http.post(this.$constant.baseURL + "/weiYan/listNews", { current: 1, size: 9999, source: this.id }),
           this.fetchArticleMeta()
         ])
-        .then(([articleRes, newsRes]) => {
+        .then(async ([articleRes, newsRes]) => {
           // 处理文章数据
           if (!this.$common.isEmpty(articleRes.data)) {
             this.article = articleRes.data;
             
-            // 重置翻译内容
-            this.translatedTitle = '';
-            this.translatedContent = '';
-            
             // 检查当前语言状态，决定显示内容
-            console.log('文章加载完成，当前语言:', this.currentLang, '源语言:', this.sourceLanguage);
 
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            const md = new MarkdownIt({breaks: true})
+              .use(require('markdown-it-multimd-table'))
+              .use(require('@iktakahiro/markdown-it-katex'));
 
-            // 如果当前语言不是源语言，需要获取翻译
-            if (this.currentLang !== this.sourceLanguage) {
-              console.log('当前语言非源语言，准备获取翻译');
-
-              // 立即获取翻译，不等待nextTick
-              this.fetchTranslation().then(() => {
-                // 翻译获取完成后再处理样式
-                this.$nextTick(() => {
-                  this.$common.imgShow(".entry-content img");
-                  this.highlight();
-                  this.addId();
-                  this.getTocbot();
-                });
-              });
+            // 判断显示原文还是翻译
+            if (this.currentLang !== this.sourceLanguage && this.article.translatedContent) {
+              // 显示翻译内容（后端已一次性返回）
+              this.translatedTitle = this.article.translatedTitle;
+              this.translatedContent = this.article.translatedContent;
+              this.articleContentHtml = md.render(this.translatedContent);
             } else {
-              // 当前语言是源语言，直接显示原始内容
-              console.log('当前语言是源语言，显示原始内容');
+              // 显示原文
+              this.translatedTitle = '';
+              this.translatedContent = '';
               this.articleContentHtml = md.render(this.article.articleContent);
-              this.articleContentKey = Date.now(); // 强制Vue重新渲染
-
-              this.$nextTick(() => {
-                this.$common.imgShow(".entry-content img");
-                this.highlight();
-                this.addId();
-                this.getTocbot();
-              });
             }
+            
+            this.articleContentKey = Date.now();
+            
+            // 等待DOM渲染完成后，再检测并加载资源
+            this.$nextTick(() => {
+              this.$common.imgShow(".entry-content img");
+              this.highlight();
+              this.renderMermaid();
+              this.renderECharts();
+              this.addId();
+              
+              // 在内容渲染到DOM后检测资源并初始化目录
+              // 注意：getTocbot()会在detectAndLoadResources()中调用
+              this.detectAndLoadResources();
+            });
 
             // 确保样式正确应用的保险措施
             setTimeout(() => {
@@ -1191,8 +1354,9 @@
               if (entryContent) {
                 const unprocessedBlocks = entryContent.querySelectorAll('pre:not(.highlight-wrap)');
                 if (unprocessedBlocks.length > 0) {
-                  console.log('Found unprocessed code blocks, retrying highlight...');
                   this.highlight();
+                  this.renderMermaid();
+                  this.renderECharts();
                 }
               }
             }, 1000);
@@ -1201,15 +1365,14 @@
               localStorage.setItem("article_password_" + this.id, password);
             }
             this.showPasswordDialog = false;
-            if (!this.$common.isEmpty(this.$store.state.currentUser) && !this.$common.isEmpty(this.$store.state.currentUser.subscribe)) {
-              this.subscribe = JSON.parse(this.$store.state.currentUser.subscribe).includes(this.article.labelId);
+            if (!this.$common.isEmpty(this.mainStore.currentUser) && !this.$common.isEmpty(this.mainStore.currentUser.subscribe)) {
+              this.subscribe = JSON.parse(this.mainStore.currentUser.subscribe).includes(this.article.labelId);
             }
 
             // 获取文章可用的翻译语言并生成动态按钮
             this.getArticleAvailableLanguages();
           } else {
             // 文章数据为空，说明文章不存在，跳转到404页面
-            console.log('文章不存在，跳转到404页面');
             this.$router.push('/404');
             return;
           }
@@ -1248,7 +1411,6 @@
             error.message.includes('Not Found')
           )) {
             // 文章不存在，跳转到404页面
-            console.log('文章不存在，跳转到404页面:', error.message);
             this.$router.push('/404');
             return;
           } else {
@@ -1259,7 +1421,6 @@
               customClass: "message-index"
             });
             
-            console.log('其他错误，不显示密码对话框:', error.message);
           }
         })
         .finally(() => {
@@ -1271,7 +1432,6 @@
           this.isLoadingMeta = true;
           const timeout = setTimeout(() => {
             if (this.isLoadingMeta) {
-              console.warn('获取文章元标签超时');
               this.isLoadingMeta = false;
               this.setDefaultMetaTags();
               resolve(); 
@@ -1303,12 +1463,8 @@
         });
       },
       highlight() {
-        // 检查hljs是否可用
-        if (typeof window.hljs === 'undefined') {
-          console.warn('hljs not available, retrying in 500ms...');
-          setTimeout(() => {
-            this.highlight();
-          }, 500);
+        // 如果 hljs 未加载，静默返回（等待按需加载完成后再调用）
+        if (!isHighlightJsLoaded()) {
           return;
         }
 
@@ -1345,6 +1501,16 @@
               return true;
             }
           });
+          
+          // 跳过Mermaid代码块，由renderMermaid处理
+          if (lang === 'mermaid') {
+            return;
+          }
+          
+          // 跳过ECharts代码块，由renderECharts处理
+          if (lang === 'echarts') {
+            return;
+          }
 
           try {
             let language = hljs.getLanguage(lang.toLowerCase());
@@ -1360,6 +1526,8 @@
               lang = language.name;
             }
 
+            // 移除 loading 状态
+            item.classList.remove('code-loading');
             item.classList.add("highlight-wrap");
             // 设置属性
             Object.keys(attributes).forEach(key => {
@@ -1375,12 +1543,8 @@
               hljs.highlightBlock(preCode);
             }
             
-            // 添加行号，检查方法是否存在
-            if (typeof hljs.lineNumbersBlock === 'function') {
-              hljs.lineNumbersBlock(preCode);
-            } else {
-              console.warn('hljs.lineNumbersBlock not available');
-            }
+            // 使用CSS计数器添加行号（替代hljs.lineNumbersBlock插件）
+            this.addLineNumbersWithCSS(preCode);
           } catch (error) {
             console.error('Error highlighting code block:', error);
             // 即使高亮失败，也要保证基本样式
@@ -1416,14 +1580,32 @@
             try {
               block.parentNode.insertBefore(copyButton, block.nextSibling);
             } catch (e) {
-              console.warn('插入复制按钮失败:', e);
             }
           }
         });
         
         // 初始化剪贴板功能
         if (typeof ClipboardJS !== 'undefined') {
-          new ClipboardJS(".copy-code");
+          const that = this; // 保存Vue实例引用
+          const clipboard = new ClipboardJS(".copy-code");
+          
+          // 复制成功回调
+          clipboard.on('success', (e) => {
+            that.$message({
+              message: '代码已复制到剪贴板',
+              type: 'success',
+              duration: 2000
+            });
+          });
+          
+          // 复制失败回调
+          clipboard.on('error', (e) => {
+            that.$message({
+              message: '复制失败，请手动复制',
+              type: 'error',
+              duration: 2000
+            });
+          });
         }
 
         // 处理表格样式
@@ -1441,11 +1623,818 @@
                   wrapper.appendChild(table);
                 }
               } catch (e) {
-                console.warn('处理表格包装失败:', e);
               }
             }
           }
         });
+      },
+      
+      /**
+       * 使用CSS计数器添加行号
+       */
+      addLineNumbersWithCSS(codeBlock) {
+        if (!codeBlock) return;
+        
+        // 检查是否已经处理过
+        if (codeBlock.classList.contains('css-line-numbers')) {
+          return;
+        }
+        
+        try {
+          // 标记已处理
+          codeBlock.classList.add('css-line-numbers');
+          
+          // 获取代码内容
+          const codeContent = codeBlock.innerHTML;
+          
+          // 按行分割（保留HTML标签）
+          let lines = codeContent.split('\n');
+          
+          // 移除末尾的空行
+          if (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+            lines.pop();
+          }
+          
+          // 创建包裹每一行的HTML
+          const linesHTML = lines.map(line => {
+            // 如果是空行，用一个空格占位以保持高度
+            const content = line.trim() === '' ? '&nbsp;' : line;
+            return `<div class="code-line">${content}</div>`;
+          }).join('');
+          
+          // 替换内容
+          codeBlock.innerHTML = linesHTML;
+          
+          // 根据总行数动态调整行号宽度
+          const totalLines = lines.length;
+          let lineNumberWidth = '25px'; // 默认宽度（1-9行）
+          
+          if (totalLines >= 10000) {
+            lineNumberWidth = '50px';
+          } else if (totalLines >= 1000) {
+            lineNumberWidth = '40px';
+          } else if (totalLines >= 100) {
+            lineNumberWidth = '30px';
+          } else if (totalLines >= 10) {
+            lineNumberWidth = '25px';
+          }
+          
+          // 设置CSS变量
+          codeBlock.style.setProperty('--line-number-width', lineNumberWidth);
+        } catch (e) {
+        }
+      },
+      
+      // 给代码块添加 loading 占位符
+      addLoadingPlaceholders() {
+        const entryContent = document.querySelector('.entry-content');
+        if (!entryContent) return;
+        
+        // 为 Mermaid 代码块添加 loading
+        const mermaidBlocks = entryContent.querySelectorAll('pre code.language-mermaid');
+        mermaidBlocks.forEach(codeBlock => {
+          const pre = codeBlock.parentElement;
+          if (!pre.classList.contains('chart-loading')) {
+            pre.classList.add('chart-loading');
+            pre.setAttribute('data-chart-type', 'Mermaid');
+          }
+        });
+        
+        // 为 ECharts 代码块添加 loading
+        const echartsBlocks = entryContent.querySelectorAll('pre code.language-echarts');
+        echartsBlocks.forEach(codeBlock => {
+          const pre = codeBlock.parentElement;
+          if (!pre.classList.contains('chart-loading')) {
+            pre.classList.add('chart-loading');
+            pre.setAttribute('data-chart-type', 'ECharts');
+          }
+        });
+        
+        // 为普通代码块添加 loading（等待高亮）
+        const codeBlocks = entryContent.querySelectorAll('pre code');
+        codeBlocks.forEach(codeBlock => {
+          const pre = codeBlock.parentElement;
+          const classes = codeBlock.className || '';
+          // 跳过 mermaid 和 echarts
+          if (!classes.includes('language-mermaid') && 
+              !classes.includes('language-echarts') &&
+              !pre.classList.contains('highlight-wrap') &&
+              !pre.classList.contains('code-loading')) {
+            pre.classList.add('code-loading');
+          }
+        });
+      },
+      
+      // 检测文章内容中需要加载的资源（异步并行，不阻塞渲染）
+      // 注意：此方法应在 $nextTick 中调用，确保 DOM 已渲染
+      detectAndLoadResources() {
+        const content = this.article?.articleContent || '';
+        const loadTasks = [];
+        
+        // 保存当前加载的文章ID（使用loadingArticleId而不是this.id，因为路由切换时this.id会先更新）
+        const articleId = this.loadingArticleId;
+        
+        
+        // 立即添加 loading 占位符（同步，因为此方法已在 $nextTick 中）
+        this.addLoadingPlaceholders();
+        
+        // 检测是否包含代码块（需要代码高亮 + 复制功能）
+        if (content.includes('```') && !isHighlightJsLoaded()) {
+          const highlightTask = loadHighlightResources().then(() => {
+            // 检查文章是否已切换
+            if (this.loadingArticleId !== articleId) {
+              return;
+            }
+            // 资源加载是异步的，这里需要 $nextTick
+            this.$nextTick(() => {
+              this.highlight();
+            });
+          });
+          loadTasks.push(highlightTask);
+        } else if (content.includes('```')) {
+          // 如果已加载，立即高亮（同步，因为外层已在 $nextTick）
+          this.highlight();
+        }
+        
+        // 检测代码块时同时加载 Clipboard（代码复制功能）
+        if (content.includes('```') && !isClipboardLoaded()) {
+          loadClipboardResources(); // 不阻塞，后台加载即可
+        }
+        
+        // 检测是否包含数学公式（$...$ 或 $$...$$）
+        if ((content.includes('$') || content.includes('$$')) && !isKatexLoadedGlobal()) {
+          loadKatexResources(); // 不阻塞，后台加载即可
+        }
+        
+        // 检测是否包含 Mermaid 图表
+        if (content.includes('```mermaid') && !isMermaidLoaded()) {
+          const mermaidTask = loadMermaidResources().then(() => {
+            // 检查文章是否已切换
+            if (this.loadingArticleId !== articleId) {
+              return;
+            }
+            this.$nextTick(() => {
+              this.renderMermaid();
+            });
+          });
+          loadTasks.push(mermaidTask);
+        } else if (content.includes('```mermaid')) {
+          // 如果已加载，立即渲染（同步）
+          this.renderMermaid();
+        }
+        
+        // 检测是否包含 ECharts 图表
+        if (content.includes('```echarts') && !isEChartsLoaded()) {
+          const echartsTask = loadEChartsResources().then(() => {
+            // 检查文章是否已切换
+            if (this.loadingArticleId !== articleId) {
+              return;
+            }
+            this.$nextTick(() => {
+              this.renderECharts();
+            });
+          });
+          loadTasks.push(echartsTask);
+        } else if (content.includes('```echarts')) {
+          // 如果已加载，立即渲染（同步）
+          this.renderECharts();
+        }
+        
+        // 定义刷新目录的函数
+        const refreshToc = () => {
+          // 检查文章是否已切换（防止旧文章的回调影响新文章）
+          if (this.loadingArticleId !== articleId) {
+            return;
+          }
+          
+          
+          // 使用MutationObserver监听DOM变化，当变化停止时初始化目录
+          const waitForDOMStable = (callback) => {
+            this.$nextTick(() => {
+              if (this.loadingArticleId !== articleId) {
+                return;
+              }
+              
+              this.addId();
+              
+              const entryContent = document.querySelector('.entry-content');
+              if (!entryContent) {
+                setTimeout(() => waitForDOMStable(callback), 50);
+                return;
+              }
+              
+              let mutationTimer = null;
+              let observer = null;
+              let isCallbackCalled = false;
+              
+              const callCallback = () => {
+                if (isCallbackCalled) return;
+                isCallbackCalled = true;
+                
+                if (observer) {
+                  observer.disconnect();
+                  observer = null;
+                }
+                if (mutationTimer) {
+                  clearTimeout(mutationTimer);
+                  mutationTimer = null;
+                }
+                
+                // 使用RAF确保在浏览器渲染完成后执行
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    if (this.loadingArticleId !== articleId) {
+                      return;
+                    }
+                    callback();
+                  });
+                });
+              };
+              
+              // 监听DOM变化
+              observer = new MutationObserver(() => {
+                // 每次DOM变化都重置定时器
+                if (mutationTimer) {
+                  clearTimeout(mutationTimer);
+                }
+                // 如果100ms内没有新的变化，认为DOM已稳定
+                mutationTimer = setTimeout(() => {
+                  callCallback();
+                }, 100);
+              });
+              
+              // 开始监听
+              observer.observe(entryContent, {
+                childList: true,      // 监听子节点变化
+                subtree: true,        // 监听所有后代节点
+                attributes: true,     // 监听属性变化
+                attributeFilter: ['class', 'style'] // 只监听class和style变化
+              });
+              
+              // 触发第一次检测（如果已经没有变化）
+              mutationTimer = setTimeout(() => {
+                callCallback();
+              }, 100);
+              
+              // 设置最大等待时间（防止一直等待）
+              setTimeout(() => {
+                if (!isCallbackCalled) {
+                  callCallback();
+                }
+              }, 1000);
+            });
+          };
+          
+          // 给highlight一些基础时间后开始监听
+          setTimeout(() => {
+            if (this.loadingArticleId !== articleId) {
+              return;
+            }
+            waitForDOMStable(() => this.getTocbot());
+          }, 50);
+        };
+        
+        // 资源加载完成后的回调
+        if (loadTasks.length > 0) {
+          // 有资源需要异步加载
+          Promise.all(loadTasks).then(() => {
+            refreshToc();
+          });
+        } else {
+          // 资源已全部加载，同步处理完成后也需要刷新目录
+          refreshToc();
+        }
+      },
+      
+      async renderMermaid() {
+        // 如果 Mermaid 未加载，静默返回（等待按需加载完成后再调用）
+        if (!isMermaidLoaded()) {
+          return;
+        }
+        
+        const entryContent = document.querySelector('.entry-content');
+        if (!entryContent) return;
+
+        // 查找所有mermaid代码块
+        const mermaidBlocks = entryContent.querySelectorAll('pre code.language-mermaid');
+        
+        if (mermaidBlocks.length === 0) return;
+        
+
+        try {
+          for (let i = 0; i < mermaidBlocks.length; i++) {
+            const codeBlock = mermaidBlocks[i];
+            const pre = codeBlock.parentElement;
+            
+            // 跳过已经渲染过的
+            if (pre.classList.contains('mermaid-rendered')) {
+              continue;
+            }
+            
+            const code = codeBlock.textContent;
+            const id = `mermaid-${Date.now()}-${i}`;
+            
+            // 检查父节点是否存在
+            if (!pre.parentNode) {
+              continue;
+            }
+            
+            // 创建容器
+            const container = document.createElement('div');
+            container.className = 'mermaid-container';
+            
+            // 保存原始代码到容器的 data 属性，以便主题切换时重新渲染
+            container.setAttribute('data-mermaid-code', code);
+            
+            // 渲染图表
+            const { svg } = await window.mermaid.render(id, code);
+            container.innerHTML = svg;
+            
+            // 修正深色模式下的背景色（容器 + SVG）
+            this.applyMermaidThemeStyles(container);
+            
+            // 创建放大/缩小按钮
+            const zoomButton = document.createElement('button');
+            zoomButton.className = 'mermaid-zoom-btn';
+            zoomButton.setAttribute('aria-label', '放大图表');
+            zoomButton.innerHTML = `
+              <svg class="zoom-icon zoom-in-icon" viewBox="0 0 1024 1024" width="20" height="20">
+                <path d="M840.824471 180.766118l-178.115765 22.106353a7.469176 7.469176 0 0 0-4.397177 12.709647l51.501177 51.501176-144.504471 144.444235a7.529412 7.529412 0 0 0 0 10.661647l42.465883 42.465883a7.529412 7.529412 0 0 0 10.661647 0l144.564706-144.564706 51.440941 51.440941c4.457412 4.457412 11.986824 1.807059 12.709647-4.397176l22.046117-177.995294a7.408941 7.408941 0 0 0-8.432941-8.372706z m-412.611765 378.578823a7.529412 7.529412 0 0 0-10.661647 0l-144.444235 144.564706-51.501177-51.501176a7.469176 7.469176 0 0 0-12.649412 4.397176L186.729412 834.861176a7.529412 7.529412 0 0 0 8.372706 8.372706l178.055529-22.106353a7.469176 7.469176 0 0 0 4.457412-12.709647l-51.501177-51.501176 144.564706-144.564706a7.529412 7.529412 0 0 0 0-10.601412l-42.526117-42.345412z" fill="currentColor"></path>
+              </svg>
+              <svg class="zoom-icon zoom-out-icon" style="display: none;" viewBox="0 0 1024 1024" width="20" height="20">
+                <path d="M851.2 214.186667l-41.386667-41.386667a7.381333 7.381333 0 0 0-10.368 0L654.933333 317.397333l-50.176-50.176a7.253333 7.253333 0 0 0-12.373333 4.266667l-21.589333 173.525333a7.338667 7.338667 0 0 0 8.192 8.149334l173.568-21.546667c6.058667-0.725333 8.533333-8.106667 4.309333-12.373333L706.688 369.066667l144.597333-144.64a7.338667 7.338667 0 0 0-0.085333-10.24z m-406.186667 356.608l-173.568 21.589333a7.338667 7.338667 0 0 0-4.309333 12.373333l50.176 50.176-144.512 144.512a7.381333 7.381333 0 0 0 0 10.368l41.386667 41.386667a7.381333 7.381333 0 0 0 10.368 0l144.597333-144.64 50.176 50.218667a7.253333 7.253333 0 0 0 12.373333-4.309334l21.461334-173.482666a7.253333 7.253333 0 0 0-8.106667-8.192z" fill="currentColor"></path>
+              </svg>
+            `;
+            
+            // 添加点击事件处理
+            zoomButton.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.toggleMermaidZoom(container, zoomButton);
+            });
+            
+            // 应用深色模式按钮样式
+            this.applyZoomButtonTheme(zoomButton);
+            
+            // 将按钮添加到容器
+            container.appendChild(zoomButton);
+            
+            // 移除 loading 状态
+            pre.classList.remove('chart-loading');
+            
+            // 替换代码块
+            pre.parentNode.replaceChild(container, pre);
+          }
+        } catch (error) {
+          console.error('Mermaid渲染失败:', error);
+        }
+      },
+      
+      // 渲染 ECharts 图表
+      async renderECharts() {
+        // 防止重复执行
+        if (this._isRenderingECharts) {
+          return;
+        }
+        
+        const entryContent = document.querySelector('.entry-content');
+        if (!entryContent) return;
+
+        // 查找所有 echarts 代码块
+        const echartsBlocks = entryContent.querySelectorAll('pre code.language-echarts');
+        
+        if (echartsBlocks.length === 0) return;
+        
+        // 如果 ECharts 未加载，先加载
+        if (!isEChartsLoaded()) {
+          await loadEChartsResources();
+        }
+        
+        // 确保加载成功
+        if (!window.echarts) {
+          return;
+        }
+        
+
+        this._isRenderingECharts = true;
+        
+        try {
+          for (let i = 0; i < echartsBlocks.length; i++) {
+            const codeBlock = echartsBlocks[i];
+            const pre = codeBlock.parentElement;
+            
+            // 跳过已经渲染过的
+            if (pre.classList.contains('echarts-rendered')) {
+              continue;
+            }
+            
+            try {
+              // 解析 JSON 配置
+              const code = codeBlock.textContent;
+              const config = JSON.parse(code);
+              
+              // 检查父节点是否存在
+              if (!pre.parentNode) {
+                continue;
+              }
+              
+              // 标记为已渲染（在替换前标记，避免重复处理）
+              pre.classList.add('echarts-rendered');
+              
+              // 创建容器
+              const container = document.createElement('div');
+              container.className = 'echarts-container';
+              container.style.width = '100%';
+              container.style.height = config.height || '400px';
+              container.style.marginBottom = '20px';
+              
+              // 保存原始配置到容器的 data 属性，以便主题切换时重新渲染
+              container.setAttribute('data-echarts-config', code);
+              
+              // 移除 loading 状态
+              pre.classList.remove('chart-loading');
+              
+              // 替换代码块
+              pre.parentNode.replaceChild(container, pre);
+              
+              // 延迟初始化，确保DOM已渲染
+              await this.$nextTick();
+              
+              // 检测当前主题
+              const isDark = document.documentElement.classList.contains('dark-mode') || 
+                           document.body.classList.contains('dark-mode');
+              
+              // 初始化图表（传入主题）
+              const chart = window.echarts.init(container, isDark ? 'dark' : 'light');
+              
+              // 设置配置（自动启用动画 + 透明背景）
+              const finalConfig = {
+                animation: true,                    // 启用动画
+                animationDuration: 1000,           // 动画时长
+                animationEasing: 'cubicOut',       // 缓动效果
+                animationDelay: 0,                 // 动画延迟
+                backgroundColor: 'transparent',     // 透明背景，融入页面
+                ...config                           // 用户配置（可覆盖默认值）
+              };
+              
+              chart.setOption(finalConfig);
+              
+              // 保存 chart 实例到容器，方便后续操作
+              container._echartsInstance = chart;
+              
+              // 响应式调整
+              const resizeHandler = () => {
+                if (chart && !chart.isDisposed()) {
+                  chart.resize();
+                }
+              };
+              window.addEventListener('resize', resizeHandler);
+              
+              // 保存 resize 处理器，便于清理
+              container._resizeHandler = resizeHandler;
+              
+              
+            } catch (parseError) {
+              console.error('ECharts 配置解析失败:', parseError);
+              // 解析失败时不做任何操作
+            }
+          }
+        } catch (error) {
+          console.error('ECharts渲染失败:', error);
+        } finally {
+          this._isRenderingECharts = false;
+        }
+      },
+      
+      // 处理主题切换事件
+      async handleThemeChange(themeData) {
+        
+        try {
+          // 查找所有已渲染的Mermaid容器
+          const mermaidContainers = document.querySelectorAll('.mermaid-container');
+          
+          if (mermaidContainers.length === 0) {
+          } else {
+          
+            // 遍历每个容器，重新渲染
+            for (let i = 0; i < mermaidContainers.length; i++) {
+              const container = mermaidContainers[i];
+              
+              // 从 data 属性中获取原始代码
+              const originalCode = container.getAttribute('data-mermaid-code');
+              if (!originalCode) {
+                continue;
+              }
+              
+              // 生成新的ID
+              const newId = `mermaid-theme-${Date.now()}-${i}`;
+              
+              // 重新渲染图表（使用新主题）
+              const { svg } = await window.mermaid.render(newId, originalCode);
+              
+              // 保存放大按钮（如果存在）
+              const zoomButton = container.querySelector('.mermaid-zoom-btn');
+              
+              // 更新容器内容
+              container.innerHTML = svg;
+              
+              // 重新添加放大按钮
+              if (zoomButton) {
+                container.appendChild(zoomButton);
+                // 更新按钮的主题样式
+                this.applyZoomButtonTheme(zoomButton);
+              } else {
+                // 如果没有按钮，创建一个新的
+                const newZoomButton = document.createElement('button');
+                newZoomButton.className = 'mermaid-zoom-btn';
+                newZoomButton.setAttribute('aria-label', '放大图表');
+                newZoomButton.innerHTML = `
+                  <svg class="zoom-icon zoom-in-icon" viewBox="0 0 1024 1024" width="20" height="20">
+                    <path d="M840.824471 180.766118l-178.115765 22.106353a7.469176 7.469176 0 0 0-4.397177 12.709647l51.501177 51.501176-144.504471 144.444235a7.529412 7.529412 0 0 0 0 10.661647l42.465883 42.465883a7.529412 7.529412 0 0 0 10.661647 0l144.564706-144.564706 51.440941 51.440941c4.457412 4.457412 11.986824 1.807059 12.709647-4.397176l22.046117-177.995294a7.408941 7.408941 0 0 0-8.432941-8.372706z m-412.611765 378.578823a7.529412 7.529412 0 0 0-10.661647 0l-144.444235 144.564706-51.501177-51.501176a7.469176 7.469176 0 0 0-12.649412 4.397176L186.729412 834.861176a7.529412 7.529412 0 0 0 8.372706 8.372706l178.055529-22.106353a7.469176 7.469176 0 0 0 4.457412-12.709647l-51.501177-51.501176 144.564706-144.564706a7.529412 7.529412 0 0 0 0-10.601412l-42.526117-42.345412z" fill="currentColor"></path>
+                  </svg>
+                  <svg class="zoom-icon zoom-out-icon" style="display: none;" viewBox="0 0 1024 1024" width="20" height="20">
+                    <path d="M851.2 214.186667l-41.386667-41.386667a7.381333 7.381333 0 0 0-10.368 0L654.933333 317.397333l-50.176-50.176a7.253333 7.253333 0 0 0-12.373333 4.266667l-21.589333 173.525333a7.338667 7.338667 0 0 0 8.192 8.149334l173.568-21.546667c6.058667-0.725333 8.533333-8.106667 4.309333-12.373333L706.688 369.066667l144.597333-144.64a7.338667 7.338667 0 0 0-0.085333-10.24z m-406.186667 356.608l-173.568 21.589333a7.338667 7.338667 0 0 0-4.309333 12.373333l50.176 50.176-144.512 144.512a7.381333 7.381333 0 0 0 0 10.368l41.386667 41.386667a7.381333 7.381333 0 0 0 10.368 0l144.597333-144.64 50.176 50.218667a7.253333 7.253333 0 0 0 12.373333-4.309334l21.461334-173.482666a7.253333 7.253333 0 0 0-8.106667-8.192z" fill="currentColor"></path>
+                  </svg>
+                `;
+                
+                // 添加点击事件
+                newZoomButton.addEventListener('click', (e) => {
+                  e.stopPropagation();
+                  this.toggleMermaidZoom(container, newZoomButton);
+                });
+                
+                // 应用深色模式按钮样式
+                this.applyZoomButtonTheme(newZoomButton);
+                
+                container.appendChild(newZoomButton);
+              }
+              
+              // 修正深色模式下的背景色（容器 + SVG）
+              this.applyMermaidThemeStyles(container);
+            }
+            
+          }
+        } catch (error) {
+          console.error('主题切换时重新渲染Mermaid失败:', error);
+        }
+        
+        // 处理 ECharts 图表主题切换
+        try {
+          const echartsContainers = document.querySelectorAll('.echarts-container');
+          
+          if (echartsContainers.length === 0) {
+            return;
+          }
+          
+          
+          const isDark = (themeData && themeData.theme === 'dark') || document.body.classList.contains('dark-mode');
+          
+          for (let i = 0; i < echartsContainers.length; i++) {
+            const container = echartsContainers[i];
+            const chart = container._echartsInstance;
+            
+            if (!chart) {
+              continue;
+            }
+            
+            // 获取原始配置
+            const configStr = container.getAttribute('data-echarts-config');
+            if (!configStr) {
+              continue;
+            }
+            
+            try {
+              const config = JSON.parse(configStr);
+              
+              // 销毁旧实例
+              chart.dispose();
+              
+              // 使用新主题重新初始化
+              const newChart = window.echarts.init(container, isDark ? 'dark' : 'light');
+              
+              // 重新设置配置（透明背景）
+              const finalConfig = {
+                animation: true,
+                animationDuration: 1000,
+                animationEasing: 'cubicOut',
+                animationDelay: 0,
+                backgroundColor: 'transparent',  // 透明背景
+                ...config
+              };
+              
+              newChart.setOption(finalConfig);
+              
+              // 更新实例引用
+              container._echartsInstance = newChart;
+              
+              // 重新绑定 resize 事件
+              if (container._resizeHandler) {
+                window.removeEventListener('resize', container._resizeHandler);
+              }
+              const resizeHandler = () => newChart.resize();
+              window.addEventListener('resize', resizeHandler);
+              container._resizeHandler = resizeHandler;
+              
+            } catch (parseError) {
+              console.error('ECharts 配置解析失败:', parseError);
+            }
+          }
+          
+        } catch (error) {
+          console.error('主题切换时重新渲染ECharts失败:', error);
+        }
+      },
+      
+      // 应用放大按钮主题样式
+      applyZoomButtonTheme(button) {
+        if (!button) return;
+        
+        const isDark = document.body.classList.contains('dark-mode');
+        
+        if (isDark) {
+          // 深色模式样式
+          button.style.background = 'rgba(55, 55, 55, 0.95)';
+          button.style.borderColor = '#555';
+          button.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+          
+          // 设置图标颜色
+          const icons = button.querySelectorAll('.zoom-icon');
+          icons.forEach(icon => {
+            icon.style.color = '#e0e0e0';
+          });
+        } else {
+          // 浅色模式样式（清除自定义样式，使用 CSS）
+          button.style.background = '';
+          button.style.borderColor = '';
+          button.style.boxShadow = '';
+          
+          const icons = button.querySelectorAll('.zoom-icon');
+          icons.forEach(icon => {
+            icon.style.color = '';
+          });
+        }
+      },
+      
+      // 应用 Mermaid 主题样式（容器 + SVG 背景）
+      applyMermaidThemeStyles(container) {
+        try {
+          const svg = container.querySelector('svg');
+          if (!svg) return;
+          
+          // 检查是否为深色模式
+          const isDark = document.body.classList.contains('dark-mode');
+          
+          // 1. 设置容器背景色（直接用 JavaScript，避免 CSS 优先级问题）
+          if (isDark) {
+            container.style.backgroundColor = '#2d2d2d';
+          } else {
+            container.style.backgroundColor = '#f8f9fa';
+          }
+          
+          // 2. 修改 SVG 内部的背景
+          if (isDark) {
+            // 深色模式：查找并修改 SVG 内部的背景矩形
+            const backgrounds = svg.querySelectorAll('rect[fill="#f8f9fa"], rect[fill="#F8F9FA"], rect[fill="rgb(248, 249, 250)"], rect.background, g.background rect');
+            backgrounds.forEach(rect => {
+              rect.setAttribute('fill', '#2d2d2d');
+            });
+            
+            // 如果没有找到背景矩形，检查 SVG 的 style 属性
+            if (svg.style.backgroundColor && svg.style.backgroundColor !== 'transparent') {
+              svg.style.backgroundColor = '#2d2d2d';
+            }
+            
+            // 兜底：直接设置 SVG 的背景色
+            if (!backgrounds.length && !svg.style.backgroundColor) {
+              svg.style.backgroundColor = '#2d2d2d';
+            }
+          } else {
+            // 浅色模式：恢复默认背景
+            const backgrounds = svg.querySelectorAll('rect[fill="#2d2d2d"], rect.background, g.background rect');
+            backgrounds.forEach(rect => {
+              rect.setAttribute('fill', '#f8f9fa');
+            });
+            
+            if (svg.style.backgroundColor) {
+              svg.style.backgroundColor = '';
+            }
+          }
+          
+        } catch (error) {
+          console.error('应用Mermaid主题样式失败:', error);
+        }
+      },
+
+      // 切换Mermaid图表的放大/缩小状态
+      toggleMermaidZoom(container, button) {
+        // 检查是否已经有放大层
+        let overlay = document.getElementById('mermaid-zoom-overlay');
+        
+        if (overlay) {
+          // 关闭放大视图
+          overlay.style.transition = 'opacity 0.3s ease';
+          overlay.style.opacity = '0';
+          setTimeout(() => {
+            if (overlay && overlay.parentNode) {
+              overlay.parentNode.removeChild(overlay);
+            }
+          }, 300);
+          document.body.style.overflow = '';
+          return;
+        }
+        
+        // 创建放大层
+        overlay = document.createElement('div');
+        overlay.id = 'mermaid-zoom-overlay';
+        overlay.className = 'mermaid-zoom-overlay';
+        
+        // 获取SVG内容
+        const svg = container.querySelector('svg');
+        if (!svg) return;
+        
+        // 创建内容容器
+        const content = document.createElement('div');
+        content.className = 'mermaid-zoom-content';
+        
+        // 直接复制HTML内容
+        content.innerHTML = svg.outerHTML;
+        
+        // 获取插入的SVG元素
+        const insertedSvg = content.querySelector('svg');
+        if (insertedSvg) {
+          // 保留viewBox，但设置合适的宽高
+          const viewBox = insertedSvg.getAttribute('viewBox');
+          
+          // 移除限制宽度的内联样式
+          insertedSvg.removeAttribute('style');
+          
+          // 从viewBox计算宽高比
+          if (viewBox) {
+            const [x, y, width, height] = viewBox.split(' ').map(Number);
+            const aspectRatio = width / height;
+            
+            // 设置宽度，高度自动计算
+            insertedSvg.setAttribute('width', '800');
+            insertedSvg.setAttribute('height', `${800 / aspectRatio}`);
+          } else {
+            // 如果没有viewBox，使用固定尺寸
+            insertedSvg.setAttribute('width', '800');
+            insertedSvg.setAttribute('height', '600');
+          }
+          
+          // 设置样式
+          insertedSvg.style.display = 'block';
+          insertedSvg.style.maxWidth = '100%';
+          insertedSvg.style.maxHeight = '100%';
+          insertedSvg.style.width = 'auto';
+          insertedSvg.style.height = 'auto';
+          insertedSvg.style.margin = '0 auto';
+        }
+        
+        // 创建关闭按钮
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'mermaid-zoom-close';
+        closeBtn.setAttribute('aria-label', '关闭');
+        closeBtn.innerHTML = `
+          <svg viewBox="0 0 1024 1024" width="24" height="24">
+            <path d="M557.312 513.248l265.28-263.904c12.544-12.48 12.608-32.704 0.128-45.248-12.512-12.576-32.704-12.608-45.248-0.128L512.128 467.904 246.72 204.096c-12.48-12.544-32.704-12.608-45.248-0.128-12.576 12.512-12.608 32.704-0.128 45.248l265.344 263.84-265.28 263.872c-12.544 12.48-12.608 32.704-0.128 45.248 6.24 6.272 14.464 9.44 22.688 9.44 8.16 0 16.32-3.104 22.56-9.312l265.344-263.872 265.376 263.904c6.272 6.272 14.464 9.408 22.688 9.408 8.16 0 16.32-3.104 22.56-9.312 12.544-12.48 12.608-32.704 0.128-45.248L557.312 513.248z" fill="currentColor"></path>
+          </svg>
+        `;
+        
+        // 添加元素到overlay
+        overlay.appendChild(content);
+        overlay.appendChild(closeBtn);
+        
+        // 添加到body
+        document.body.appendChild(overlay);
+        
+        // 淡入效果
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.style.opacity = '1';
+        }, 10);
+        
+        // 禁止body滚动
+        document.body.style.overflow = 'hidden';
+        
+        // 点击overlay背景或关闭按钮关闭
+        const closeOverlay = () => {
+          overlay.style.transition = 'opacity 0.3s ease';
+          overlay.style.opacity = '0';
+          setTimeout(() => {
+            if (overlay && overlay.parentNode) {
+              overlay.parentNode.removeChild(overlay);
+            }
+          }, 300);
+          document.body.style.overflow = '';
+        };
+        
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            closeOverlay();
+          }
+        });
+        
+        closeBtn.addEventListener('click', closeOverlay);
       },
 
       // 设置语言切换按钮的事件委托
@@ -1545,6 +2534,7 @@
         }
 
         this.currentLang = lang;
+        this.tocbotRefreshed = false; // 重置tocbot刷新标志
 
         // 将语言偏好与文章ID绑定，避免跨文章的语言记忆问题
         const articleLangKey = `article_${this.id}_preferredLanguage`;
@@ -1568,7 +2558,9 @@
           // 如果已有翻译内容，直接显示
           if (this.translatedContent) {
             // 强制更新显示翻译内容
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            const md = new MarkdownIt({breaks: true})
+              .use(require('markdown-it-multimd-table'))
+              .use(require('@iktakahiro/markdown-it-katex'));
             this.articleContentHtml = md.render(this.translatedContent);
             this.articleContentKey = Date.now(); // 强制Vue重新渲染
             
@@ -1576,6 +2568,8 @@
             this.$nextTick(() => {
               this.$common.imgShow(".entry-content img");
               this.highlight();
+              this.renderMermaid();
+              this.renderECharts();
               this.addId();
               this.getTocbot();
             });
@@ -1593,6 +2587,8 @@
           this.$nextTick(() => {
             this.$common.imgShow(".entry-content img");
             this.highlight();
+            this.renderMermaid();
+            this.renderECharts();
             this.addId();
             this.getTocbot();
           });
@@ -1600,11 +2596,9 @@
       },
       async fetchTranslation() {
         if (!this.article || !this.article.id) {
-          console.warn('无法获取翻译：文章ID不存在');
           return;
         }
         
-        console.log('开始获取翻译，文章ID:', this.article.id, '目标语言:', this.currentLang);
         this.isLoading = true;
         try {
           // 直接使用当前语言获取翻译
@@ -1614,14 +2608,14 @@
           });
 
           if (response.code === 200 && response.data) {
-            console.log('获取翻译成功');
             this.translatedTitle = response.data.title;
             this.translatedContent = response.data.content;
 
             // 更新文章内容显示
-            console.log('当前为' + this.currentLang + '模式，更新显示翻译内容');
             // 使用与原文相同的渲染方法
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            const md = new MarkdownIt({breaks: true})
+              .use(require('markdown-it-multimd-table'))
+              .use(require('@iktakahiro/markdown-it-katex'));
             this.articleContentHtml = md.render(this.translatedContent);
             this.articleContentKey = Date.now(); // 强制Vue重新渲染
 
@@ -1629,12 +2623,13 @@
             this.$nextTick(() => {
               this.$common.imgShow(".entry-content img");
               this.highlight();
+              this.renderMermaid();
+              this.renderECharts();
               this.addId();
               this.getTocbot();
             });
           } else if (response.code === 200 && response.data && response.data.status === 'not_found') {
             // 翻译不存在，自动降级到源语言
-            console.log('翻译不存在，自动切换到源语言');
             this.currentLang = this.sourceLanguage;
             
             // 清除该文章的语言偏好，避免下次还是尝试加载不存在的翻译
@@ -1645,13 +2640,17 @@
             this.updateUrlWithLanguage(this.sourceLanguage);
             
             // 显示原文
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            const md = new MarkdownIt({breaks: true})
+              .use(require('markdown-it-multimd-table'))
+              .use(require('@iktakahiro/markdown-it-katex'));
             this.articleContentHtml = md.render(this.article.articleContent);
             this.articleContentKey = Date.now();
             
             this.$nextTick(() => {
               this.$common.imgShow(".entry-content img");
               this.highlight();
+              this.renderMermaid();
+              this.renderECharts();
               this.addId();
               this.getTocbot();
             });
@@ -1669,13 +2668,17 @@
             this.updateUrlWithLanguage(this.sourceLanguage);
             
             // 显示原文
-            const md = new MarkdownIt({breaks: true}).use(require('markdown-it-multimd-table'));
+            const md = new MarkdownIt({breaks: true})
+              .use(require('markdown-it-multimd-table'))
+              .use(require('@iktakahiro/markdown-it-katex'));
             this.articleContentHtml = md.render(this.article.articleContent);
             this.articleContentKey = Date.now();
             
             this.$nextTick(() => {
               this.$common.imgShow(".entry-content img");
               this.highlight();
+              this.renderMermaid();
+              this.renderECharts();
               this.addId();
               this.getTocbot();
             });
@@ -1685,7 +2688,6 @@
           console.error('Translation error:', error);
           
           // 翻译请求失败时，自动降级到源语言显示原文
-          console.log('翻译请求失败，自动切换到源语言显示原文');
           this.currentLang = this.sourceLanguage;
           
           // 清除该文章的语言偏好，避免下次还是加载失败的翻译
@@ -1703,6 +2705,8 @@
           this.$nextTick(() => {
             this.$common.imgShow(".entry-content img");
             this.highlight();
+            this.renderMermaid();
+            this.renderECharts();
             this.addId();
             this.getTocbot();
           });
@@ -1733,7 +2737,6 @@
           query: query 
         }).catch(err => {
           if (err.name !== 'NavigationDuplicated') {
-            console.warn('路由导航重复:', err);
           }
         });
       },
@@ -1854,39 +2857,22 @@
           const articleLangKey = `article_${this.id}_preferredLanguage`;
           const savedLang = localStorage.getItem(articleLangKey); // 只读取当前文章的语言偏好
 
-          console.log('语言初始化调试信息:', {
-            'articleId': this.id,
-            'langParam': langParam,
-            'savedLang': savedLang,
-            'sourceLanguage': this.sourceLanguage,
-            'route.params': this.$route.params
-          });
-
           // 重置当前语言为源语言，避免使用上一篇文章的语言设置
           this.currentLang = this.sourceLanguage;
 
           if (langParam && this.languageMap[langParam]) {
             // URL路径参数优先，但必须是支持的语言
-            console.log('使用URL路径参数设置语言:', langParam);
             this.currentLang = langParam;
           } else if (savedLang && this.languageMap[savedLang] && savedLang !== this.sourceLanguage) {
             // 只有当前文章有保存的语言偏好时才使用
-            console.log('使用当前文章保存的语言偏好:', savedLang);
             this.currentLang = savedLang;
           } else {
             // 使用默认源语言
-            console.log('使用默认源语言:', this.sourceLanguage);
             this.currentLang = this.sourceLanguage;
           }
 
           // 设置HTML元素的lang属性
           document.documentElement.setAttribute('lang', this.currentLang);
-
-          console.log('语言设置初始化完成:', {
-            currentLang: this.currentLang,
-            sourceLanguage: this.sourceLanguage,
-            targetLanguage: this.targetLanguage
-          });
 
         } catch (error) {
           console.error('语言设置初始化失败:', error);
@@ -1900,8 +2886,8 @@
 
       async getDefaultTargetLanguage() {
         try {
-          // 从Python后端获取默认语言配置
-          const response = await this.$http.get(this.$constant.pythonBaseURL + "/api/translation/default-lang");
+          // 从Java后端获取默认语言配置
+          const response = await this.$http.get(this.$constant.baseURL + "/webInfo/ai/config/articleAi/defaultLang");
 
           if (response.code === 200 && response.data) {
             // 设置默认目标语言
@@ -1911,12 +2897,7 @@
             // 设置默认源语言
             this.sourceLanguage = response.data.default_source_lang || 'zh';
             this.sourceLanguageName = this.languageMap[this.sourceLanguage] || '中文';
-
-            console.log('获取默认语言配置成功：',
-                      '源语言:', this.sourceLanguage, this.sourceLanguageName,
-                      '目标语言:', this.targetLanguage, this.targetLanguageName);
           } else {
-            console.warn('获取默认语言配置失败，使用默认值');
             this.targetLanguage = 'en';
             this.targetLanguageName = 'English';
             this.sourceLanguage = 'zh';
@@ -1933,24 +2914,20 @@
 
       async getArticleAvailableLanguages() {
         if (!this.article || !this.article.id) {
-          console.warn('无法获取可用翻译语言：文章ID不存在');
           return;
         }
 
         try {
-          console.log('开始获取文章可用翻译语言，文章ID:', this.article.id);
           const response = await this.$http.get(this.$constant.baseURL + "/article/getAvailableLanguages", {
             id: this.article.id
           });
 
           if (response.code === 200 && response.data) {
             this.availableLanguages = response.data || [];
-            console.log('获取文章可用翻译语言成功:', this.availableLanguages);
 
             // 生成动态语言按钮
             this.generateLanguageButtons();
           } else {
-            console.warn('获取文章可用翻译语言失败:', response.message);
             this.availableLanguages = [];
             this.generateLanguageButtons();
           }
@@ -1984,12 +2961,10 @@
           });
         }
 
-        console.log('生成语言按钮:', this.availableLanguageButtons);
 
         // 如果当前语言不在可用语言列表中，切换到源语言
         const currentLangAvailable = this.availableLanguageButtons.some(btn => btn.code === this.currentLang);
         if (!currentLangAvailable) {
-          console.log('当前语言不可用，切换到源语言:', this.sourceLanguage);
           this.currentLang = this.sourceLanguage;
           
           // 清除该文章的语言偏好，因为保存的语言已不可用
@@ -2023,11 +2998,9 @@
           script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
           script.onload = () => {
             window.html2canvasLoading = false;
-            console.log('html2canvas库预加载完成');
           };
           script.onerror = () => {
             window.html2canvasLoading = false;
-            console.warn('html2canvas库预加载失败');
           };
           document.head.appendChild(script);
         }
@@ -2215,6 +3188,8 @@
   .article-head {
     height: 40vh;
     position: relative;
+    /* 确保整个头部区域在文章容器之上，避免被动画创建的层叠上下文遮挡 */
+    z-index: 10;
   }
 
   /* 确保article-head内的所有绝对定位元素不会覆盖语言切换按钮 */
@@ -2238,6 +3213,16 @@
     content: "";
     z-index: 1;
     pointer-events: none;
+  }
+
+  .error-text {
+    font-size: 22px;
+    line-height: 1.8;
+    letter-spacing: 2px;
+    color: var(--white);
+    padding: 20px;
+    text-align: center;
+    word-break: break-word;
   }
 
   .article-info-container {
@@ -2265,6 +3250,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     word-break: break-word;
   }
@@ -2286,6 +3272,9 @@
     max-width: 800px;
     margin: 0 auto;
     padding: 40px 20px;
+    /* 确保不会因为动画的层叠上下文而遮挡头部元素 */
+    position: relative;
+    z-index: 1;
   }
 
   .article-update-time {
@@ -2520,12 +3509,8 @@
     height: 100%;
   }
 
-  /* 响应式设计 */
+  /* 响应式设计 - 对话框宽度由 centered-dialog.css 全局样式处理 */
   @media (max-width: 768px) {
-    .share-card-dialog {
-      width: 95% !important;
-    }
-
     .share-card-preview {
       max-width: 100%;
       padding: 18px;
@@ -2650,7 +3635,8 @@
   /* 语言切换按钮容器样式 */
   .language-switch-container {
     position: relative;
-    z-index: 9999;
+    /* z-index已优化：article-head的z-index: 10已经解决了层级问题，不需要超高的z-index */
+    z-index: 1;
     width: 100%;
     pointer-events: none;
     margin-bottom: 15px;
@@ -2667,8 +3653,10 @@
   /* 语言切换按钮样式 */
   .article-language-switch {
     position: relative;
-    z-index: 10000;
+    z-index: 1;
+    margin-top: 10px; /* 添加上边距，与封面保持距离 */
     margin-bottom: 20px;
+    margin-left: 10px; /* 添加左边距 */
     pointer-events: auto;
     transform: translateZ(0);
     will-change: transform;
@@ -2676,7 +3664,7 @@
 
   .article-language-switch .el-button-group {
     position: relative;
-    z-index: 10001;
+    z-index: 1;
     box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.2);
     border-radius: 6px;
     overflow: hidden;
@@ -2688,7 +3676,7 @@
 
   .article-language-switch .el-button {
     position: relative;
-    z-index: 10002;
+    z-index: 1;
     padding: 8px 15px;
     font-weight: 500;
     font-size: 13px;
@@ -2696,7 +3684,6 @@
     transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
     background: rgba(255, 255, 255, 0.9);
     border-color: rgba(255, 255, 255, 0.9);
-    color: var(--fontColor);
     cursor: pointer;
     user-select: none;
     pointer-events: auto !important;
@@ -2739,8 +3726,10 @@
 
 
 
+  /* 注释原因：通过CSS层叠上下文（.article-head z-index: 10 和 .article-container z-index: 1）
+     已经彻底解决了语言切换按钮被遮挡的问题，无需在中等屏幕下隐藏按钮 */
   /* 中等屏幕适配 - 隐藏原有语言切换按钮 */
-  @media (max-width: 1050px) {
+  /* @media (max-width: 1050px) {
     .language-switch-container {
       display: none !important;
     }
@@ -2748,13 +3737,13 @@
     .article-language-switch {
       display: none !important;
     }
-  }
+  } */
 
   /* 移动端适配 */
   @media (max-width: 768px) {
     .language-switch-container {
       position: relative;
-      z-index: 9999;
+      z-index: 1;
       margin-bottom: 10px;
       pointer-events: none;
       isolation: isolate;
@@ -2763,8 +3752,10 @@
 
     .article-language-switch {
       position: relative;
-      z-index: 10000;
+      z-index: 1;
+      margin-top: 15px; /* 移动端上边距稍小 */
       margin-bottom: 10px;
+      margin-left: 15px; /* 移动端左边距稍小 */
       pointer-events: auto;
       transform: translateZ(0);
       will-change: transform;
@@ -2772,7 +3763,7 @@
 
     .article-language-switch .el-button {
       position: relative;
-      z-index: 10002;
+      z-index: 1;
       padding: 6px 12px;
       font-size: 12px;
       min-height: 32px;
@@ -2784,10 +3775,259 @@
 
     .article-language-switch .el-button-group {
       position: relative;
-      z-index: 10001;
+      z-index: 1;
       pointer-events: auto;
       transform: translateZ(0);
       isolation: isolate;
+    }
+  }
+
+  /* Mermaid图表容器 */
+  ::v-deep .mermaid-container {
+    position: relative;
+    margin: 20px 0;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    overflow-x: auto;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  
+  /* 深色模式下的容器背景 - 提高优先级 */
+  body.dark-mode ::v-deep .mermaid-container {
+    background: #2d2d2d !important;
+  }
+
+  ::v-deep .mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Mermaid放大/缩小按钮 */
+  ::v-deep .mermaid-zoom-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 10;
+    padding: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(4px);
+  }
+
+  ::v-deep .mermaid-zoom-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: #409eff;
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+    transform: scale(1.05);
+  }
+
+  ::v-deep .mermaid-zoom-btn:active {
+    transform: scale(0.95);
+  }
+
+  ::v-deep .mermaid-zoom-btn .zoom-icon {
+    width: 20px;
+    height: 20px;
+    color: #333;
+    transition: color 0.2s ease;
+  }
+
+  ::v-deep .mermaid-zoom-btn:hover .zoom-icon {
+    color: #409eff;
+  }
+
+  /* 深色模式下的放大按钮样式 */
+  body.dark-mode ::v-deep .mermaid-zoom-btn,
+  .dark-mode ::v-deep .mermaid-zoom-btn {
+    background: rgba(55, 55, 55, 0.95);
+    border: 1px solid #555;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  body.dark-mode ::v-deep .mermaid-zoom-btn:hover,
+  .dark-mode ::v-deep .mermaid-zoom-btn:hover {
+    background: rgba(70, 70, 70, 1);
+    border-color: #4a9eff;
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+  }
+  
+  body.dark-mode ::v-deep .mermaid-zoom-btn .zoom-icon,
+  .dark-mode ::v-deep .mermaid-zoom-btn .zoom-icon {
+    color: #e0e0e0;
+  }
+  
+  body.dark-mode ::v-deep .mermaid-zoom-btn:hover .zoom-icon,
+  .dark-mode ::v-deep .mermaid-zoom-btn:hover .zoom-icon {
+    color: #4a9eff;
+  }
+  
+  /* ========== Loading 占位符样式 ========== */
+  
+  /* 默认隐藏 echarts 和 mermaid 代码块内容，防止闪烁 */
+  ::v-deep pre:has(code.language-echarts) code,
+  ::v-deep pre:has(code.language-mermaid) code {
+    opacity: 0;
+    position: absolute;
+  }
+  
+  /* 隐藏 loading 状态下的复制按钮 */
+  ::v-deep pre:has(code.language-echarts) .copy-btn,
+  ::v-deep pre:has(code.language-mermaid) .copy-btn {
+    display: none !important;
+  }
+  
+  /* 为 echarts 和 mermaid 代码块自动添加占位符样式 */
+  ::v-deep pre:has(code.language-echarts),
+  ::v-deep pre:has(code.language-mermaid) {
+    position: relative;
+    min-height: 400px;
+    background: var(--background, #ffffff);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 20px 0;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  /* 添加加载动画（居中） */
+  ::v-deep pre:has(code.language-echarts)::before,
+  ::v-deep pre:has(code.language-mermaid)::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #409EFF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    z-index: 1;
+  }
+  
+  /* 图表 loading 样式（兼容旧逻辑） */
+  ::v-deep pre.chart-loading {
+    position: relative;
+    min-height: 400px;
+    background: var(--background, #ffffff);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 20px 0;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  }
+  
+  ::v-deep pre.chart-loading code {
+    display: none !important;
+  }
+  
+  ::v-deep pre.chart-loading::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #409EFF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  /* 代码块 loading 样式 */
+  ::v-deep pre.code-loading {
+    position: relative;
+    min-height: 100px;
+  }
+  
+  ::v-deep pre.code-loading code {
+    opacity: 0.3;
+  }
+  
+  /* 暗色模式下的 loading */
+  body.dark-mode ::v-deep pre:has(code.language-echarts),
+  body.dark-mode ::v-deep pre:has(code.language-mermaid),
+  body.dark-mode ::v-deep pre.chart-loading {
+    background: rgba(255, 255, 255, 0.03) !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  body.dark-mode ::v-deep pre:has(code.language-echarts)::before,
+  body.dark-mode ::v-deep pre:has(code.language-mermaid)::before,
+  body.dark-mode ::v-deep pre.chart-loading::before {
+    border-color: rgba(255, 255, 255, 0.1);
+    border-top-color: #409EFF;
+  }
+  
+  /* Loading 旋转动画 */
+  
+  @keyframes spin {
+    0% { transform: translateX(-50%) rotate(0deg); }
+    100% { transform: translateX(-50%) rotate(360deg); }
+  }
+  
+  /* ========== ECharts图表样式 ========== */
+  
+  /* ECharts图表容器 */
+  ::v-deep .echarts-container {
+    position: relative;
+    margin: 20px 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 8px;
+    overflow: visible;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+  }
+  
+  ::v-deep .echarts-container:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+  }
+  
+  /* 深色模式下的 ECharts 容器 */
+  body.dark-mode ::v-deep .echarts-container {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  
+  body.dark-mode ::v-deep .echarts-container:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  
+  /* ECharts 图表画布 */
+  ::v-deep .echarts-container canvas {
+    display: block;
+    border-radius: 8px;
+  }
+  
+  /* ECharts 动画效果 */
+  ::v-deep .echarts-container {
+    animation: fadeInUp 0.6s ease-out;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 
@@ -2822,5 +4062,320 @@
   padding: 6px 20px;
   font-size: 15px;
   margin-bottom: 20px;
+}
+
+/* 文章订阅对话框垂直居中 */
+.el-message-box__wrapper {
+  align-items: center;
+}
+
+.el-message-box {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin-top: 0 !important;
+}
+
+/* 订阅对话框按钮样式 - 与卡片分享对话框保持一致 */
+.el-message-box .el-button {
+  border-radius: 25px;
+  padding: 6px 20px;
+  font-size: 15px;
+}
+
+/* ========== 暗色模式适配 - 卡片分享对话框 ========== */
+body.dark-mode .share-card-dialog .el-dialog {
+  background: #2c2c2c !important;
+}
+
+body.dark-mode .share-card-dialog .el-dialog__header {
+  background: #2c2c2c !important;
+}
+
+body.dark-mode .share-card-dialog .el-dialog__body {
+  background: #2c2c2c !important;
+}
+
+body.dark-mode .share-card-dialog .el-dialog__footer {
+  background: #2c2c2c !important;
+}
+
+body.dark-mode .share-card-dialog .el-dialog__title {
+  color: #e0e0e0 !important;
+}
+
+/* 暗色模式下对话框关闭按钮 */
+body.dark-mode .share-card-dialog .el-dialog__headerbtn .el-dialog__close {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .share-card-dialog .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+
+/* ========== 暗色模式适配 - 文章订阅对话框（MessageBox）========== */
+body.dark-mode .el-message-box {
+  background-color: #2c2c2c !important;
+  border: 1px solid #404040 !important;
+}
+
+body.dark-mode .el-message-box__header {
+  background-color: #2c2c2c !important;
+}
+
+body.dark-mode .el-message-box__title {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-message-box__content {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .el-message-box__message {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .el-message-box__headerbtn .el-message-box__close {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .el-message-box__headerbtn:hover .el-message-box__close {
+  color: #ffffff !important;
+}
+
+/* 订阅对话框按钮暗色模式 */
+body.dark-mode .el-message-box .el-button--default {
+  background-color: #404040 !important;
+  border-color: #505050 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-message-box .el-button--default:hover {
+  background-color: #505050 !important;
+  border-color: #606060 !important;
+}
+
+body.dark-mode .el-message-box .el-button--primary {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+}
+
+body.dark-mode .el-message-box .el-button--primary:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+}
+
+/* ========== 暗色模式适配 - 版权声明对话框 ========== */
+body.dark-mode .article-copy .el-dialog {
+  background-color: #2c2c2c !important;
+}
+
+body.dark-mode .article-copy .el-dialog__header {
+  background-color: #2c2c2c !important;
+}
+
+body.dark-mode .article-copy .el-dialog__title {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .article-copy .el-dialog__body {
+  background-color: #2c2c2c !important;
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .article-copy .el-dialog__headerbtn .el-dialog__close {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .article-copy .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+
+/* 版权声明对话框内容适配 */
+body.dark-mode .article-copy .copyright-container {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .article-copy .copyright-container p {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .article-copy .copyright-container ul {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .article-copy .copyright-container li {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .article-copy .copyright-container a {
+  color: #66b1ff !important;
+}
+
+body.dark-mode .article-copy .copyright-container a:hover {
+  color: #409eff !important;
+}
+
+/* ========== 暗色模式适配 - 通用 el-dialog ========== */
+body.dark-mode .el-dialog {
+  background-color: #2c2c2c !important;
+}
+
+body.dark-mode .el-dialog__header {
+  background-color: #2c2c2c !important;
+  border-bottom-color: #404040 !important;
+}
+
+body.dark-mode .el-dialog__title {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-dialog__body {
+  background-color: #2c2c2c !important;
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .el-dialog__footer {
+  background-color: #2c2c2c !important;
+  border-top-color: #404040 !important;
+}
+
+body.dark-mode .el-dialog__headerbtn .el-dialog__close {
+  color: #b0b0b0 !important;
+}
+
+body.dark-mode .el-dialog__headerbtn:hover .el-dialog__close {
+  color: #ffffff !important;
+}
+
+/* 暗色模式下对话框中的输入框 */
+body.dark-mode .el-dialog .el-input__inner {
+  background-color: #404040 !important;
+  border-color: #505050 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-dialog .el-input__inner::placeholder {
+  color: #888888 !important;
+}
+
+body.dark-mode .el-dialog .el-input__inner:focus {
+  border-color: #409eff !important;
+}
+
+/* 暗色模式下对话框中的按钮 */
+body.dark-mode .el-dialog .el-button--default {
+  background-color: #404040 !important;
+  border-color: #505050 !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .el-dialog .el-button--default:hover {
+  background-color: #505050 !important;
+  border-color: #606060 !important;
+}
+
+body.dark-mode .el-dialog .el-button--primary {
+  background-color: #409eff !important;
+  border-color: #409eff !important;
+}
+
+body.dark-mode .el-dialog .el-button--primary:hover {
+  background-color: #66b1ff !important;
+  border-color: #66b1ff !important;
+}
+
+/* Mermaid图表放大overlay */
+.mermaid-zoom-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+
+.mermaid-zoom-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.mermaid-zoom-content svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto !important;
+  height: auto !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.dark-mode .mermaid-zoom-content {
+  background: #2d2d2d;
+}
+
+.mermaid-zoom-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+}
+
+.mermaid-zoom-close:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mermaid-zoom-close svg {
+  color: #333;
+  transition: color 0.2s ease;
+}
+
+.mermaid-zoom-close:hover svg {
+  color: #ff4444;
+}
+
+/* 暗色模式 */
+.dark-mode .mermaid-zoom-close {
+  background: rgba(45, 45, 45, 0.9);
+  border-color: #555;
+}
+
+.dark-mode .mermaid-zoom-close:hover {
+  background: rgba(45, 45, 45, 1);
+}
+
+.dark-mode .mermaid-zoom-close svg {
+  color: #ddd;
+}
+
+.dark-mode .mermaid-zoom-close:hover svg {
+  color: #ff6666;
 }
 </style>

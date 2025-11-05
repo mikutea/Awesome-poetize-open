@@ -44,7 +44,7 @@
                     disable-transitions>
               {{scope.row.userStatus === false ? '禁用' : '启用'}}
             </el-tag>
-            <el-switch v-if="scope.row.id !== $store.state.currentAdmin.id"
+            <el-switch v-if="scope.row.id !== mainStore.currentAdmin.id"
                        v-model="scope.row.userStatus"
                        @change="handleUserStatusToggle(scope.row)"></el-switch>
           </template>
@@ -113,6 +113,7 @@
     <el-dialog title="修改用户类型"
                :visible.sync="editVisible"
                width="30%"
+               custom-class="centered-dialog"
                :before-close="handleClose"
                :append-to-body="true"
                destroy-on-close
@@ -134,7 +135,9 @@
 
 <script>
 
-  export default {
+    import { useMainStore } from '@/stores/main';
+
+export default {
     data() {
       return {
         pagination: {
@@ -155,7 +158,10 @@
       }
     },
 
-    computed: {},
+    computed: {
+      mainStore() {
+        return useMainStore();
+      },},
 
     watch: {},
 
@@ -384,5 +390,108 @@
 
   .el-switch {
     margin: 5px;
+  }
+
+  /* ===========================================
+     表单移动端样式 - PC端和移动端响应式
+     =========================================== */
+  
+  /* PC端样式 - 768px以上 */
+  @media screen and (min-width: 769px) {
+    ::v-deep .el-form-item__label {
+      float: left !important;
+    }
+  }
+
+  /* 移动端样式 - 768px及以下 */
+  @media screen and (max-width: 768px) {
+    /* 表单标签 - 垂直布局 */
+    ::v-deep .el-form-item__label {
+      float: none !important;
+      width: 100% !important;
+      text-align: left !important;
+      margin-bottom: 8px !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
+      padding-bottom: 0 !important;
+      line-height: 1.5 !important;
+    }
+
+    ::v-deep .el-form-item__content {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+
+    ::v-deep .el-form-item {
+      margin-bottom: 20px !important;
+    }
+
+    /* 输入框移动端优化 */
+    ::v-deep .el-input__inner {
+      font-size: 16px !important;
+      height: 44px !important;
+      border-radius: 8px !important;
+    }
+
+    ::v-deep .el-textarea__inner {
+      font-size: 16px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 选择器移动端优化 */
+    ::v-deep .el-select {
+      width: 100% !important;
+    }
+
+    ::v-deep .el-select .el-input__inner {
+      height: 44px !important;
+      line-height: 44px !important;
+    }
+
+    /* 按钮移动端优化 */
+    ::v-deep .el-button {
+      min-height: 40px !important;
+      border-radius: 8px !important;
+    }
+
+    /* 对话框移动端优化 */
+    ::v-deep .el-dialog {
+      width: 95% !important;
+      margin-top: 5vh !important;
+    }
+
+    ::v-deep .el-dialog__body {
+      padding: 15px !important;
+    }
+
+    /* 搜索框移动端优化 */
+    .handle-input {
+      width: 100% !important;
+      margin-bottom: 10px !important;
+    }
+
+    .handle-select {
+      width: 100% !important;
+      margin-bottom: 10px !important;
+    }
+  }
+
+  /* 极小屏幕优化 - 480px及以下 */
+  @media screen and (max-width: 480px) {
+    ::v-deep .el-form-item__label {
+      font-size: 13px !important;
+    }
+
+    ::v-deep .el-input__inner,
+    ::v-deep .el-select .el-input__inner {
+      height: 40px !important;
+      line-height: 40px !important;
+      font-size: 15px !important;
+    }
+
+    ::v-deep .el-button {
+      min-height: 38px !important;
+      font-size: 14px !important;
+    }
   }
 </style>

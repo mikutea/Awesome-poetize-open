@@ -197,15 +197,12 @@ public class QRCodeUtil {
                 if (logoUrl.startsWith("http://")) {
                     String httpsUrl = logoUrl.replace("http://", "https://");
                     try {
-                        log.debug("检测到HTTP协议，先尝试HTTPS: {}", httpsUrl);
                         BufferedImage httpsImage = readImageWithRedirect(httpsUrl);
                         if (httpsImage != null) {
                             log.info("HTTPS图片读取成功，尺寸: {}x{}", httpsImage.getWidth(), httpsImage.getHeight());
                             return httpsImage;
                         }
-                        log.debug("HTTPS尝试失败，回退到HTTP");
                     } catch (Exception e) {
-                        log.debug("HTTPS读取失败，尝试HTTP: {}", e.getMessage());
                     }
                 }
                 
@@ -250,7 +247,6 @@ public class QRCodeUtil {
             // 处理重定向（301, 302, 303, 307, 308）
             if (responseCode >= 300 && responseCode < 400) {
                 String newUrl = connection.getHeaderField("Location");
-                log.debug("检测到重定向: {} -> {}", imageUrl, newUrl);
                 connection.disconnect();
                 return readImageWithRedirect(newUrl); // 递归处理重定向
             }

@@ -845,7 +845,8 @@ Sitemap: /sitemap.xml"
     <el-dialog
       title="SEO分析结果"
       :visible.sync="showAnalysisDialog"
-      width="60%">
+      width="60%"
+      custom-class="centered-dialog">
       <div v-if="seoAnalysis">
         <div class="analysis-score">
           <el-progress type="circle" :percentage="seoAnalysis.seo_score" :status="getSeoScoreStatus(seoAnalysis.seo_score)"></el-progress>
@@ -884,7 +885,8 @@ Sitemap: /sitemap.xml"
     <el-dialog
       title="AI API配置"
       :visible.sync="showApiConfigDialog"
-      width="50%">
+      width="50%"
+      custom-class="centered-dialog">
       <el-form :model="aiApiConfig" label-width="120px" size="small">
         <el-form-item label="AI模型提供商">
           <el-select v-model="aiApiConfig.provider" placeholder="请选择AI服务提供商" @change="onProviderChange">
@@ -1059,7 +1061,8 @@ Sitemap: /sitemap.xml"
     <el-dialog
       title="AI SEO分析使用帮助"
       :visible.sync="showHelpDialog"
-      width="70%">
+      width="70%"
+      custom-class="centered-dialog">
       <div class="help-content">
         <el-tabs type="border-card">
           <el-tab-pane label="📖 功能介绍">
@@ -1204,6 +1207,8 @@ Sitemap: /sitemap.xml"
 
 <script>
 
+  import { useMainStore } from '@/stores/main';
+
 const uploadPicture = () => import("../common/uploadPicture");
 
 export default {
@@ -1307,11 +1312,10 @@ export default {
   
   created() {
     try {
-      console.log('SEO配置组件初始化');
       this.getSeoConfig();
       
       // 初始化当前存储类型
-      this.currentStoreType = this.$store.state.sysConfig['store.type'] || "local";
+      this.currentStoreType = this.mainStore.sysConfig['store.type'] || "local";
       
       // 监听系统配置更新事件
       this.$bus.$on('sysConfigUpdated', this.handleSysConfigUpdate);
@@ -1348,7 +1352,6 @@ export default {
       handler(newVal, oldVal) {
         // 只有在非初始加载且值确实发生变化时才保存
         if (!this.initialLoad && oldVal !== undefined && newVal !== oldVal) {
-          console.log('SEO开关状态发生变化:', oldVal, '->', newVal);
           this.saveEnableStatus(newVal);
         }
       }
@@ -1356,6 +1359,9 @@ export default {
   },
 
   computed: {
+      mainStore() {
+        return useMainStore();
+      },
     // 移动端相关的计算属性
     isMobileDevice() {
       return this.isMobile;
@@ -1396,12 +1402,6 @@ export default {
       
       this.isMobile = this.isMobile || isMobileUA;
       
-      console.log('设备检测结果:', {
-        isMobile: this.isMobile,
-        isTouch: this.isTouch,
-        screenWidth: window.innerWidth,
-        userAgent: userAgent.substring(0, 50)
-      });
     },
 
     // 添加移动端优化
@@ -1488,7 +1488,6 @@ export default {
     handleSysConfigUpdate(config) {
       if (config && config['store.type']) {
         this.currentStoreType = config['store.type'];
-        console.log("SEO配置页面收到系统配置更新，存储类型更新为:", this.currentStoreType);
       }
     },
     
@@ -1496,15 +1495,12 @@ export default {
     saveEnableStatus(status) {
       // 确保状态是布尔值
       const enableStatus = status === undefined ? false : !!status;
-      console.log('开始保存SEO开关状态:', enableStatus);
       
       this.$http.post(this.$constant.baseURL + '/admin/seo/updateEnableStatus', {
         enable: enableStatus
       }, true)
       .then(res => {
-        console.log('SEO开关状态保存响应:', res);
         if (res.code === 200) {
-          console.log('SEO开关状态保存成功, 新状态:', enableStatus);
           this.showMobileSuccess('SEO开关状态已保存');
         } else {
           console.error('SEO开关状态保存失败, 错误信息:', res.message);
@@ -1518,23 +1514,18 @@ export default {
     },
     
     getSeoConfig() {
-      console.log('开始获取SEO配置...');
       try {
         this.$http.get(this.$constant.baseURL + '/admin/seo/getSeoConfig', {}, true)
           .then((res) => {
-            console.log('获取SEO配置响应数据:', res);
             
             // 检查是否是标准的{code, data}格式
             if (res && res.code === 200 && res.data) {
               const config = res.data;
-              console.log('获取SEO配置成功, 配置项数量:', Object.keys(config).length);
               
               // 确保enable字段存在，如果不存在设置为false
               if (config.enable === undefined) {
-                console.log('SEO开关状态不存在，设置默认值为false');
                 config.enable = false;
               }
-              console.log('SEO开关当前状态:', config.enable);
               
               // 使用Object.assign保持响应式，而不是直接替换对象
               Object.assign(this.seoConfig, config);
@@ -1544,13 +1535,10 @@ export default {
             } else if (res && typeof res === 'object' && !res.hasOwnProperty('code')) {
               // 直接返回配置对象的情况（兼容性处理）
               const config = res;
-              console.log('获取SEO配置成功(直接格式), 配置项数量:', Object.keys(config).length);
               
               if (config.enable === undefined) {
-                console.log('SEO开关状态不存在，设置默认值为false');
                 config.enable = false;
               }
-              console.log('SEO开关当前状态:', config.enable);
               
               Object.assign(this.seoConfig, config);
               this.$nextTick(() => {
@@ -1580,11 +1568,9 @@ export default {
     
     saveSeoConfig() {
       this.loading = true;
-      console.log('正在保存SEO配置...');
       this.$http.post(this.$constant.baseURL + '/admin/seo/updateSeoConfig', this.seoConfig, true)
         .then((res) => {
           this.loading = false;
-          console.log('保存SEO配置响应:', res);
           if (res && res.code === 200) {
             this.showMobileSuccess('保存SEO配置成功');
             this.showAnalysisDialog = false;
@@ -1603,11 +1589,9 @@ export default {
 
     analyzeSite() {
       this.analyzeLoading = true;
-      console.log('正在进行SEO分析...');
       this.$http.get(this.$constant.baseURL + '/admin/seo/analyzeSite', {}, true)
         .then((res) => {
           this.analyzeLoading = false;
-          console.log('SEO分析响应:', res);
           if (res && res.code === 200) {
             this.seoAnalysis = res.data;
             this.showAnalysisDialog = true;
@@ -1640,7 +1624,6 @@ export default {
     
     onProviderChange() {
       // 当提供商更改时重置相关配置
-      console.log('AI模型提供商已更改:', this.aiApiConfig.provider);
       
       // 根据不同提供商设置默认模型
       if (this.aiApiConfig.provider === 'openai') {
@@ -1688,7 +1671,6 @@ export default {
     
     saveApiConfig() {
       this.apiConfigLoading = true;
-      console.log('正在保存AI API配置...');
       
       // 准备发送给后端的配置数据
       const configToSave = { ...this.aiApiConfig };
@@ -1709,7 +1691,6 @@ export default {
       this.$http.post(this.$constant.pythonBaseURL + '/seo/saveAiApiConfig', configToSave, true)
         .then((res) => {
           this.apiConfigLoading = false;
-          console.log('保存AI API配置响应:', res);
           if (res && res.code === 200) {
             this.$message.success('保存AI API配置成功');
             this.showApiConfigDialog = false;
@@ -1832,7 +1813,6 @@ export default {
 
     // 智能图标生成相关方法
     handleIconUpload(file) {
-      console.log('处理图标上传:', file);
       this.uploadedImage = file.raw;
       this.$message.success('图片上传成功，可以开始生成图标');
     },
@@ -1861,12 +1841,6 @@ export default {
         formData.append('iconTypes', 'favicon,apple-touch-icon,icon-192,icon-512,logo,banner');
 
         // 打印调试信息
-        console.log('准备上传的文件:', this.uploadedImage);
-        console.log('文件名:', this.uploadedImage.name);
-        console.log('文件大小:', this.uploadedImage.size);
-        console.log('文件类型:', this.uploadedImage.type);
-        console.log('请求的图标类型:', 'favicon,apple-touch-icon,icon-192,icon-512,logo,banner');
-        console.log('管理员token:', localStorage.getItem("adminToken"));
 
         // 更新进度
         this.generationProgress = 20;
@@ -1883,9 +1857,6 @@ export default {
         this.generationStatus = '处理完成，准备显示结果...';
 
         if (response && response.code === 200) {
-          console.log('后端响应成功，返回数据:', response);
-          console.log('生成的图标数量:', response.data?.processed_count || 0);
-          console.log('生成的图标类型:', Object.keys(response.data?.icons || {}));
           
           this.generationResults = response.data;
           this.generationProgress = 100;
@@ -1961,8 +1932,6 @@ export default {
         'banner': 'og_image'
       };
 
-      console.log('开始自动填入图标，生成结果:', this.generationResults);
-      console.log('图标映射关系:', iconMapping);
 
       // 显示上传进度
       this.$message.info('正在上传生成的图标...');
@@ -1972,23 +1941,18 @@ export default {
         const uploadPromises = [];
 
              for (const [iconType, result] of Object.entries(results)) {
-          console.log(`处理图标类型: ${iconType}`, result);
          if (result && result.base64_data) {
            const configField = iconMapping[iconType];
            if (configField) {
-              console.log(`✅ ${iconType} -> ${configField} (${result.format}, ${result.size}字节)`);
               // 创建上传任务
               const uploadPromise = this.uploadIconToServer(result.base64_data, result.format, iconType, configField);
               uploadPromises.push(uploadPromise);
             } else {
-              console.warn(`❌ 未找到图标类型 ${iconType} 的映射字段，可用映射:`, Object.keys(iconMapping));
             }
           } else {
-            console.warn(`❌ 图标 ${iconType} 生成失败或数据缺失:`, result);
           }
         }
         
-        console.log(`准备上传 ${uploadPromises.length} 个图标...`);
 
         // 并行上传所有图标
         const uploadResults = await Promise.allSettled(uploadPromises);
@@ -2002,17 +1966,10 @@ export default {
           if (result.status === 'fulfilled') {
             uploadedCount++;
             successDetails.push(iconType);
-            console.log(`图标 ${iconType} 上传成功:`, result.value);
           } else {
             failureDetails.push(iconType);
             console.error(`图标 ${iconType} 上传失败:`, result.reason);
                }
-        });
-        
-        console.log('上传统计:', {
-          成功: successDetails,
-          失败: failureDetails,
-          总数: uploadResults.length
         });
 
         if (uploadedCount > 0) {
@@ -2112,11 +2069,11 @@ export default {
         const prefix = `seo${iconType.charAt(0).toUpperCase() + iconType.slice(1)}`;
         
         // 生成key（参考uploadPicture组件的逻辑）
-        const username = this.$store.state.currentAdmin.username.replace(/[^a-zA-Z]/g, '') + this.$store.state.currentAdmin.id;
+        const username = this.mainStore.currentAdmin.username.replace(/[^a-zA-Z]/g, '') + this.mainStore.currentAdmin.id;
         const key = prefix + "/" + username + new Date().getTime() + Math.floor(Math.random() * 1000) + "." + fileExtension;
         
         // 获取当前配置的存储类型，优先使用更新后的配置
-        const storeType = this.currentStoreType || this.$store.state.sysConfig['store.type'] || "local";
+        const storeType = this.currentStoreType || this.mainStore.sysConfig['store.type'] || "local";
         
         // 创建FormData（使用与uploadPicture相同的字段结构）
         const formData = new FormData();
@@ -2127,7 +2084,6 @@ export default {
         formData.append('type', prefix);
         formData.append('storeType', storeType);
 
-        console.log(`开始上传图标: ${iconType} (${fileName})，使用存储类型: ${storeType}`);
 
         // 调用现有的上传接口
         const response = await this.$http.upload(
@@ -2139,7 +2095,6 @@ export default {
         if (response && response.data) {
           // 上传成功，设置配置字段
           this.seoConfig[configField] = response.data;
-          console.log(`图标上传成功: ${iconType} -> ${response.data}`);
           return response.data;
         } else {
           console.error(`图标上传失败: ${iconType}`, response);
@@ -2231,7 +2186,7 @@ export default {
   /* 苹果风格设计 */
   .box-card {
     border: none;
-    background-color: rgba(255, 255, 255, 0.92);
+    background-color: transparent !important;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     margin-bottom: 25px;
@@ -2308,8 +2263,28 @@ export default {
   ::v-deep .el-form-item__label {
     font-weight: 500;
     color: #1d1d1f;
-    padding-bottom: 8px;
     font-size: 14px;
+  }
+  
+  /* PC端确保左右布局 - 使用 Flex 布局 */
+  @media (min-width: 769px) {
+    ::v-deep .el-form-item {
+      display: flex !important;
+      align-items: flex-start !important;
+    }
+    
+    ::v-deep .el-form-item__label {
+      width: 140px !important; /* 固定宽度 */
+      flex-shrink: 0 !important; /* 标签不缩小 */
+      text-align: right !important; /* 文字右对齐 */
+      padding-right: 12px !important;
+      line-height: 40px !important;
+    }
+    
+    ::v-deep .el-form-item__content {
+      flex: 1 !important; /* 内容区域占满剩余空间 */
+      line-height: 40px !important;
+    }
   }
   
   ::v-deep .el-input__inner,
@@ -3008,7 +2983,12 @@ export default {
   .help-content .el-tabs--border-card > .el-tabs__content {
     padding: 20px;
   }
-
+  
+  /* 卡片body去除padding */
+  ::v-deep .el-card__body {
+    padding: 0 !important;
+  }
+  
   .help-content .el-tabs__item {
     font-weight: 500;
   }
@@ -3427,12 +3407,6 @@ export default {
     flex-shrink: 0;
   }
 
-  /* PC端样式优化 */
-  @media (min-width: 769px) {
-    ::v-deep .el-card__body {
-      padding: 40px !important;
-    }
-  }
 
   /* robots.txt和自定义头部代码表单项 - 标签独立占一行（PC端和移动端通用） */
   ::v-deep .code-editor-form-item {
@@ -3689,26 +3663,6 @@ export default {
     }
 
     /* 对话框移动端适配 */
-    ::v-deep .el-dialog {
-      width: 95% !important;
-      margin: 2.5vh auto !important;
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    ::v-deep .el-dialog__body {
-      padding: 16px !important;
-      max-height: 70vh;
-      overflow-y: auto;
-    }
-
-    ::v-deep .el-dialog__header {
-      padding: 12px 16px !important;
-    }
-
-    ::v-deep .el-dialog__footer {
-      padding: 12px 16px !important;
-    }
 
     /* 分析结果移动端适配 */
     .analysis-score {
@@ -3790,14 +3744,6 @@ export default {
     }
 
     /* 超小屏幕对话框 */
-    ::v-deep .el-dialog {
-      width: 98% !important;
-      margin: 1vh auto !important;
-    }
-
-    ::v-deep .el-dialog__body {
-      padding: 12px !important;
-    }
 
     .phone-screen {
       width: 100px;
@@ -3832,9 +3778,7 @@ export default {
       padding: 20px;
     }
 
-    ::v-deep .el-dialog {
-      width: 80%;
-    }
+    /* 对话框布局由centered-dialog.css处理 */
   }
 
   /* 移动端特殊优化 */
@@ -4015,6 +3959,34 @@ export default {
     ::v-deep .el-dialog__body,
     ::v-deep .el-tabs__content {
       -webkit-overflow-scrolling: touch;
+    }
+
+    /* 表单标签 - 垂直布局 */
+    ::v-deep .el-form-item__label {
+      float: none !important;
+      width: 100% !important;
+      text-align: left !important;
+      margin-bottom: 8px !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
+      padding-bottom: 0 !important;
+      line-height: 1.5 !important;
+    }
+
+    ::v-deep .el-form-item__content {
+      margin-left: 0 !important;
+      width: 100% !important;
+    }
+
+    ::v-deep .el-form-item {
+      margin-bottom: 20px !important;
+    }
+  }
+
+  /* PC端样式 - 768px以上 */
+  @media screen and (min-width: 769px) {
+    ::v-deep .el-form-item__label {
+      float: left !important;
     }
   }
 </style>

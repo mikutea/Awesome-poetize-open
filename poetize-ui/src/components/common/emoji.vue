@@ -14,7 +14,14 @@
 </template>
 
 <script>
-  export default {
+    import { useMainStore } from '@/stores/main';
+
+export default {
+        computed: {
+      mainStore() {
+        return useMainStore();
+      }
+    },
     props: {
       showEmoji: {
         type: Boolean
@@ -40,7 +47,7 @@
         for (let i = 0; i < emojiList.length; i++) {
           emojiName = "[" + emojiList[i] + "]";
           let j = i + 1;
-          url = this.$store.state.sysConfig['webStaticResourcePrefix'] + "emoji/q" + j + ".gif";
+          url = this.mainStore.sysConfig['webStaticResourcePrefix'] + "emoji/q" + j + ".gif";
           result[emojiName] = url;
         }
         return result;

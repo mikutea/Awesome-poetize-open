@@ -216,7 +216,6 @@ public class SeoController {
 
             // 注意：PWA相关配置通过 /manifest.json 端点提供，预渲染只需添加 manifest 链接
 
-            log.debug("成功返回完整的SEO配置给预渲染服务，包含自定义头部代码和站点验证标签");
             return ResponseEntity.ok(configForNginx);
         } catch (Exception e) {
             log.error("获取Nginx用SEO配置失败", e);

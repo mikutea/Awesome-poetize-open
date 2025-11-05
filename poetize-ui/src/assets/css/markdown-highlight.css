@@ -1,6 +1,21 @@
 /* markdown样式 */
+/* 
+ * 注意：这些样式用于文章展示页面
+ * 如果使用了新的编辑器（如Vditor），确保编辑器样式不会影响这里的样式
+ * 通过提升选择器权重来保护这些样式
+ */
+
+/* 基础容器 - 提升权重并设置基础字体大小 */
+body .entry-content,
+html body .entry-content {
+    position: relative;
+    font-size: 16px !important;
+}
+
+/* 兼容旧样式 */
 .entry-content {
     position: relative;
+    font-size: 16px !important;
 }
 
 .entry-content blockquote {
@@ -60,10 +75,10 @@
     line-height: 24px;
 }
 
-.entry-content h3 {
+/* .entry-content h2 {
     padding-bottom: 8px;
     border-bottom: 1px dashed #ddd;
-}
+} */
 
 .entry-content h1,
 .entry-content h2,
@@ -74,18 +89,30 @@
     margin-bottom: 20px;
 }
 
+.entry-content h1 {
+    font-size: 30px;
+}
+
 .entry-content h2 {
     padding-left: 40px;
+    font-size: 27px;
 }
 
 .entry-content h3 {
     padding-left: 20px;
-    font-size: 22px;
+    font-size: 24px;
 }
 
 .entry-content h4 {
     padding-left: 20px;
-    font-size: 20px;
+    font-size: 21px;
+}
+
+.entry-content h4:before {
+    content: "▌";
+    left: 0;
+    position: absolute;
+    color: #ff6d6d;
 }
 
 .entry-content h5 {
@@ -93,8 +120,12 @@
     padding-left: 28px;
 }
 
+.entry-content h6 {
+    font-size: 15px;
+}
+
 .entry-content h2:before {
-    content: "🌺";
+    content: "📑";
     position: absolute;
     left: 0;
     font-size: 1.03em;
@@ -103,14 +134,6 @@
 
 .entry-content h3:before {
     content: "#";
-    left: 0;
-    position: absolute;
-    margin-top: 2px;
-    color: #ff6d6d;
-}
-
-.entry-content h4:before {
-    content: "▌";
     left: 0;
     position: absolute;
     color: #ff6d6d;
@@ -152,9 +175,9 @@
 
 .entry-content p {
     color: var(--articleFontColor);
-    line-height: 35px;
+    line-height: 1.75;
     word-break: break-word;
-    font-size: 18px;
+    font-size: 16px;
 }
 
 .entry-content hr {
@@ -250,28 +273,82 @@
     color: #21252b;
 }
 
+/* 行号样式 - 使用 CSS 计数器 */
+pre code.css-line-numbers {
+    counter-reset: line-number;
+    display: block;
+}
+
+/* 每个代码行 */
+pre code.css-line-numbers .code-line {
+    counter-increment: line-number;
+    position: relative;
+    display: block;
+    padding-left: calc(var(--line-number-width, 25px) + 17px);
+    padding-right: 12px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+/* 行号伪元素 */
+pre code.css-line-numbers .code-line::before {
+    counter-increment: line-number 0; /* 不重复增加计数器 */
+    content: counter(line-number);
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--line-number-width, 25px);
+    padding: 2px 6px;
+    text-align: right;
+    color: #888f96;
+    background: #1d1f21;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.5;
+    z-index: 1;
+}
+
+/* 代码行悬停效果 - 只在代码内容区域显示 */
+pre code.css-line-numbers .code-line:hover {
+    background: linear-gradient(
+        to right, 
+        transparent 0%, 
+        transparent var(--line-number-width, 25px),
+        rgba(255, 255, 255, 0.1) var(--line-number-width, 25px),
+        rgba(255, 255, 255, 0.1) 100%
+    );
+}
+
+/* 兼容：保留旧的hljs-ln样式 */
 .hljs-ln {
     margin: 6px 0 0;
     width: 100%;
 }
 
-.hljs-ln-line.hljs-ln-code {
-    padding-left: 25px;
-    padding-right: 10px;
+.hljs-ln-line.hljs-ln-code,
+td.hljs-ln-code {
+    padding-left: 25px !important;
+    padding-right: 10px !important;
 }
 
-.hljs-ln-line.hljs-ln-code:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+.hljs-ln-line.hljs-ln-code:hover,
+td.hljs-ln-code:hover {
+    background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-.hljs-ln-line.hljs-ln-numbers {
-    user-select: none;
-    text-align: center;
-    color: #888f96;
-    position: absolute;
-    left: 0;
-    width: 30px;
-    background: #1d1f21;
+.hljs-ln-line.hljs-ln-numbers,
+td.hljs-ln-numbers {
+    user-select: none !important;
+    text-align: center !important;
+    color: #888f96 !important;
+    position: absolute !important;
+    left: 0 !important;
+    width: 30px !important;
+    background: #1d1f21 !important;
 }
 
 .hljs-comment,
@@ -341,6 +418,34 @@
 
 .hljs-link {
     text-decoration: underline;
+}
+
+/* JSX/TSX 特定样式 */
+.hljs-tag {
+    color: #e06c75;
+}
+
+.hljs-tag .hljs-name {
+    color: #e06c75;
+}
+
+.hljs-tag .hljs-attr {
+    color: #d19a66;
+}
+
+.hljs-tag .hljs-string {
+    color: #98c379;
+}
+
+/* React/JSX 组件名（大写开头）*/
+.hljs-tag > .hljs-name {
+    color: #61aeee;
+}
+
+/* JSX 花括号内的表达式 */
+.hljs-template-variable,
+.hljs-template-tag {
+    color: #c678dd;
 }
 
 

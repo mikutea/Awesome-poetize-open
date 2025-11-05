@@ -36,7 +36,6 @@ import com.ld.poetry.vo.UserVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -134,7 +133,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             whitelistedIps.add(ip);
             cacheService.set(whitelistKey, whitelistedIps, CacheConstants.VERY_LONG_EXPIRE_TIME);
-            log.debug("记录管理员登录IP: {}", ip);
         } catch (Exception e) {
             log.error("记录管理员登录IP时发生错误: ip={}", ip, e);
         }
@@ -192,7 +190,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         try {
             String attemptKey = CacheConstants.buildLoginAttemptKey(account);
             cacheService.deleteKey(attemptKey);
-            log.debug("清除登录失败尝试记录: {}", account);
         } catch (Exception e) {
             log.error("清除登录失败尝试记录失败: {}", account, e);
         }
@@ -202,18 +199,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public PoetryResult<UserVO> login(String account, String password, Boolean isAdmin) {
         // 获取客户端IP
         String clientIp = PoetryUtil.getIpAddr(PoetryUtil.getRequest());
-        log.info("用户登录尝试 - 用户名: {}, IP: {}, 是否管理员: {}", account, clientIp, isAdmin);
 
         // 检查账号是否被锁定
         if (isAccountLocked(account)) {
-            log.warn("账号已被锁定 - 用户名: {}, IP: {}", account, clientIp);
+            log.warn("账号已被锁定 - 账号: {}, IP: {}", account, clientIp);
             return PoetryResult.fail("账号已被锁定，请稍后再试");
         }
 
         // 验证用户名和密码
         User one = lambdaQuery().eq(User::getUsername, account).one();
         if (one == null) {
-            log.warn("登录失败 - 用户不存在: {}, IP: {}", account, clientIp);
             return PoetryResult.fail("用户名或密码错误！");
         }
 
@@ -222,7 +217,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         try {
             decryptedPassword = passwordService.decryptFromFrontend(password);
         } catch (Exception e) {
-            log.warn("密码解密失败 - 用户名: {}, IP: {}", account, clientIp);
             return PoetryResult.fail("密码格式错误！");
         }
 
@@ -235,7 +229,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         // 登录成功，清除失败记录
         clearFailedLoginAttempts(account);
-        log.info("用户登录成功 - 用户名: {}, IP: {}", account, clientIp);
 
         // 检查密码是否需要升级（MD5 -> BCrypt）
         if (passwordService.needsUpgrade(one.getPassword())) {
@@ -249,9 +242,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 one.setPassword(upgradedPassword);
                 // 记录密码升级统计
                 passwordUpgradeService.recordPasswordUpgrade();
-                log.info("用户密码已从MD5升级到BCrypt - 用户名: {}", account);
             } catch (Exception e) {
-                log.error("密码升级失败 - 用户名: {}, 错误: {}", account, e.getMessage());
+                log.error("密码升级失败 - 账号: {}", account, e);
                 // 密码升级失败不影响登录，只记录日志
             }
         }
@@ -262,16 +254,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         // 如果前端请求管理员登录，但用户不是管理员，则拒绝
         if (isAdmin && !isActualAdmin) {
-            log.warn("非管理员尝试管理员登录 - 用户名: {}, IP: {}, 用户类型: {}", account, clientIp, one.getUserType());
+            log.warn("非管理员尝试管理员登录 - 账号: {}, IP: {}", account, clientIp);
             return PoetryResult.fail("请输入管理员账号！");
         }
 
         // 记录管理员登录
         if (isActualAdmin) {
             recordAdminLoginIp(clientIp);
-            log.info("管理员登录成功 - 用户名: {}, IP: {}, 用户类型: {}", account, clientIp, one.getUserType());
+            log.info("管理员登录成功 - 账号: {}, IP: {}", account, clientIp);
         } else {
-            log.info("普通用户登录成功 - 用户名: {}, IP: {}, 用户类型: {}", account, clientIp, one.getUserType());
+            log.info("用户登录成功 - 账号: {}, IP: {}", account, clientIp);
         }
 
         String adminToken = "";
@@ -283,7 +275,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             try {
                 String oldToken = cacheService.getAdminToken(one.getId());
                 if (oldToken != null) {
-                    log.info("清除旧的管理员token - 用户: {}, 旧token: {}", account, oldToken);
                     // 清除旧token的会话
                     cacheService.evictUserSession(oldToken);
                     // 清除token映射
@@ -291,14 +282,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                     cacheService.evictTokenInterval(one.getId(), true);
                 }
             } catch (Exception e) {
-                log.error("清除旧管理员token时发生错误: account={}", account, e);
+                log.error("清除旧token时发生错误: userId={}", one.getId(), e);
             }
         } else {
             // 清除可能存在的旧用户token（使用Redis缓存）
             try {
                 String oldToken = cacheService.getUserToken(one.getId());
                 if (oldToken != null) {
-                    log.info("清除旧的用户token - 用户: {}, 旧token: {}", account, oldToken);
                     // 清除旧token的会话
                     cacheService.evictUserSession(oldToken);
                     // 清除token映射
@@ -306,14 +296,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                     cacheService.evictTokenInterval(one.getId(), false);
                 }
             } catch (Exception e) {
-                log.error("清除旧用户token时发生错误: account={}", account, e);
+                log.error("清除旧token时发生错误: userId={}", one.getId(), e);
             }
         }
 
         // 根据用户实际权限生成对应的token（而不是依赖前端传递的isAdmin参数）
         if (isActualAdmin && !StringUtils.hasText(adminToken)) {
             adminToken = SecureTokenGenerator.generateAdminToken(one.getId());
-            log.info("生成新的安全管理员token - 用户: {}, 用户ID: {}, 用户类型: {}", account, one.getId(), one.getUserType());
 
             // 使用Redis缓存管理token
             cacheService.cacheUserSession(adminToken, one.getId());
@@ -323,13 +312,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             // 同时更新管理员缓存（设置为永久缓存）
             cacheService.cacheAdminUser(one);
-            log.info("已同步更新管理员缓存 - 用户ID: {}", one.getId());
 
             // 保持UserCacheManager兼容性
             userCacheManager.cacheUserByToken(adminToken, one);
         } else if (!isActualAdmin && !StringUtils.hasText(userToken)) {
             userToken = SecureTokenGenerator.generateUserToken(one.getId());
-            log.info("生成新的安全用户token - 用户: {}, 用户ID: {}, 用户类型: {}", account, one.getId(), one.getUserType());
 
             // 使用Redis缓存管理token
             cacheService.cacheUserSession(userToken, one.getId());
@@ -350,16 +337,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 根据用户实际权限设置isBoss标志（所有管理员都设置为Boss）
         if (isActualAdmin) {
             userVO.setIsBoss(true);
-            log.info("设置管理员Boss标志 - 用户: {}, userType: {}, isBoss: true", one.getUsername(), one.getUserType());
         }
 
         // 根据用户实际权限返回对应的token
         if (isActualAdmin) {
             userVO.setAccessToken(adminToken);
-            log.info("返回管理员token - 用户: {}, token前缀: admin_access_token_", account);
         } else {
             userVO.setAccessToken(userToken);
-            log.info("返回用户token - 用户: {}, token前缀: user_access_token_", account);
         }
         return PoetryResult.success(userVO);
     }
@@ -369,7 +353,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         try {
             String token = PoetryUtil.getToken();
             Integer userId = PoetryUtil.getUserId();
-            log.info("用户退出登录 - 用户ID: {}, token: {}", userId, token);
 
             if (userId != null && token != null) {
                 // 判断是管理员还是普通用户token
@@ -382,11 +365,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 if (isAdminToken) {
                     cacheService.evictAdminToken(userId);
                     cacheService.evictTokenInterval(userId, true);
-                    log.debug("清理管理员token缓存: userId={}", userId);
                 } else {
                     cacheService.evictUserToken(userId);
                     cacheService.evictTokenInterval(userId, false);
-                    log.debug("清理用户token缓存: userId={}", userId);
                 }
 
                 // 清理用户信息缓存
@@ -404,14 +385,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 userCacheManager.removeUserByToken(token);
                 userCacheManager.removeUserById(userId);
 
-                log.info("用户退出登录成功 - 用户ID: {}", userId);
+                log.info("退出登录成功 - 用户ID: {}", userId);
             } else {
                 log.warn("退出登录时无法获取用户信息");
             }
 
             return PoetryResult.success();
         } catch (Exception e) {
-            log.error("用户退出登录时发生错误", e);
+            log.error("退出登录失败", e);
             return PoetryResult.fail("退出登录失败");
         }
     }
@@ -438,7 +419,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("验证码错误！");
             }
             cacheService.deleteKey(cacheKey);
-            log.debug("手机号验证码验证成功: {}", user.getPhoneNumber());
         } else if (StringUtils.hasText(user.getEmail())) {
             String cacheKey = CacheConstants.buildForgetPasswordKey(user.getEmail(), "2");
             Object cachedCode = cacheService.get(cacheKey);
@@ -446,7 +426,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("验证码错误！");
             }
             cacheService.deleteKey(cacheKey);
-            log.debug("邮箱验证码验证成功: {}", user.getEmail());
         } else {
             return PoetryResult.fail("请输入邮箱或手机号！");
         }
@@ -457,7 +436,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         try {
             decryptedPassword = passwordService.decryptFromFrontend(user.getPassword());
         } catch (Exception e) {
-            log.warn("注册时密码解密失败");
             return PoetryResult.fail("密码格式错误！");
         }
 
@@ -592,13 +570,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 return PoetryResult.fail("请先绑定手机号！");
             }
 
-            log.info(user.getId() + "---" + user.getUsername() + "---" + "手机验证码---" + i);
         } else if (flag == 2) {
             if (!StringUtils.hasText(user.getEmail())) {
                 return PoetryResult.fail("请先绑定邮箱！");
             }
 
-            log.info(user.getId() + "---" + user.getUsername() + "---" + "邮箱验证码---" + i);
 
             List<String> mail = new ArrayList<>();
             mail.add(user.getEmail());
@@ -617,7 +593,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (count < CommonConst.CODE_MAIL_COUNT) {
                 mailUtil.sendMailMessage(mail, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
                 cacheService.set(countKey, count + 1, CommonConst.CODE_EXPIRE);
-                log.debug("发送邮箱验证码成功: {}, 当前发送次数: {}", mail.get(0), count + 1);
             } else {
                 return PoetryResult.fail("验证码发送次数过多，请明天再试！");
             }
@@ -625,7 +600,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         String userCodeKey = CacheConstants.buildUserCodeKey(PoetryUtil.getUserId(), String.valueOf(flag), String.valueOf(flag));
         cacheService.set(userCodeKey, i, 300);
-        log.debug("验证码已缓存: userId={}, flag={}", PoetryUtil.getUserId(), flag);
         return PoetryResult.success();
     }
 
@@ -633,9 +607,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public PoetryResult getCodeForBind(String place, Integer flag) {
         int i = new Random().nextInt(900000) + 100000;
         if (flag == 1) {
-            log.info(place + "---" + "手机验证码---" + i);
         } else if (flag == 2) {
-            log.info(place + "---" + "邮箱验证码---" + i);
             List<String> mail = new ArrayList<>();
             mail.add(place);
             String text = getCodeMail(i); // 这里使用已经修改过的getCodeMail方法，会从数据库获取模板
@@ -653,7 +625,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (count < CommonConst.CODE_MAIL_COUNT) {
                 mailUtil.sendMailMessage(mail, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
                 cacheService.set(countKey, count + 1, CommonConst.CODE_EXPIRE);
-                log.debug("发送邮箱验证码成功: {}, 当前发送次数: {}", mail.get(0), count + 1);
             } else {
                 return PoetryResult.fail("验证码发送次数过多，请明天再试！");
             }
@@ -661,7 +632,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         String userCodeKey = CacheConstants.buildUserCodeKey(PoetryUtil.getUserId(), place, String.valueOf(flag));
         cacheService.set(userCodeKey, i, 300);
-        log.debug("验证码已缓存: userId={}, place={}, flag={}", PoetryUtil.getUserId(), place, flag);
         return PoetryResult.success();
     }
 
@@ -680,7 +650,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             try {
                 decryptedPassword = passwordService.decryptFromFrontend(password);
             } catch (Exception e) {
-                log.warn("更新密码时密码解密失败");
                 return PoetryResult.fail("密码格式错误！");
             }
         }
@@ -710,7 +679,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (cachedCode != null && cachedCode.toString().equals(code)) {
                 cacheService.deleteKey(cacheKey);
                 updateUser.setPhoneNumber(place);
-                log.debug("手机号绑定验证码验证成功: userId={}, phone={}", PoetryUtil.getUserId(), place);
             } else {
                 return PoetryResult.fail("验证码错误！");
             }
@@ -725,7 +693,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (cachedCode != null && cachedCode.toString().equals(code)) {
                 cacheService.deleteKey(cacheKey);
                 updateUser.setEmail(place);
-                log.debug("邮箱绑定验证码验证成功: userId={}, email={}", PoetryUtil.getUserId(), place);
             } else {
                 return PoetryResult.fail("验证码错误！");
             }
@@ -735,7 +702,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             try {
                 oldPassword = passwordService.decryptFromFrontend(place);
             } catch (Exception e) {
-                log.warn("旧密码解密失败");
                 return PoetryResult.fail("旧密码格式错误！");
             }
 
@@ -751,7 +717,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             // 使用BCrypt加密新密码
             updateUser.setPassword(passwordService.encodeBCrypt(decryptedPassword));
-            log.info("用户修改密码成功 - 用户ID: {}", user.getId());
+            log.info("修改密码成功 - 用户ID: {}", user.getId());
         }
         updateById(updateUser);
 
@@ -769,8 +735,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             } else {
                 cacheService.cacheUserToken(one.getId(), currentToken);
             }
-
-            log.debug("更新用户信息后刷新缓存: userId={}", one.getId());
         }
 
         UserVO userVO = new UserVO();
@@ -783,9 +747,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public PoetryResult getCodeForForgetPassword(String place, Integer flag) {
         int i = new Random().nextInt(900000) + 100000;
         if (flag == 1) {
-            log.info(place + "---" + "手机验证码---" + i);
         } else if (flag == 2) {
-            log.info(place + "---" + "邮箱验证码---" + i);
 
             List<String> mail = new ArrayList<>();
             mail.add(place);
@@ -804,7 +766,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             if (count < CommonConst.CODE_MAIL_COUNT) {
                 mailUtil.sendMailMessage(mail, "您有一封来自" + (webInfo == null ? "POETIZE" : webInfo.getWebName()) + "的回执！", text);
                 cacheService.set(countKey, count + 1, CommonConst.CODE_EXPIRE);
-                log.debug("发送忘记密码邮箱验证码成功: {}, 当前发送次数: {}", mail.get(0), count + 1);
             } else {
                 return PoetryResult.fail("验证码发送次数过多，请明天再试！");
             }
@@ -812,7 +773,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         String forgetPasswordKey = CacheConstants.buildForgetPasswordKey(place, String.valueOf(flag));
         cacheService.set(forgetPasswordKey, i, 300);
-        log.debug("忘记密码验证码已缓存: place={}, flag={}", place, flag);
         return PoetryResult.success();
     }
 
@@ -823,7 +783,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         try {
             decryptedPassword = passwordService.decryptFromFrontend(password);
         } catch (Exception e) {
-            log.warn("忘记密码重置时密码解密失败");
             return PoetryResult.fail("密码格式错误！");
         }
 
@@ -856,7 +815,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             lambdaUpdate().eq(User::getPhoneNumber, place).set(User::getPassword, encodedPassword).update();
             cacheService.evictUser(user.getId());
             cacheService.evictAllUserTokens(user.getId()); // 清理所有token，强制重新登录
-            log.info("用户通过手机号重置密码成功 - 手机号: {}", place);
+            log.info("通过手机号重置密码成功 - 用户ID: {}", user.getId());
         } else if (flag == 2) {
             User user = lambdaQuery().eq(User::getEmail, place).one();
             if (user == null) {
@@ -870,7 +829,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             lambdaUpdate().eq(User::getEmail, place).set(User::getPassword, encodedPassword).update();
             cacheService.evictUser(user.getId());
             cacheService.evictAllUserTokens(user.getId()); // 清理所有token，强制重新登录
-            log.info("用户通过邮箱重置密码成功 - 邮箱: {}", place);
+            log.info("通过邮箱重置密码成功 - 用户ID: {}", user.getId());
         }
 
         return PoetryResult.success();
@@ -969,7 +928,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         // 首先验证token的安全性和有效性
         if (!TokenValidationUtil.isValidToken(userToken)) {
-            log.warn("Token验证失败，可能是伪造或已损坏的token");
+                log.warn("Token验证失败");
             throw new PoetryRuntimeException("Token无效，请重新登陆！");
         }
 
@@ -992,15 +951,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             // 检查token是否在有效期内且格式正确
             Integer userIdFromToken = TokenValidationUtil.extractUserId(userToken);
             if (userIdFromToken != null) {
-                // 虽然token格式有效，但Redis中没有对应的会话信息
-                // 这通常意味着：
-                // 1. token已过期（Redis中的会话过期被清理）
-                // 2. 用户已退出登录（会话被主动清理）
-                // 3. 服务重启导致Redis数据丢失
-                log.warn("Token格式有效但Redis中无会话信息，可能已过期或已退出登录 - userId: {}", userIdFromToken);
-                
-                // 不应该自动重新激活已过期的token，而是要求用户重新登录
-                // 这是为了安全考虑，避免过期token被意外复活
                 throw new PoetryRuntimeException("登录已过期，请重新登陆！");
             } else {
                 // token格式无效
@@ -1110,8 +1060,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             imChatGroupUserMapper.insert(imChatGroupUser);
 
             existUser = newUser;
-            log.info("创建新的第三方登录用户: provider={}, uid={}, username={}, email={}",
-                    provider, uid, uniqueUsername, email);
+            log.info("第三方账号注册成功 - 平台: {}, 用户ID: {}", provider, newUser.getId());
         } else {
             // 🔧 已存在用户的邮箱更新逻辑
             boolean userHasEmailInDB = StringUtils.hasText(existUser.getEmail());
@@ -1119,8 +1068,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             // 如果数据库中没有邮箱，但第三方平台提供了邮箱，则更新数据库
             if (!userHasEmailInDB && thirdPartyProvidedEmail) {
-                log.info("更新用户邮箱信息: userId={}, provider={}, 新邮箱={}",
-                        existUser.getId(), provider, email);
 
                 User updateUser = new User();
                 updateUser.setId(existUser.getId());
@@ -1129,20 +1076,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
                 // 更新内存中的用户对象
                 existUser.setEmail(email);
-
-                log.info("用户邮箱更新成功: userId={}, email={}", existUser.getId(), email);
-            } else if (userHasEmailInDB) {
-                log.info("用户已有邮箱，保持不变: userId={}, 现有邮箱={}, 第三方邮箱={}",
-                        existUser.getId(), existUser.getEmail(), email);
-            } else {
-                log.info("用户和第三方平台都没有邮箱信息: userId={}, provider={}",
-                        existUser.getId(), provider);
             }
 
             // 🔧 头像处理策略：保持用户自定义头像不变
             // 对于已存在的用户，不自动更新头像，避免覆盖用户在个人中心自定义的头像
-            log.info("第三方登录已存在用户，保持现有头像不变: userId={}, 现有头像={}, 第三方头像={}",
-                    existUser.getId(), existUser.getAvatar(), avatar);
         }
 
         // 根据用户实际权限判断是否为管理员
@@ -1169,7 +1106,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 // 保持UserCacheManager兼容性
                 userCacheManager.cacheUserByToken(adminToken, existUser);
 
-                log.info("OAuth登录生成新的管理员token: userId={}, userType={}", existUser.getId(), existUser.getUserType());
             }
         } else {
             // 普通用户：生成用户token
@@ -1187,7 +1123,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 // 保持UserCacheManager兼容性
                 userCacheManager.cacheUserByToken(userToken, existUser);
 
-                log.info("OAuth登录生成新的用户token: userId={}, userType={}", existUser.getId(), existUser.getUserType());
             }
         }
 
@@ -1225,7 +1160,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             log.warn("数据库中未找到验证码模板配置，使用默认模板");
         }
         
-        log.info("使用验证码模板: {}", template); // 添加日志记录使用的模板
         
         return String.format(mailUtil.getMailText(),
                 webName,
@@ -1313,7 +1247,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             return PoetryResult.success(result);
         } catch (Exception e) {
-            log.error("获取OAuth授权URL失败: platformType={}", platformType, e);
+            log.error("获取OAuth授权URL失败", e);
             return PoetryResult.fail("获取授权URL失败：" + e.getMessage());
         }
     }
@@ -1324,12 +1258,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             log.info("开始绑定第三方账号: platformType={}, code={}, state={}", platformType, code, state);
 
             // 绑定功能已移除，直接返回错误
-            log.error("绑定功能已移除");
+            log.warn("绑定功能已移除");
             return PoetryResult.fail("绑定功能暂不可用");
 
 
         } catch (Exception e) {
-            log.error("绑定第三方账号失败: platformType={}, code={}", platformType, code, e);
+            log.error("绑定第三方账号失败", e);
             return PoetryResult.fail("绑定失败：" + e.getMessage());
         }
     }
