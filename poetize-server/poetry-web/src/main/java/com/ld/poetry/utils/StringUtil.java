@@ -5,16 +5,18 @@ import org.springframework.util.StringUtils;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 字符串工具类
+ * 提供字符串处理、搜索高亮等功能
+ */
 public class StringUtil {
 
-    public static void main(String[] args) {
-        System.out.println(removeHtml(""));
-    }
-
-    private static final String REGEX_SCRIPT = "<script[^>]*?>[\\s\\S]*?<\\/script>";
-
-    private static final String REGEX_STYLE = "<style[^>]*?>[\\s\\S]*?<\\/style>";
-
+    /**
+     * 移除HTML标签，将尖括号转换为中文书名号
+     * 
+     * @param content 原始内容
+     * @return 处理后的内容
+     */
     public static String removeHtml(String content) {
         return content.replace("<", "《").replace(">", "》");
     }

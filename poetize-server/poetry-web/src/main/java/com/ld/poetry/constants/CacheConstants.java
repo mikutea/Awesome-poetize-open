@@ -187,6 +187,18 @@ public class CacheConstants {
     public static final String SAVE_COUNT_IP_PREFIX = CACHE_PREFIX + "save:count:ip:";
 
     /**
+     * 用户文件上传频率限制缓存键前缀
+     * 格式: poetize:upload:count:user:{userId}
+     */
+    public static final String FILE_UPLOAD_COUNT_USER_PREFIX = CACHE_PREFIX + "upload:count:user:";
+
+    /**
+     * IP文件上传频率限制缓存键前缀
+     * 格式: poetize:upload:count:ip:{ip}
+     */
+    public static final String FILE_UPLOAD_COUNT_IP_PREFIX = CACHE_PREFIX + "upload:count:ip:";
+
+    /**
      * 管理员token缓存键前缀
      * 格式: poetize:admin:token:{userId}
      */
@@ -502,6 +514,24 @@ public class CacheConstants {
      */
     public static String buildSaveCountIpKey(String ip) {
         return SAVE_COUNT_IP_PREFIX + ip;
+    }
+
+    /**
+     * 构建用户文件上传频率限制缓存键
+     * @param userId 用户ID
+     * @return 缓存键
+     */
+    public static String buildFileUploadCountUserKey(Integer userId) {
+        return FILE_UPLOAD_COUNT_USER_PREFIX + userId;
+    }
+
+    /**
+     * 构建IP文件上传频率限制缓存键
+     * @param ip IP地址
+     * @return 缓存键
+     */
+    public static String buildFileUploadCountIpKey(String ip) {
+        return FILE_UPLOAD_COUNT_IP_PREFIX + ip;
     }
 
     /**

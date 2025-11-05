@@ -34,14 +34,6 @@ public class SeoStaticServiceImpl implements SeoStaticService {
     @Autowired
     private com.ld.poetry.utils.mail.MailUtil mailUtil;
 
-    // TODO: 当需要完善sitemap生成时，可以添加这些服务
-    // @Autowired
-    // private ArticleService articleService;
-    // @Autowired  
-    // private SortService sortService;
-    // @Autowired
-    // private LabelService labelService;
-
     // 静态文件缓存
     private final Map<String, Object> staticCache = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> cacheTimestamps = new ConcurrentHashMap<>();

@@ -67,6 +67,7 @@ public class PoetryUtil {
 
         // 如果所有缓存都无法获取用户信息，记录日志
         if (user == null) {
+            log.debug("无法从缓存获取用户信息，token: {}", token != null ? "已提供" : "未提供");
         }
 
         if (user != null && !StringUtils.hasText(user.getEmail())) {
@@ -284,8 +285,7 @@ public class PoetryUtil {
                 throw e;
             } catch (Exception e) {
                 // 捕获所有其他异常，避免认证失败导致整个请求失败
-                System.err.println("获取用户ID时发生异常: " + e.getMessage());
-                e.printStackTrace();
+                log.error("获取用户ID时发生异常: {}", e.getMessage(), e);
                 return null;
             }
         }, 2, 50, "获取用户ID");
@@ -351,6 +351,7 @@ public class PoetryUtil {
 
         // 如果无法获取网站信息，记录日志
         if (webInfo == null) {
+            log.debug("无法从缓存获取网站信息用于随机头像");
         }
         if (webInfo != null) {
             String randomAvatar = webInfo.getRandomAvatar();
@@ -380,6 +381,7 @@ public class PoetryUtil {
 
         // 如果无法获取网站信息，记录日志
         if (webInfo == null) {
+            log.debug("无法从缓存获取网站信息用于随机名称");
         }
         if (webInfo != null) {
             String randomName = webInfo.getRandomName();
@@ -475,33 +477,6 @@ public class PoetryUtil {
     public static String getIpStatistics() {
         return IpUtil.getIpStatistics();
     }
-    
-    /**
-     * 判断是否为内部IP地址
-     */
-    private static boolean isInternalIP(String ip) {
-        if (ip == null || ip.isEmpty()) {
-            return true;
-        }
-        
-        // 本地回环地址
-        if (ip.equals("127.0.0.1") || ip.equals("localhost") || ip.equals("0:0:0:0:0:0:0:1") || ip.equals("::1")) {
-            return true;
-        }
-        
-        // Docker内部网络地址
-        if (ip.startsWith("172.") || ip.startsWith("10.") || ip.startsWith("192.168.")) {
-            return true;
-        }
-        
-        // 其他无效IP
-        if (ip.equals("unknown") || ip.equals("0.0.0.0")) {
-            return true;
-        }
-        
-        return false;
-    }
-
 
     public static int hashLocation(String key, int length) {
         int h = key.hashCode();

@@ -94,11 +94,6 @@ const proButton = () => import( "../common/proButton");
               }
 
               // 使用统一的重定向处理逻辑
-              console.log({
-                path: this.$route.path,
-                fullPath: this.$route.fullPath,
-                query: this.$route.query
-              });
               handleLoginRedirect(this.$route, this.$router, {
                 defaultPath: '/welcome'
               });

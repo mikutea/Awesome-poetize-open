@@ -7,24 +7,45 @@ import com.baomidou.mybatisplus.generator.config.OutputFile;
 import com.baomidou.mybatisplus.generator.config.rules.DateType;
 import com.baomidou.mybatisplus.generator.config.rules.NamingStrategy;
 import com.baomidou.mybatisplus.generator.engine.VelocityTemplateEngine;
+import lombok.extern.slf4j.Slf4j;
 
+import java.io.PrintStream;
 import java.util.Collections;
 import java.util.Scanner;
 
+/**
+ * MyBatis-Plus代码生成器工具
+ * 用于根据数据库表自动生成Entity、Mapper、Service、Controller等代码
+ * 
+ * 注意：本类是命令行工具，需要与用户进行交互，因此使用PrintStream进行输出
+ */
+@Slf4j
 public class CodeGenerator {
 
+    // 命令行输出流（用于工具类的用户交互）
+    private static final PrintStream console = System.out;
+
+    /**
+     * 命令行交互：读取用户输入
+     * 
+     * @param tip 提示信息
+     * @return 用户输入的内容
+     */
     public static String scanner(String tip) {
-        Scanner scanner = new Scanner(System.in);
-        StringBuilder help = new StringBuilder();
-        help.append("请输入" + tip + "：");
-        System.out.println(help.toString());
-        if (scanner.hasNext()) {
-            String ipt = scanner.next();
-            if (StringUtils.isNotBlank(ipt)) {
-                return ipt;
+        try (Scanner scanner = new Scanner(System.in)) {
+            StringBuilder help = new StringBuilder();
+            help.append("请输入" + tip + "：");
+            // 代码生成器是命令行工具，需要与用户交互
+            console.println(help.toString());
+            if (scanner.hasNext()) {
+                String ipt = scanner.next();
+                if (StringUtils.isNotBlank(ipt)) {
+                    log.info("用户输入 {}: {}", tip, ipt);
+                    return ipt;
+                }
             }
+            throw new MybatisPlusException("请输入正确的" + tip + "！");
         }
-        throw new MybatisPlusException("请输入正确的" + tip + "！");
     }
 
     public static void main(String[] args) {
