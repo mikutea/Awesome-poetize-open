@@ -133,9 +133,14 @@ export default function () {
     
     // 更新URL参数
     try {
-      const url = new URL(window.location);
+      const url = new URL(window.location.href);
       url.searchParams.set('token', newToken);
-      window.history.replaceState({}, '', url);
+      
+      // 使用相对路径进行替换，保留完整的协议、主机和端口
+      const newUrl = url.pathname + url.search + url.hash;
+      window.history.replaceState({}, '', newUrl);
+      
+      console.log('[Token] URL参数已更新');
     } catch (error) {
       console.warn('[Token] 更新URL参数失败:', error);
     }

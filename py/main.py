@@ -23,7 +23,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from config import SECRET_KEY, JAVA_BACKEND_URL, FRONTEND_URL, JAVA_CONFIG_URL, PYTHON_SERVICE_PORT
 from py_three_login import oauth_login, oauth_callback
 from redis_oauth_state_manager import oauth_state_manager
-from json_config_cache import get_json_config_cache
 
 from ai_chat_api import register_ai_chat_api  # 处理AI聊天功能（非配置管理）
 from translation_api import register_translation_api  # 处理翻译功能（非配置管理）
@@ -39,25 +38,6 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # ========== 启动时执行 ==========
     logger.info("应用启动中，开始初始化...")
-    
-    # JSON配置缓存预热
-    try:
-        logger.info("开始JSON配置缓存预热...")
-        json_cache = get_json_config_cache()
-        
-        # 预热所有已知配置
-        preload_configs = ['ai_chat_config', 'ai_api_config', 'translation_config']
-        for config_name in preload_configs:
-            try:
-                json_cache.get_json_config(config_name)
-            except Exception as e:
-                logger.warning(f"预热配置 {config_name} 失败: {e}")
-        
-        logger.info("JSON配置缓存预热完成")
-    except Exception as e:
-        logger.error(f"JSON配置缓存预热过程中发生异常: {e}")
-        logger.info("应用将继续启动，但某些功能可能在首次访问时较慢")
-    
     logger.info("应用启动完成")
     
     yield  # 应用运行中

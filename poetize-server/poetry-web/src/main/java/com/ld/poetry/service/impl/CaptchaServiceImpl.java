@@ -4,7 +4,9 @@ import com.ld.poetry.service.CaptchaService;
 import com.ld.poetry.service.SysCaptchaConfigService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -888,10 +890,20 @@ public class CaptchaServiceImpl implements CaptchaService {
         List<Map<String, Object>> blockedList = new ArrayList<>();
         
         try {
-            // 获取所有封禁IP的key
-            Set<String> keys = redisTemplate.keys(IP_BLOCK_PREFIX + "*");
+            // 使用SCAN命令替代KEYS命令，避免阻塞Redis
+            Set<String> keys = new HashSet<>();
+            ScanOptions options = ScanOptions.scanOptions()
+                .match(IP_BLOCK_PREFIX + "*")
+                .count(100)
+                .build();
             
-            if (keys != null && !keys.isEmpty()) {
+            try (Cursor<String> cursor = redisTemplate.scan(options)) {
+                while (cursor.hasNext()) {
+                    keys.add(cursor.next());
+                }
+            }
+            
+            if (!keys.isEmpty()) {
                 for (String key : keys) {
                     String ip = key.replace(IP_BLOCK_PREFIX, "");
                     

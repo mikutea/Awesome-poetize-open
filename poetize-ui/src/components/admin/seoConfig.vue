@@ -1314,14 +1314,15 @@ export default {
     try {
       this.getSeoConfig();
       
-      // 初始化当前存储类型
-      this.currentStoreType = this.mainStore.sysConfig['store.type'] || "local";
+      // 初始化当前存储类型（安全访问）
+      this.currentStoreType = this.mainStore?.sysConfig?.['store.type'] || "local";
       
       // 监听系统配置更新事件
       this.$bus.$on('sysConfigUpdated', this.handleSysConfigUpdate);
     } catch (error) {
       console.error('SEO配置组件初始化失败', error);
-      this.$message.error('SEO配置加载失败，请刷新页面重试');
+      // 只记录错误，不显示用户提示（getSeoConfig内部已有错误处理）
+      console.error('详细错误信息:', error.stack);
     }
   },
   
