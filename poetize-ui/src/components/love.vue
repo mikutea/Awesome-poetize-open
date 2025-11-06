@@ -812,7 +812,8 @@ const treeHole = () => import( "./common/treeHole");
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'success',
-          center: true
+          center: true,
+          customClass: 'mobile-responsive-confirm'
         }).then(() => {
           this.$http.get(this.$constant.baseURL + "/weiYan/deleteWeiYan", {id: id})
             .then((res) => {

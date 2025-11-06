@@ -319,7 +319,8 @@ import { getAdminLanguageMapping, getAdminLanguageName } from '@/utils/languageU
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'success',
-          center: true
+          center: true,
+          customClass: 'mobile-responsive-confirm'
         }).then(() => {
           this.$http.get(this.$constant.baseURL + "/article/deleteArticle", {id: item.id}, true)
             .then((res) => {

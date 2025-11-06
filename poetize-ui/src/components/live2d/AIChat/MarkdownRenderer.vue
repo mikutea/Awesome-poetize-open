@@ -328,16 +328,16 @@ export default {
           
           // 根据总行数动态调整行号宽度
           const totalLines = lines.length
-          let lineNumberWidth = '25px' // 默认宽度（1-9行）
+          let lineNumberWidth = '15px' // 默认宽度（1-9行）
           
           if (totalLines >= 10000) {
-            lineNumberWidth = '50px'
-          } else if (totalLines >= 1000) {
             lineNumberWidth = '40px'
-          } else if (totalLines >= 100) {
+          } else if (totalLines >= 1000) {
             lineNumberWidth = '30px'
+          } else if (totalLines >= 100) {
+            lineNumberWidth = '20px'
           } else if (totalLines >= 10) {
-            lineNumberWidth = '25px'
+            lineNumberWidth = '15px'
           }
           
           // 设置CSS变量

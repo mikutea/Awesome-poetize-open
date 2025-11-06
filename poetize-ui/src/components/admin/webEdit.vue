@@ -3620,7 +3620,8 @@ const uploadPicture = () => import( "../common/uploadPicture");
         this.$confirm('确定要删除这个邮箱配置吗?', '提示', {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
-          type: 'warning'
+          type: 'warning',
+          customClass: 'mobile-responsive-confirm'
         }).then(() => {
           this.emailConfigs.splice(index, 1);
           if (this.defaultMailIndex === index) {

@@ -259,7 +259,8 @@ const uploadPicture = () => import( "../common/uploadPicture");
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'success',
-          center: true
+          center: true,
+          customClass: 'mobile-responsive-confirm'
         }).then(() => {
           this.$http.post(this.$constant.baseURL + "/resource/deleteResource", {path: item.path}, true, false)
             .then((res) => {

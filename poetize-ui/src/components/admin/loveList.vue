@@ -112,7 +112,8 @@
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'success',
-          center: true
+          center: true,
+          customClass: 'mobile-responsive-confirm'
         }).then(() => {
           this.$http.get(this.$constant.baseURL + "/family/deleteFamily", {id: item.id}, true)
             .then((res) => {
