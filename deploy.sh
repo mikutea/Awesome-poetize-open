@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-11-03
+## 修改时间: 2025-11-07
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.9.1
+## 版本: 1.9.2
 
 # 定义颜色
 RED='\033[0;31m'
@@ -382,6 +382,13 @@ show_help() {
   echo "Git仓库选项:"
   echo "  --keep-git              保留Git仓库（可选，支持git更新）"
   echo "  --no-git, --remove-git  删除Git仓库（默认，节省磁盘空间）"
+  echo ""
+  echo "网络问题解决方案:"
+  echo "  如果遇到GitHub访问问题，脚本会自动尝试以下解决方案:"
+  echo "  1. 优先使用Gitee镜像（国内环境）"
+  echo "  2. 自动修改hosts文件，添加GitHub可用IP"
+  echo "  3. 提供多种IP地址尝试连接"
+  echo "  4. 如果仍然失败，请访问 https://ping.chinaz.com/github.com 查询最新可用IP"
   echo ""
   echo "示例:"
   echo "  $0 --domain example.com --domain www.example.com --email admin@example.com"
@@ -5526,6 +5533,74 @@ modify_docker_compose_for_multi_instance() {
   success "docker-compose.yml多实例配置完成"
 }
 
+# 修复GitHub访问问题
+fix_github_access() {
+  info "尝试修复GitHub访问问题..."
+  
+  # 检查是否已经修复过GitHub访问问题
+  if grep -q "# GitHub IP fix by poetize" /etc/hosts; then
+    info "检测到已存在GitHub IP修复记录，跳过修复"
+    return 0
+  fi
+  
+  # 备份原始hosts文件
+  local hosts_backup="/etc/hosts.backup.$(date +%s)"
+  sudo cp /etc/hosts "$hosts_backup"
+  info "已备份原始hosts文件到: $hosts_backup"
+  
+  # 添加GitHub可用IP到hosts文件
+  # 注意：hosts文件中一个域名只能对应一个IP，后面的会覆盖前面的
+  # 我们选择最稳定的IP作为主要记录，其他IP作为注释记录
+  local primary_github_ip="140.82.112.4"
+  local primary_raw_ip="185.199.108.133"
+  
+  # 其他可用的GitHub IP（作为注释记录）
+  local alternative_github_ips=(
+    "20.205.243.166"
+    "140.82.121.4"
+    "140.82.112.3"
+  )
+  
+  # 添加修复标记注释
+  echo "# GitHub IP fix by poetize - $(date)" | sudo tee -a /etc/hosts
+  
+  # 添加主要IP记录
+  echo "$primary_github_ip github.com" | sudo tee -a /etc/hosts
+  echo "$primary_raw_ip raw.githubusercontent.com" | sudo tee -a /etc/hosts
+  
+  # 添加其他可用IP作为注释记录
+  echo "# GitHub备用IP (如主IP失效可手动替换):" | sudo tee -a /etc/hosts
+  for alt_ip in "${alternative_github_ips[@]}"; do
+    echo "# $alt_ip github.com" | sudo tee -a /etc/hosts
+  done
+  
+  success "已添加GitHub IP到hosts文件"
+  info "如果仍然无法访问GitHub，请访问 https://ping.chinaz.com/github.com 查询最新可用IP"
+  info "或手动编辑hosts文件，将主IP替换为上述备用IP之一"
+}
+
+# 恢复hosts文件
+restore_hosts_file() {
+  # 查找最新的hosts备份文件
+  local latest_backup=$(ls -t /etc/hosts.backup.* 2>/dev/null | head -n 1)
+  
+  if [ -z "$latest_backup" ]; then
+    warning "未找到hosts备份文件"
+    return 1
+  fi
+  
+  info "恢复hosts文件从备份: $latest_backup"
+  sudo cp "$latest_backup" /etc/hosts
+  
+  if [ $? -eq 0 ]; then
+    success "hosts文件已恢复"
+    info "备份文件仍保留在: $latest_backup"
+  else
+    error "恢复hosts文件失败"
+    return 1
+  fi
+}
+
 # 下载并解压项目源码
 download_and_extract_project() {
   local download_url="https://github.com/LeapYa/Awesome-poetize-open.git"
@@ -5544,7 +5619,11 @@ download_and_extract_project() {
     info "Git仓库设置: 删除Git仓库（节省磁盘空间，需要使用全量更新）"
   fi
 
+  # 尝试下载项目源码
+  local clone_success=false
+  
   if is_china_environment; then
+    # 国内环境，优先使用Gitee
     if [ "$keep_git" = "true" ]; then
       info "下载完整Git仓库（支持后续更新功能）..."
       git clone "$repo_url" "$extract_dir"
@@ -5553,11 +5632,35 @@ download_and_extract_project() {
       git clone --depth 1 "$repo_url" "$extract_dir"
       rm -rf "$extract_dir/.git"
     fi
+    
+    # 如果Gitee克隆失败，尝试GitHub
     if [ $? -ne 0 ]; then
-      error "项目源码克隆失败"
-      return 1
+      warning "Gitee克隆失败，尝试使用GitHub..."
+      
+      # 尝试修复GitHub访问问题
+      fix_github_access
+      
+      if [ "$keep_git" = "true" ]; then
+        info "下载完整Git仓库（支持后续更新功能）..."
+        git clone "$download_url" "$extract_dir"
+      else
+        info "下载项目源码（浅克隆，不保留Git仓库）..."
+        git clone --depth 1 "$download_url" "$extract_dir"
+        rm -rf "$extract_dir/.git"
+      fi
+      
+      if [ $? -eq 0 ]; then
+        clone_success=true
+        success "GitHub克隆成功"
+      else
+        error "GitHub克隆也失败了"
+      fi
+    else
+      clone_success=true
+      success "Gitee克隆成功"
     fi
   else
+    # 国外环境，优先使用GitHub
     if [ "$keep_git" = "true" ]; then
       info "下载完整Git仓库（支持后续更新功能）..."
       git clone "$download_url" "$extract_dir"
@@ -5566,10 +5669,56 @@ download_and_extract_project() {
       git clone --depth 1 "$download_url" "$extract_dir"
       rm -rf "$extract_dir/.git"
     fi
+    
+    # 如果GitHub克隆失败，尝试修复GitHub访问问题
     if [ $? -ne 0 ]; then
-      error "项目源码克隆失败"
-      return 1
+      warning "GitHub克隆失败，尝试修复GitHub访问问题..."
+      
+      # 尝试修复GitHub访问问题
+      fix_github_access
+      
+      if [ "$keep_git" = "true" ]; then
+        info "重新尝试下载完整Git仓库..."
+        git clone "$download_url" "$extract_dir"
+      else
+        info "重新尝试下载项目源码（浅克隆）..."
+        git clone --depth 1 "$download_url" "$extract_dir"
+        rm -rf "$extract_dir/.git"
+      fi
+      
+      if [ $? -eq 0 ]; then
+        clone_success=true
+        success "GitHub克隆成功（修复后）"
+      else
+        error "GitHub克隆失败，尝试使用Gitee..."
+        
+        # 如果GitHub仍然失败，尝试Gitee
+        if [ "$keep_git" = "true" ]; then
+          info "尝试使用Gitee下载完整Git仓库..."
+          git clone "$repo_url" "$extract_dir"
+        else
+          info "尝试使用Gitee下载项目源码（浅克隆）..."
+          git clone --depth 1 "$repo_url" "$extract_dir"
+          rm -rf "$extract_dir/.git"
+        fi
+        
+        if [ $? -eq 0 ]; then
+          clone_success=true
+          success "Gitee克隆成功"
+        else
+          error "所有克隆尝试均失败"
+        fi
+      fi
+    else
+      clone_success=true
+      success "GitHub克隆成功"
     fi
+  fi
+  
+  # 如果所有克隆尝试都失败，返回错误
+  if [ "$clone_success" = "false" ]; then
+    error "项目源码克隆失败，请检查网络连接"
+    return 1
   fi
 
   # 如果保留了Git仓库，显示相关信息
