@@ -6,7 +6,7 @@ module.exports = {
     [
       'component',
       {
-        libraryName: 'element-ui',
+        libraryName: 'element-ui-ce',
         styleLibraryName: 'theme-chalk'
       }
     ]

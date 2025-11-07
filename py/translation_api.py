@@ -619,6 +619,13 @@ article:
     async def translate_text_with_config(self, request: TranslationRequest, config: TranslationConfig) -> TranslationResponse:
         """使用指定配置执行翻译（用于测试，支持TOON格式）"""
         try:
+            # 检查配置是否有效
+            if not config:
+                return TranslationResponse(
+                    success=False,
+                    error_message="翻译配置无效或为空"
+                )
+                
             # 判断是否为TOON格式测试
             is_toon = request.title and request.content
             
@@ -2416,7 +2423,7 @@ def register_translation_api(app):
                 if not config:
                     return {
                         'code': 500,
-                        'message': '翻译配置未设置'
+                        'message': '无法连接到Java后端获取配置，请检查后端服务是否正常运行'
                     }
             
             # 使用极简单的测试文本进行快速测试
@@ -2441,7 +2448,7 @@ def register_translation_api(app):
             else:
                 return {
                     'code': 500,
-                    'message': result.error or '连接测试失败'
+                    'message': result.error_message or '连接测试失败'
                 }
                 
         except Exception as e:
@@ -2506,7 +2513,7 @@ def register_translation_api(app):
                 if not config:
                     return {
                         'code': 500,
-                        'message': '翻译配置未设置，请先保存配置或在测试时提供临时配置'
+                        'message': '无法连接到Java后端获取配置，请检查后端服务是否正常运行'
                     }
             
             # 判断是否为TOON格式测试（有title和content说明是TOON测试）

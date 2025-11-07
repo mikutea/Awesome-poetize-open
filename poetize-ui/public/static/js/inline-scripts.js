@@ -21,7 +21,6 @@
 
   // 仅在看板娘功能启用时执行拖拽代码
   if (!isWaifuEnabled()) {
-    console.log('看板娘功能已禁用，跳过拖拽功能初始化');
     return;
   }
 

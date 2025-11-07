@@ -114,10 +114,37 @@ export default {
     font-size: 22px;
   }
 
+  /* 移动端适配：在极窄屏幕上减少logo的左边距 */
+  @media screen and (max-width: 768px) {
+    .my-header .logo {
+      margin-left: 40px;
+    }
+  }
+  
+  @media screen and (max-width: 480px) {
+    .my-header .logo {
+      margin-left: 30px;
+      font-size: 20px;
+    }
+  }
+
   .header-right {
     display: flex;
     justify-content: flex-end;
     margin-right: 40px;
+  }
+
+  /* 移动端适配：在极窄屏幕上减少右边距 */
+  @media screen and (max-width: 768px) {
+    .header-right {
+      margin-right: 30px;
+    }
+  }
+  
+  @media screen and (max-width: 480px) {
+    .header-right {
+      margin-right: 20px;
+    }
   }
 
   .admin-index {

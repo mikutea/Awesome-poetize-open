@@ -64,7 +64,7 @@ module.exports = {
         elementUI: {
           name: 'chunk-elementUI',
           priority: 20, // 权重必须大于 vendors
-          test: /[\\/]node_modules[\\/]_?element-ui(.*)/,
+          test: /[\\/]node_modules[\\/]_?element-ui-ce(.*)/,
           chunks: 'all'
         },
         // 将highlight.js单独打包

@@ -3009,15 +3009,17 @@ const uploadPicture = () => import( "../common/uploadPicture");
         // 构建测试数据
         const testConfig = this.emailConfigs[this.emailTestForm.configIndex];
         const testData = {
-          host: testConfig.host,
-          port: testConfig.port,
-          username: testConfig.username,
-          password: testConfig.password,
-          useSsl: testConfig.useSsl,
-          useStarttls: testConfig.useStarttls,
-          auth: testConfig.auth,
-          senderName: testConfig.senderName,
-          testTo: this.emailTestForm.testEmail
+          testEmail: this.emailTestForm.testEmail,
+          config: { // 将配置信息包装在config对象中
+            host: testConfig.host,
+            port: testConfig.port,
+            username: testConfig.username,
+            password: testConfig.password,
+            useSsl: testConfig.useSsl,
+            useStarttls: testConfig.useStarttls,
+            auth: testConfig.auth,
+            senderName: testConfig.senderName
+          }
         };
         
         // 发送测试请求

@@ -1117,4 +1117,23 @@ body.dark-mode .process-wrap .el-collapse-item__header {
   color: var(--lightGreen) !important;
 }
 
+/* ========== 预设配置对话框暗色模式 ========== */
+/* 预设按钮暗色模式 */
+body.dark-mode .preset-dialog .preset-btn {
+  background: #2d2d2d !important;
+  border: 1px solid #4a4a4a !important;
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode .preset-dialog .preset-btn:hover {
+  background: #3a3a3a !important;
+  border-color: #5a5a5a !important;
+  color: #409eff !important;
+}
+
+body.dark-mode .preset-dialog .preset-btn:active {
+  background: #1a1a1a !important;
+  border-color: #409eff !important;
+}
+
 
