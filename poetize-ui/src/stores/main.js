@@ -152,10 +152,15 @@ export const useMainStore = defineStore('main', {
     
     /**
      * 加载当前用户信息
+     * 注意：此方法会移除用户对象中的accessToken，token应该独立存储在localStorage中
      */
     loadCurrentUser(user) {
-      this.currentUser = user
-      localStorage.setItem('currentUser', JSON.stringify(user))
+      // 创建用户副本并移除token
+      const userWithoutToken = { ...user }
+      delete userWithoutToken.accessToken
+
+      this.currentUser = userWithoutToken
+      localStorage.setItem('currentUser', JSON.stringify(userWithoutToken))
     },
     
     /**
@@ -168,10 +173,15 @@ export const useMainStore = defineStore('main', {
     
     /**
      * 加载管理员信息
+     * 注意：此方法会移除用户对象中的accessToken，token应该独立存储在localStorage中
      */
     loadCurrentAdmin(user) {
-      this.currentAdmin = user
-      localStorage.setItem('currentAdmin', JSON.stringify(user))
+      // 创建用户副本并移除token
+      const userWithoutToken = { ...user }
+      delete userWithoutToken.accessToken
+
+      this.currentAdmin = userWithoutToken
+      localStorage.setItem('currentAdmin', JSON.stringify(userWithoutToken))
     },
     
     /**

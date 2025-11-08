@@ -119,38 +119,43 @@ axios.interceptors.request.use(function (config) {
 
   // 如果是验证码相关的请求，不需要token
   if (config.url && config.url.includes('/captcha/')) {
-    // 对于验证码配置请求，添加加密处理
-    if (config.url.includes('/captcha/getConfig') && config.method === 'get') {
-      // 为GET请求添加加密标识
-      if (!config.params) {
-        config.params = {};
+    // 特殊处理：getBlockedIps 接口需要管理员token，不能跳过
+    if (config.url.includes('/captcha/getBlockedIps')) {
+      // 这个接口需要token，继续执行token添加逻辑
+    } else {
+      // 对于验证码配置请求，添加加密处理
+      if (config.url.includes('/captcha/getConfig') && config.method === 'get') {
+        // 为GET请求添加加密标识
+        if (!config.params) {
+          config.params = {};
+        }
+        config.params.encrypted = 'true';
       }
-      config.params.encrypted = 'true';
-    }
-    // 对于验证码验证请求，添加加密处理
-    else if ((config.url.includes('/captcha/verify-checkbox') || 
-              config.url.includes('/captcha/verify-slide')) && 
-             config.method === 'post' && config.data) {
-      // 检查数据是否已经加密
-      if (config.data.encrypted) {
-        // 数据已经加密，直接使用
-        // console.log('数据已加密，跳过重复加密');
-      } else {
-        // 加密请求数据
-        try {
-          const encryptedData = cryptoUtil.encrypt(config.data);
-          if (encryptedData) {
-            config.data = {
-              encrypted: encryptedData
-            };
+      // 对于验证码验证请求，添加加密处理
+      else if ((config.url.includes('/captcha/verify-checkbox') ||
+                config.url.includes('/captcha/verify-slide')) &&
+               config.method === 'post' && config.data) {
+        // 检查数据是否已经加密
+        if (config.data.encrypted) {
+          // 数据已经加密，直接使用
+          // console.log('数据已加密，跳过重复加密');
+        } else {
+          // 加密请求数据
+          try {
+            const encryptedData = cryptoUtil.encrypt(config.data);
+            if (encryptedData) {
+              config.data = {
+                encrypted: encryptedData
+              };
+            }
+          } catch (error) {
+            console.error('加密验证码验证请求失败:', error);
+            // 加密失败时继续使用原始数据
           }
-        } catch (error) {
-          console.error('加密验证码验证请求失败:', error);
-          // 加密失败时继续使用原始数据
         }
       }
+      return config;
     }
-    return config;
   }
 
   // 统一处理token逻辑

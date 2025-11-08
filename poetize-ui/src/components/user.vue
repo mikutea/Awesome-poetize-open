@@ -551,7 +551,7 @@ const proButton = () => import( "./common/proButton");
               this.mainStore.loadCurrentAdmin( res.data);
               this.account = "";
               this.password = "";
-              
+
               // 显示登录成功消息
               if (this.$route.query.expired === 'true') {
                 this.$message.success('重新登录成功');
@@ -559,9 +559,27 @@ const proButton = () => import( "./common/proButton");
                 this.$message.success('登录成功');
               }
 
-              handleLoginRedirect(this.$route, this.$router, {
-                defaultPath: '/'
-              });
+              // 如果来自 /verify 路径，需要根据用户类型进行不同跳转
+              
+              if (this.$route.query.fromVerify === 'true') {
+                // 检查是否是管理员（userType为0或1）
+                if (res.data.userType === 0 || res.data.userType === 1) {
+                  // 管理员用户，跳转到 /welcome（忽略 redirect 参数）
+                  this.$router.replace('/welcome');
+                } else {
+                  // 普通用户，跳转到首页
+                  this.$router.replace('/');
+                }
+              } else {
+                // 正常情况下的重定向处理
+                // 如果有redirect参数且不是/user或/verify，则跳转到该地址
+                const redirect = this.$route.query.redirect;
+                if (redirect && redirect !== '/user' && redirect !== '/verify') {
+                  this.$router.replace(redirect);
+                } else {
+                  this.$router.replace('/');
+                }
+              }
             }
           })
           .catch((error) => {

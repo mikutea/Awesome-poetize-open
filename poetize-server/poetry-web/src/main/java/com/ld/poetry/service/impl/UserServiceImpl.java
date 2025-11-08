@@ -627,7 +627,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         
         User u = new User();
         u.setId(PoetryUtil.getUserId());
-        
+
         // XSS过滤处理
         if (StringUtils.hasText(user.getUsername())) {
             String filteredUsername = XssFilterUtil.clean(user.getUsername());
@@ -638,7 +638,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         } else {
             u.setUsername(user.getUsername());
         }
-        
+
         if (StringUtils.hasText(user.getIntroduction())) {
             String filteredIntro = XssFilterUtil.clean(user.getIntroduction());
             if (!StringUtils.hasText(filteredIntro)) {
@@ -654,22 +654,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         
         updateById(u);
         User one = lambdaQuery().eq(User::getId, u.getId()).one();
-        String token = PoetryUtil.getToken();
-
-        // 使用Redis缓存替换PoetryCache
-        cacheService.cacheUserSession(token, one.getId());
-        cacheService.cacheUserTokenMapping(one.getId(), token);
-        cacheService.cacheUser(one);
-
-        // 更新UserCacheManager中的用户缓存
-        userCacheManager.cacheUserByToken(token, one);
-        userCacheManager.cacheUserById(one.getId(), one);
 
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(one, userVO);
         userVO.setPassword(null);
         userVO.setUserType(one.getUserType());
-        userVO.setAccessToken(PoetryUtil.getToken());
         return PoetryResult.success(userVO);
     }
 
@@ -877,20 +866,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         updateById(updateUser);
 
         User one = lambdaQuery().eq(User::getId, user.getId()).one();
-
-        // 更新用户缓存信息
-        String currentToken = PoetryUtil.getToken();
-        if (currentToken != null) {
-            cacheService.cacheUserSession(currentToken, one.getId());
-            cacheService.cacheUser(one);
-
-            // 判断是管理员还是普通用户token并更新相应缓存
-            if (currentToken.contains(CommonConst.ADMIN_ACCESS_TOKEN)) {
-                cacheService.cacheAdminToken(one.getId(), currentToken);
-            } else {
-                cacheService.cacheUserToken(one.getId(), currentToken);
-            }
-        }
 
         UserVO userVO = new UserVO();
         BeanUtils.copyProperties(one, userVO);
@@ -1163,7 +1138,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         BeanUtils.copyProperties(user, userVO);
         userVO.setPassword(null);
         userVO.setUserType(user.getUserType());
-        userVO.setAccessToken(userToken);
 
         // 根据用户实际权限设置isBoss标志（与登录逻辑保持一致）
         if (isActualAdmin) {
@@ -1171,6 +1145,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         } else {
             userVO.setIsBoss(false);
         }
+
+        // 返回token（用于前端获取新token）
+        userVO.setAccessToken(userToken);
 
         return PoetryResult.success(userVO);
     }
@@ -1193,7 +1170,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 BeanUtils.copyProperties(one, userVO);
                 userVO.setPassword(null);
                 userVO.setSubscribe(user.getSubscribe());
-                userVO.setAccessToken(PoetryUtil.getToken());
             }
         } else {
             if (sub.contains(labelId)) {
@@ -1207,7 +1183,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 BeanUtils.copyProperties(one, userVO);
                 userVO.setPassword(null);
                 userVO.setSubscribe(user.getSubscribe());
-                userVO.setAccessToken(PoetryUtil.getToken());
             }
         }
         return PoetryResult.success(userVO);

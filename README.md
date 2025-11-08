@@ -1034,8 +1034,8 @@ docker exec poetize-mariadb mysqldump -uroot -p${ROOT_PWD} poetize > backup.sql
 ## 🛠️ 技术栈
 
 * **前端** - Vue2/Vue3、Element UI、Socket.io、Live2D
-* **后端** - Spring Boot 3.5.5、MyBatis Plus、FastAPI、OAuth2.0、Java 25
-* **数据库** - MariaDB 11（兼容MySQL 5.7）
+* **后端** - Spring Boot 3.5.5、Java 25、FastAPI、Python
+* **数据库** - MariaDB 11、Redis
 * **部署** - Docker、Docker Compose、Nginx、Shell脚本
 
 ## 📧 联系方式

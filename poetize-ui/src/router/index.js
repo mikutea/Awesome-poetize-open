@@ -190,8 +190,19 @@ const routes = [
   },
   {
     path: '/verify',
-    name: 'verify',
-    component: () => import('../components/admin/verify')
+    redirect: to => {
+      // 所有访问 /verify 的请求都重定向到 /user 登录页
+      // 保留原有的 redirect 参数
+      const redirect = to.query.redirect;
+      const query = { fromVerify: 'true' };
+      if (redirect) {
+        query.redirect = redirect;
+      }
+      return {
+        path: '/user',
+        query: query
+      };
+    }
   },
   {
     path: '/403',

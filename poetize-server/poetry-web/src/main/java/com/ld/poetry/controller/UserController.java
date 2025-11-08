@@ -1,19 +1,16 @@
 package com.ld.poetry.controller;
 
 import cn.hutool.crypto.SecureUtil;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.constants.CommonConst;
 import com.ld.poetry.entity.User;
-import com.ld.poetry.handle.PoetryRuntimeException;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.service.MailService;
 import com.ld.poetry.service.UserService;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.utils.PoetryUtil;
-import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.EncryptedRequestVO;
 import com.ld.poetry.vo.EncryptedResponseVO;
 import com.ld.poetry.vo.UserVO;
@@ -201,13 +198,6 @@ public class UserController {
     @PostMapping("/updateUserInfo")
     @LoginCheck
     public PoetryResult<UserVO> updateUserInfo(@RequestBody UserVO user) {
-        try {
-            Integer userId = PoetryUtil.getUserId();
-            // 使用CacheService清理用户缓存
-            cacheService.evictUser(userId);
-        } catch (Exception e) {
-            log.error("清理用户信息缓存时发生错误: userId={}", PoetryUtil.getUserId(), e);
-        }
         return userService.updateUserInfo(user);
     }
 
@@ -247,28 +237,7 @@ public class UserController {
     @PostMapping("/updateSecretInfo")
     @LoginCheck
     public PoetryResult<UserVO> updateSecretInfo(@RequestParam("place") String place, @RequestParam("flag") Integer flag, @RequestParam(value = "code", required = false) String code, @RequestParam("password") String password) {
-        // 1. 先获取当前用户信息用于后续缓存处理
-        User currentUser = PoetryUtil.getCurrentUser();
-        if (currentUser == null) {
-            log.error("用户上下文验证失败 - 无法获取当前用户信息, place={}, flag={}", place, flag);
-            return PoetryResult.fail("用户认证失败，请重新登录");
-        }
-
-        Integer userId = currentUser.getId();
-
-        // 2. 调用 service 执行真正的更新操作
-        PoetryResult<UserVO> result = userService.updateSecretInfo(place, flag, code, password);
-
-        // 3. 仅当更新成功时才清理缓存，避免 service 内再次获取用户信息出现空指针
-        if (result.getCode() == 200) {
-            try {
-                cacheService.evictUser(userId);
-            } catch (Exception e) {
-                log.error("清理用户密钥信息缓存时发生错误: userId={}", userId, e);
-            }
-        }
-
-        return result;
+        return userService.updateSecretInfo(place, flag, code, password);
     }
 
     /**
