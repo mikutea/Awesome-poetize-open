@@ -12,6 +12,7 @@ import com.ld.poetry.utils.storage.StoreService;
 import com.ld.poetry.utils.*;
 import com.ld.poetry.utils.storage.FileStorageService;
 import com.ld.poetry.utils.image.ImageCompressUtil;
+import com.ld.poetry.utils.security.FileSecurityValidator;
 import com.ld.poetry.vo.BaseRequestVO;
 import com.ld.poetry.vo.FileVO;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +46,9 @@ public class ResourceController {
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private FileSecurityValidator fileSecurityValidator;
 
     /**
      * 保存
@@ -102,28 +106,35 @@ public class ResourceController {
         }
 
         try {
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}, 用户ID: {}", validationResult.getMessage(), PoetryUtil.getUserId());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
+            log.info("文件安全验证通过: {}, Content-Type: {}", file.getOriginalFilename(), file.getContentType());
             MultipartFile processedFile = file;
             String originalFileName = file.getOriginalFilename();
             long originalSize = file.getSize();
-            
-            // 检查是否为图片文件，如果是则进行压缩
-            if (isImageFile(file.getContentType())) {
-                
-                try {
-                    ImageCompressUtil.CompressResult compressResult = ImageCompressUtil.smartCompress(file);
-                    
-                    // 创建压缩后的文件对象
-                    processedFile = new CompressedMultipartFile(
-                            file.getName(),
-                            originalFileName,
-                            compressResult.getContentType(),
-                            compressResult.getData()
-                    );
-                    
-                    
-                } catch (IOException e) {
-                    // 压缩失败时使用原文件
-                }
+
+            // 尝试智能压缩（仅对图片有效）
+            try {
+                ImageCompressUtil.CompressResult compressResult = ImageCompressUtil.smartCompress(file);
+
+                // 创建压缩后的文件对象
+                processedFile = new CompressedMultipartFile(
+                        file.getName(),
+                        originalFileName,
+                        compressResult.getContentType(),
+                        compressResult.getData()
+                );
+
+
+            } catch (IOException e) {
+                // 压缩失败时使用原文件（非图片文件会走到这里）
             }
 
             fileVO.setFile(processedFile);
@@ -173,22 +184,28 @@ public class ResourceController {
     @PostMapping("/uploadImageWithCompress")
     @LoginCheck
     public PoetryResult<Object> uploadImageWithCompress(
-            @RequestParam("file") MultipartFile file, 
+            @RequestParam("file") MultipartFile file,
             FileVO fileVO,
             @RequestParam(value = "maxWidth", defaultValue = "1920") int maxWidth,
             @RequestParam(value = "maxHeight", defaultValue = "1080") int maxHeight,
             @RequestParam(value = "quality", defaultValue = "0.85") float quality,
             @RequestParam(value = "targetSize", defaultValue = "512000") long targetSize) {
-        
+
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
             return PoetryResult.fail("文件和资源类型和资源路径不能为空！");
         }
 
-        if (!isImageFile(file.getContentType())) {
-            return PoetryResult.fail("请上传图片文件！");
-        }
-
         try {
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}, 用户ID: {}", validationResult.getMessage(), PoetryUtil.getUserId());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
+            log.info("智能压缩上传 - 文件安全验证通过: {}, Content-Type: {}", file.getOriginalFilename(), file.getContentType());
             
             // 执行智能压缩
             ImageCompressUtil.CompressResult compressResult = 
@@ -250,20 +267,6 @@ public class ResourceController {
             log.error("智能压缩上传失败: {}", e.getMessage(), e);
             return PoetryResult.fail("智能压缩上传失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 判断是否为图片文件
-     */
-    private boolean isImageFile(String contentType) {
-        return contentType != null && (
-                contentType.startsWith("image/jpeg") ||
-                contentType.startsWith("image/jpg") ||
-                contentType.startsWith("image/png") ||
-                contentType.startsWith("image/gif") ||
-                contentType.startsWith("image/bmp") ||
-                contentType.startsWith("image/webp")
-        );
     }
 
     /**

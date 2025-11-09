@@ -88,13 +88,8 @@ public class AsyncImageCompressService {
             
             for (MultipartFile file : files) {
                 try {
-                    if (isImageFile(file.getContentType())) {
-                        ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
-                        batchResult.addSuccess(result);
-                        
-                    } else {
-                        batchResult.addSkipped(file.getOriginalFilename(), "非图片文件");
-                    }
+                    ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
+                    batchResult.addSuccess(result);
                 } catch (Exception e) {
                     batchResult.addError(file.getOriginalFilename(), e.getMessage());
                     log.warn("批量压缩失败: {}, 错误: {}", file.getOriginalFilename(), e.getMessage());
@@ -112,20 +107,6 @@ public class AsyncImageCompressService {
             
             return batchResult;
         });
-    }
-
-    /**
-     * 检查是否为图片文件
-     */
-    private boolean isImageFile(String contentType) {
-        return contentType != null && (
-                contentType.startsWith("image/jpeg") ||
-                contentType.startsWith("image/jpg") ||
-                contentType.startsWith("image/png") ||
-                contentType.startsWith("image/gif") ||
-                contentType.startsWith("image/bmp") ||
-                contentType.startsWith("image/webp")
-        );
     }
 
     /**

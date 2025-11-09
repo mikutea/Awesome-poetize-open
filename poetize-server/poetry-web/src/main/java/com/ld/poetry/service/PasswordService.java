@@ -3,6 +3,7 @@ package com.ld.poetry.service;
 import cn.hutool.crypto.SecureUtil;
 import com.ld.poetry.config.PasswordSecurityPolicy;
 import com.ld.poetry.constants.CommonConst;
+import com.ld.poetry.utils.CryptoUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -51,9 +52,9 @@ public class PasswordService {
     }
 
     /**
-     * 解密前端AES加密的密码
+     * 解密前端AES-GCM加密的密码
      * 
-     * @param encryptedPassword 前端AES加密的密码
+     * @param encryptedPassword 前端AES-GCM加密的密码
      * @return 解密后的明文密码
      */
     public String decryptFromFrontend(String encryptedPassword) {
@@ -62,8 +63,12 @@ public class PasswordService {
         }
         
         try {
-            return new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8))
-                .decrypt(encryptedPassword));
+            // 使用CryptoUtil的AES-GCM解密方法
+            String decryptedPassword = CryptoUtil.decrypt(encryptedPassword);
+            if (decryptedPassword == null) {
+                throw new IllegalArgumentException("密码解密失败");
+            }
+            return decryptedPassword;
         } catch (Exception e) {
             log.error("密码解密失败: {}", e.getMessage());
             throw new IllegalArgumentException("密码解密失败");

@@ -1092,7 +1092,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public PoetryResult<UserVO> token(String userToken) {
-        userToken = new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).decrypt(userToken));
+        userToken = CryptoUtil.decrypt(userToken);
 
         if (!StringUtils.hasText(userToken)) {
             throw new PoetryRuntimeException("登录已过期，请重新登陆！");

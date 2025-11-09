@@ -161,14 +161,6 @@
         </div>
       </div>
     </el-dialog>
-
-    <!-- 邮箱收集模态框 -->
-    <EmailCollectionModal
-      :visible="showEmailCollectionModal"
-      :userInfo="tempUserData"
-      :provider="tempUserData.provider || 'gitee'"
-      @complete="handleEmailCollectionComplete"
-    />
   </div>
 </template>
 <script>
@@ -181,7 +173,6 @@
   const sortArticle = () => import( "./common/sortArticle");
   const myFooter = () => import( "./common/myFooter");
   const myAside = () => import( "./myAside");
-  const EmailCollectionModal = () => import( "./common/EmailCollectionModal");
 
   export default {
     components: {
@@ -191,8 +182,7 @@
       articleList,
       sortArticle,
       myFooter,
-      myAside,
-      EmailCollectionModal
+      myAside
     },
 
     data() {
@@ -218,10 +208,7 @@
           "category": ""
         },
         articles: [],
-        sortArticles: {},
-        // 邮箱收集相关
-        showEmailCollectionModal: false,
-        tempUserData: {}
+        sortArticles: {}
       };
     },
 
@@ -272,9 +259,6 @@
     },
 
     mounted() {
-      // 检查是否需要显示邮箱收集模态框
-      this.checkEmailCollectionNeeded();
-
       // 监听文章保存成功事件，自动刷新文章列表
       this.$root.$on('articleSaved', () => {
         
@@ -531,73 +515,6 @@
         };
         xhr.send();
       },
-
-      // 邮箱收集相关方法
-      checkEmailCollectionNeeded() {
-
-        // 检查URL参数
-        if (this.$route.query.showEmailCollection === 'true') {
-
-          const tempUserDataStr = localStorage.getItem('tempUserData');
-
-          if (tempUserDataStr) {
-            try {
-              this.tempUserData = JSON.parse(tempUserDataStr);
-
-              if (this.tempUserData.needsEmailCollection) {
-                this.showEmailCollectionModal = true;
-
-                // 清除URL参数
-                this.$router.replace({ path: '/', query: {} });
-              } else {
-              }
-            } catch (error) {
-              console.error('解析临时用户数据失败:', error);
-              localStorage.removeItem('tempUserData');
-            }
-          } else {
-          }
-        } else {
-        }
-      },
-
-      async handleEmailCollectionComplete(result) {
-
-        try {
-          // 隐藏模态框
-          this.showEmailCollectionModal = false;
-
-          // 如果用户提供了邮箱，更新用户信息
-          if (result.email && !result.skipped) {
-            this.tempUserData.email = result.email;
-          }
-
-          // 完成登录流程
-          this.mainStore.loadCurrentUser( this.tempUserData);
-          this.mainStore.loadCurrentAdmin( this.tempUserData);
-
-          // 清除临时数据
-          localStorage.removeItem('tempUserData');
-
-          // 显示欢迎消息
-          const platformName = this.getPlatformName(this.tempUserData.provider);
-          if (result.skipped) {
-            this.$message.success(`欢迎通过 ${platformName} 登录！您可以稍后在个人设置中添加邮箱。`);
-          } else {
-            this.$message.success(`欢迎通过 ${platformName} 登录！邮箱已保存。`);
-          }
-
-        } catch (error) {
-          console.error('完成邮箱收集流程时出错:', error);
-          this.$message.error('登录过程中出现问题，但您已成功登录');
-
-          // 即使出错也要完成基本的登录流程
-          this.mainStore.loadCurrentUser( this.tempUserData);
-          this.mainStore.loadCurrentAdmin( this.tempUserData);
-          localStorage.removeItem('tempUserData');
-        }
-      },
-
       getPlatformName(provider) {
         const platformNames = {
           'gitee': 'Gitee',
@@ -609,9 +526,7 @@
           'baidu': 'Baidu'
         };
         return platformNames[provider] || provider;
-      },
-
-
+      }
     }
   }
 </script>

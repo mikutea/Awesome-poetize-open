@@ -5,6 +5,13 @@
     <captcha-container />
     <!-- 全局异步通知组件 -->
     <async-notification ref="globalNotification" />
+    <!-- 全局邮箱收集组件 -->
+    <global-email-collection
+      :visible="showGlobalEmailCollection"
+      :userInfo="tempUserData"
+      :provider="emailCollectionProvider"
+      @complete="handleEmailCollectionComplete"
+    />
     <!-- AI聊天（支持Live2D看板娘模式或简单按钮模式） -->
     <!-- mode从后台配置读取，默认为 'live2d' -->
     <Live2D :mode="waifuDisplayMode" />
@@ -13,14 +20,18 @@
 
 <script>
   import { useMainStore } from '@/stores/main';
+  import globalEmailCollectionMixin from '@/mixins/globalEmailCollection.js';
 
 import CaptchaContainer from '@/components/common/CaptchaContainer.vue';
+import GlobalEmailCollection from '@/components/common/GlobalEmailCollection.vue';
 import Live2D from '@/components/live2d/index.vue';
 
 export default {
   name: "App",
+  mixins: [globalEmailCollectionMixin],
   components: {
     CaptchaContainer,
+    GlobalEmailCollection,
     Live2D
   },
   data() {

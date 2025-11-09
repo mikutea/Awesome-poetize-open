@@ -4,7 +4,6 @@ import { useMainStore } from '../stores/main'
 import constant from '../utils/constant'
 import common from '../utils/common'
 import { handleTokenExpire, isLoggedIn, getValidToken } from '../utils/tokenExpireHandler'
-import translationModelManage from "../components/admin/translationModelManage";
 
 const originalPush = VueRouter.prototype.push;
 VueRouter.prototype.push = function push(location) {
@@ -229,7 +228,7 @@ const router = new VueRouter({
   }
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 检查是否需要重定向到403页面（Nginx错误重定向）
   if (to.query.redirect === '403') {
     next('/403');
@@ -272,129 +271,104 @@ router.beforeEach((to, from, next) => {
 
   // 处理OAuth登录回调token
   if (to.query.userToken) {
-    const userToken = to.query.userToken;
-    const emailCollectionNeeded = to.query.emailCollectionNeeded === 'true';
+    // 使用Promise来异步处理token验证
+    await handleOAuthToken(to, from, next);
+    return;
+  }
 
+  // 继续正常的路由流程
+  next();
+})
 
-    // 使用同步XMLHttpRequest验证token（与poetize-im-ui保持一致）
-    try {
-      const xhr = new XMLHttpRequest();
-      // 使用导入的constant而不是store.state.constant
-      const baseURL = constant.baseURL || 'http://localhost:8081';
+/**
+ * 处理OAuth登录回调的异步token验证
+ */
+async function handleOAuthToken(to, from, next) {
+  const userToken = to.query.userToken;
+  const emailCollectionNeeded = to.query.emailCollectionNeeded === 'true';
+  const baseURL = constant.baseURL;
 
-      // 对token进行AES加密，因为后端期望接收加密的token
-      const encryptedToken = common.encrypt(userToken);
+  try {
+    // 异步加密token
+    const encryptedToken = await common.encrypt(userToken);
 
-      xhr.open('post', baseURL + "/user/token", false);
-      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-      xhr.send("userToken=" + encryptedToken);
+    // 使用异步请求验证token
+    const response = await fetch(baseURL + "/user/token", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: "userToken=" + encryptedToken
+    });
 
+    if (response.ok) {
+      const result = await response.json();
+      if (result && result.code === 200) {
+        // 检查是否需要邮箱收集（通过URL参数或响应消息）
+        const needsEmailCollection = emailCollectionNeeded || result.message === 'EMAIL_COLLECTION_NEEDED';
 
-      if (xhr.status === 200) {
-        const result = JSON.parse(xhr.responseText);
-        if (result && result.code === 200) {
+        if (needsEmailCollection) {
+          // 存储临时的用户信息和token
+          const provider = result.data.platformType || to.query.provider || 'unknown';
+          const tempUserData = {
+            ...result.data,
+            needsEmailCollection: true,
+            provider: provider
+          };
 
-          // 检查是否需要邮箱收集（通过URL参数或响应消息）
-          const needsEmailCollection = emailCollectionNeeded || result.message === 'EMAIL_COLLECTION_NEEDED';
-
-          if (needsEmailCollection) {
-
-            // 存储临时的用户信息和token
-            // 尝试从用户数据中获取provider，如果没有则从URL参数获取
-            const provider = result.data.platformType || to.query.provider || 'unknown';
-            const tempUserData = {
-              ...result.data,
-              needsEmailCollection: true,
-              provider: provider
-            };
-
-            // 先存储token，但标记为需要完善信息
-            // 注意：虽然同时存储为userToken和adminToken，但实际权限由后端严格执行
-            // 权限控制基于token前缀、用户类型字段和@LoginCheck注解验证
-            localStorage.setItem("userToken", result.data.accessToken);
-            localStorage.setItem("adminToken", result.data.accessToken);
-            localStorage.setItem("tempUserData", JSON.stringify(tempUserData));
-
-
-            // 重定向到首页，首页会检测到需要邮箱收集并显示模态框
-            next({
-              path: '/',
-              query: { showEmailCollection: 'true' },
-              replace: true
-            });
-            return;
-          }
-
-          // 正常的OAuth登录流程
-          // 清除旧的缓存数据
-          localStorage.removeItem("currentAdmin");
-          localStorage.removeItem("currentUser");
-
-          // 注意：虽然同时存储为userToken和adminToken，但实际权限由后端严格执行
-          // 权限控制基于token前缀、用户类型字段和@LoginCheck注解验证
+          // 先存储token，但标记为需要完善信息
           localStorage.setItem("userToken", result.data.accessToken);
           localStorage.setItem("adminToken", result.data.accessToken);
-          const mainStore = useMainStore();
-          mainStore.loadCurrentUser(result.data);
-          mainStore.loadCurrentAdmin(result.data);
+          localStorage.setItem("tempUserData", JSON.stringify(tempUserData));
 
-          // 清除URL中的token参数并重定向到首页
-          const cleanPath = to.path === '/' ? '/' : to.path;
-          next({ path: cleanPath, replace: true });
-          return;
-        } else {
-          console.error('OAuth token验证失败:', result);
-          // token验证失败，清除token参数并继续正常流程
-          next({ path: to.path, query: {}, replace: true });
+          // 获取原始重定向路径
+          const redirectPath = to.query.redirect || from.query.redirect || sessionStorage.getItem('oauthRedirectPath') || '/';
+          
+          // 重定向到原始页面，并添加showEmailCollection参数
+          next({
+            path: redirectPath,
+            query: { showEmailCollection: 'true' },
+            replace: true
+          });
           return;
         }
+
+        // 正常的OAuth登录流程
+        localStorage.removeItem("currentAdmin");
+        localStorage.removeItem("currentUser");
+
+        // 存储token
+        localStorage.setItem("userToken", result.data.accessToken);
+        localStorage.setItem("adminToken", result.data.accessToken);
+        const mainStore = useMainStore();
+        mainStore.loadCurrentUser(result.data);
+        mainStore.loadCurrentAdmin(result.data);
+
+        // 获取原始重定向路径
+        const redirectPath = to.query.redirect || from.query.redirect || sessionStorage.getItem('oauthRedirectPath') || '/';
+        
+        // 清除URL中的token参数并重定向到原始页面
+        next({ 
+          path: redirectPath, 
+          query: { ...to.query, token: undefined, state: undefined },
+          replace: true 
+        });
+        return;
       } else {
-        console.error('OAuth token验证HTTP错误:', xhr.status, xhr.statusText);
-        // HTTP错误，清除token参数并继续正常流程
+        console.error('OAuth token验证失败:', result);
         next({ path: to.path, query: {}, replace: true });
         return;
       }
-    } catch (error) {
-      console.error('OAuth token验证异常:', error);
-      console.error('错误详情:', {
-        message: error.message,
-        stack: error.stack,
-        userToken: userToken ? userToken.substring(0, 10) + '...' : 'undefined',
-        baseURL: constant.baseURL
-      });
-      // 验证异常，清除token参数并继续正常流程
+    } else {
+      console.error('OAuth token验证HTTP错误:', response.status);
       next({ path: to.path, query: {}, replace: true });
       return;
     }
+  } catch (error) {
+    console.error('OAuth token验证异常:', error);
+    next({ path: to.path, query: {}, replace: true });
+    return;
   }
-  
-  // 检查是否需要管理员权限
-  if (to.matched.some(record => record.meta.requiresAdmin)) {
-    // 检查是否有管理员token
-    const adminToken = localStorage.getItem("adminToken");
-    if (!adminToken) {
-      // 如果没有管理员token，跳转到管理员登录页
-      next({
-        path: '/verify',
-        query: { redirect: to.fullPath }
-      });
-    } else {
-      // 如果有管理员token，检查用户类型
-      const mainStore = useMainStore();
-      const currentAdmin = mainStore.currentAdmin;
-      if (currentAdmin && (currentAdmin.userType === 0 || currentAdmin.userType === 1)) {
-        next();
-      } else {
-        // 如果用户不是管理员，跳转到首页
-        next('/');
-      }
-    }
-  } else if (to.path === '/user') {
-    // 用户路由特殊处理，允许未登录用户访问
-    next();
-  } else {
-    next();
-  }
-})
+}
 
 export default router

@@ -123,7 +123,37 @@ export default {
     },
 
     goToUserCenter() {
-      this.$router.push('/user');
+      // 获取原始重定向路径
+      const redirectPath = this.$route.query.redirect || sessionStorage.getItem('oauthRedirectPath') || '/user';
+      
+      // 清除保存的重定向路径
+      sessionStorage.removeItem('oauthRedirectPath');
+      
+      // 检查是否需要邮箱收集
+      const tempUserDataStr = localStorage.getItem('tempUserData');
+      if (tempUserDataStr) {
+        try {
+          const tempUserData = JSON.parse(tempUserDataStr);
+          if (tempUserData.needsEmailCollection) {
+            // 重定向到原始页面，并添加showEmailCollection参数
+            this.$router.push({
+              path: redirectPath,
+              query: { showEmailCollection: 'true' },
+              replace: true
+            });
+            return;
+          }
+        } catch (error) {
+          console.error('解析临时用户数据失败:', error);
+          localStorage.removeItem('tempUserData');
+        }
+      }
+      
+      // 重定向到原始页面
+      this.$router.push({
+        path: redirectPath,
+        replace: true
+      });
     },
 
     goToLogin() {

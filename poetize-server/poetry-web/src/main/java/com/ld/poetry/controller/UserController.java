@@ -1,6 +1,5 @@
 package com.ld.poetry.controller;
 
-import cn.hutool.crypto.SecureUtil;
 import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.aop.SaveCheck;
 import com.ld.poetry.constants.CommonConst;
@@ -11,6 +10,7 @@ import com.ld.poetry.service.UserService;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.utils.JsonUtils;
 import com.ld.poetry.utils.PoetryUtil;
+import com.ld.poetry.utils.CryptoUtil;
 import com.ld.poetry.vo.EncryptedRequestVO;
 import com.ld.poetry.vo.EncryptedResponseVO;
 import com.ld.poetry.vo.UserVO;
@@ -19,7 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -65,13 +64,15 @@ public class UserController {
         // 如果有加密请求体，则解密并提取参数
         if (encryptedRequest != null && encryptedRequest.getData() != null) {
             try {
-                // 解密请求体
-                String decryptedData = new String(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8))
-                    .decrypt(encryptedRequest.getData()));
-                
+                // 使用安全的AES-GCM模式解密请求体
+                String decryptedData = CryptoUtil.decrypt(encryptedRequest.getData());
+                if (decryptedData == null) {
+                    return PoetryResult.fail("解密失败");
+                }
+
                 // 解析JSON
                 Map<String, Object> params = JsonUtils.parseObject(decryptedData, Map.class);
-                
+
                 // 从解密后的数据中提取参数
                 account = (String) params.get("account");
                 password = (String) params.get("password");
@@ -95,11 +96,15 @@ public class UserController {
             try {
                 // 将UserVO转换为JSON字符串
                 String responseData = JsonUtils.toJsonString(loginResult.getData());
-                
-                // 加密响应数据，使用与前端相同的ECB模式
-                String encryptedData = SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8))
-                    .encryptBase64(responseData);
-                
+
+                // 使用安全的AES-GCM模式加密响应数据
+                String encryptedData = CryptoUtil.encrypt(responseData);
+                if (encryptedData == null) {
+                    log.error("加密登录响应失败");
+                    // 加密失败时返回原始数据
+                    return PoetryResult.success(new EncryptedResponseVO(JsonUtils.toJsonString(loginResult.getData())));
+                }
+
                 // 返回加密后的响应
                 return PoetryResult.success(new EncryptedResponseVO(encryptedData));
             } catch (Exception e) {

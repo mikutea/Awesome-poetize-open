@@ -883,7 +883,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         
         article.setPassword(null);
         if (StringUtils.hasText(article.getVideoUrl())) {
-            article.setVideoUrl(SecureUtil.aes(CommonConst.CRYPOTJS_KEY.getBytes(StandardCharsets.UTF_8)).encryptBase64(article.getVideoUrl()));
+            article.setVideoUrl(CryptoUtil.encrypt(article.getVideoUrl()));
         }
         
         ArticleVO articleVO = buildArticleVO(article, false);

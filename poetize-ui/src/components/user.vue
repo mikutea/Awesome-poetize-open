@@ -518,7 +518,7 @@ const proButton = () => import( "./common/proButton");
        * 3. 使用@LoginCheck注解进行权限级别验证
        * 4. 即使前端错误设置了adminToken，后端也会拒绝非管理员访问管理员接口
        */
-      login(verificationToken = '') {
+      async login(verificationToken = '') {
         if (this.$common.isEmpty(this.account) || this.$common.isEmpty(this.password)) {
           this.$message({
             message: "请输入账号或密码！",
@@ -526,22 +526,23 @@ const proButton = () => import( "./common/proButton");
           });
           return;
         }
-        
-        let user = {
-          account: this.account.trim(),
-          password: this.$common.encrypt(this.password.trim()),
-          isAdmin: false  // 普通用户登录，设置为false
-        };
-        
-        // 添加验证令牌
-        if (verificationToken) {
-          user.verificationToken = verificationToken;
-        }
-        
-        // 对整个请求体进行加密
-        let encryptedUser = this.$common.encrypt(JSON.stringify(user));
-        
-        this.$http.post(this.$constant.baseURL + "/user/login", {data: encryptedUser}, true, true)
+
+        try {
+          let user = {
+            account: this.account.trim(),
+            password: await this.$common.encrypt(this.password.trim()),
+            isAdmin: false  // 普通用户登录，设置为false
+          };
+          
+          // 添加验证令牌
+          if (verificationToken) {
+            user.verificationToken = verificationToken;
+          }
+          
+          // 对整个请求体进行加密
+          let encryptedUser = await this.$common.encrypt(JSON.stringify(user));
+          
+          this.$http.post(this.$constant.baseURL + "/user/login", {data: encryptedUser}, true, true)
           .then((res) => {
             if (!this.$common.isEmpty(res.data)) {
               // 同时存储用户token和管理员token
@@ -588,8 +589,14 @@ const proButton = () => import( "./common/proButton");
               type: "error"
             });
           });
+        } catch (error) {
+          this.$message({
+            message: "加密失败: " + error.message,
+            type: "error"
+          });
+        }
       },
-      regist(verificationToken) {
+      async regist(verificationToken) {
         if (this.$common.isEmpty(this.username) || this.$common.isEmpty(this.password)) {
           this.$message({
             message: "请输入用户名或密码！",
@@ -622,68 +629,75 @@ const proButton = () => import( "./common/proButton");
           return;
         }
 
-        let user = {
-          username: this.username.trim(),
-          code: this.code.trim(),
-          password: this.$common.encrypt(this.password.trim())
-        };
+        try {
+          let user = {
+            username: this.username.trim(),
+            code: this.code.trim(),
+            password: await this.$common.encrypt(this.password.trim())
+          };
 
-        if (this.dialogTitle === "邮箱验证码") {
-          user.email = this.email;
-        }
-        
-        // 添加验证令牌
-        if (verificationToken) {
-          user.verificationToken = verificationToken;
-        }
+          if (this.dialogTitle === "邮箱验证码") {
+            user.email = this.email;
+          }
+          
+          // 添加验证令牌
+          if (verificationToken) {
+            user.verificationToken = verificationToken;
+          }
 
-        this.$http.post(this.$constant.baseURL + "/user/regist", user)
-          .then((res) => {
-            if (!this.$common.isEmpty(res.data)) {
-              localStorage.setItem("userToken", res.data.accessToken);
-              this.mainStore.loadCurrentUser( res.data);
-              this.username = "";
-              this.password = "";
-              this.email = "";
-              this.code = "";
-              
-              // 检查是否有重定向URL
-              const redirect = this.$route.query.redirect;
-              const hasComment = this.$route.query.hasComment;
-              const hasReplyAction = this.$route.query.hasReplyAction;
-
-              if (redirect) {
-                // 保留hasComment和hasReplyAction参数以触发评论/回复状态恢复
-                const query = {};
-                if (hasComment === 'true') query.hasComment = 'true';
-                if (hasReplyAction === 'true') query.hasReplyAction = 'true';
-                this.$router.push({ path: redirect, query: query });
-              } else {
-                // 如果没有重定向，则跳转首页并打开IM聊天室
-                this.$router.push({path: '/'});
-                let userToken = this.$common.encrypt(localStorage.getItem("userToken"));
-                let imUrl = this.$constant.imBaseURL + "?userToken=" + userToken;
+          this.$http.post(this.$constant.baseURL + "/user/regist", user)
+            .then(async (res) => {
+              if (!this.$common.isEmpty(res.data)) {
+                localStorage.setItem("userToken", res.data.accessToken);
+                this.mainStore.loadCurrentUser( res.data);
+                this.username = "";
+                this.password = "";
+                this.email = "";
+                this.code = "";
                 
-                // 仅在开发环境下传递主题状态（生产环境localStorage共享）
-                const isDevelopment = this.$constant.imBaseURL.includes('localhost') || 
-                                     this.$constant.imBaseURL.includes('127.0.0.1');
-                if (isDevelopment) {
-                  const currentTheme = localStorage.getItem('theme');
-                  if (currentTheme) {
-                    imUrl += "&theme=" + currentTheme;
+                // 检查是否有重定向URL
+                const redirect = this.$route.query.redirect;
+                const hasComment = this.$route.query.hasComment;
+                const hasReplyAction = this.$route.query.hasReplyAction;
+
+                if (redirect) {
+                  // 保留hasComment和hasReplyAction参数以触发评论/回复状态恢复
+                  const query = {};
+                  if (hasComment === 'true') query.hasComment = 'true';
+                  if (hasReplyAction === 'true') query.hasReplyAction = 'true';
+                  this.$router.push({ path: redirect, query: query });
+                } else {
+                  // 如果没有重定向，则跳转首页并打开IM聊天室
+                  this.$router.push({path: '/'});
+                  let userToken = await this.$common.encrypt(localStorage.getItem("userToken"));
+                  let imUrl = this.$constant.imBaseURL + "?userToken=" + userToken;
+                  
+                  // 仅在开发环境下传递主题状态（生产环境localStorage共享）
+                  const isDevelopment = this.$constant.imBaseURL.includes('localhost') || 
+                                       this.$constant.imBaseURL.includes('127.0.0.1');
+                  if (isDevelopment) {
+                    const currentTheme = localStorage.getItem('theme');
+                    if (currentTheme) {
+                      imUrl += "&theme=" + currentTheme;
+                    }
                   }
+                  
+                  window.open(imUrl);
                 }
-                
-                window.open(imUrl);
               }
-            }
-          })
-          .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
+            })
+            .catch((error) => {
+              this.$message({
+                message: error.message,
+                type: "error"
+              });
             });
+        } catch (error) {
+          this.$message({
+            message: "加密失败: " + error.message,
+            type: "error"
           });
+        }
       },
       submitUserInfo() {
         if (!this.checkParameters()) {
@@ -854,7 +868,7 @@ const proButton = () => import( "./common/proButton");
           this.showDialog = false;
         }
       },
-      updateSecretInfo() {
+      async updateSecretInfo() {
         if (this.$common.isEmpty(this.code)) {
           this.$message({
             message: "请输入验证码！",
@@ -870,49 +884,57 @@ const proButton = () => import( "./common/proButton");
           });
           return;
         }
-        let params = {
-          code: this.code.trim(),
-          // 第三方用户没有密码，传空字符串
-          password: this.isThirdPartyUser ? '' : this.$common.encrypt(this.password.trim())
-        };
-        if (!this.checkParams(params)) {
-          return;
-        }
 
-        if (this.dialogTitle === "找回密码") {
-          this.$http.post(this.$constant.baseURL + "/user/updateForForgetPassword", params, false, false)
-            .then((res) => {
-              this.clearDialog();
-              this.$message({
-                message: "修改成功，请重新登陆！",
-                type: "success"
-              });
-            })
-            .catch((error) => {
-              this.$message({
-                message: error.message,
-                type: "error"
-              });
-            });
-        } else {
-          this.$http.post(this.$constant.baseURL + "/user/updateSecretInfo", params, false, false)
-            .then((res) => {
-              if (!this.$common.isEmpty(res.data)) {
-                this.mainStore.loadCurrentUser( res.data);
-                this.currentUser = this.mainStore.currentUser;
+        try {
+          let params = {
+            code: this.code.trim(),
+            // 第三方用户没有密码，传空字符串
+            password: this.isThirdPartyUser ? '' : await this.$common.encrypt(this.password.trim())
+          };
+          if (!this.checkParams(params)) {
+            return;
+          }
+
+          if (this.dialogTitle === "找回密码") {
+            this.$http.post(this.$constant.baseURL + "/user/updateForForgetPassword", params, false, false)
+              .then((res) => {
                 this.clearDialog();
                 this.$message({
-                  message: "修改成功！",
+                  message: "修改成功，请重新登陆！",
                   type: "success"
                 });
-              }
-            })
-            .catch((error) => {
-              this.$message({
-                message: error.message,
-                type: "error"
+              })
+              .catch((error) => {
+                this.$message({
+                  message: error.message,
+                  type: "error"
+                });
               });
-            });
+          } else {
+            this.$http.post(this.$constant.baseURL + "/user/updateSecretInfo", params, false, false)
+              .then((res) => {
+                if (!this.$common.isEmpty(res.data)) {
+                  this.mainStore.loadCurrentUser( res.data);
+                  this.currentUser = this.mainStore.currentUser;
+                  this.clearDialog();
+                  this.$message({
+                    message: "修改成功！",
+                    type: "success"
+                  });
+                }
+              })
+              .catch((error) => {
+                this.$message({
+                  message: error.message,
+                  type: "error"
+                });
+              });
+          }
+        } catch (error) {
+          this.$message({
+            message: "加密失败: " + error.message,
+            type: "error"
+          });
         }
       },
       getCode() {
@@ -1041,6 +1063,10 @@ const proButton = () => import( "./common/proButton");
       thirdPartyLogin(provider, verificationToken) {
         if (!provider) return;
 
+        // 保存当前路径，用于登录后重定向
+        const currentPath = window.location.pathname + window.location.search;
+        sessionStorage.setItem('oauthRedirectPath', currentPath);
+
         const params = {
           provider: provider
         };
@@ -1081,8 +1107,8 @@ const proButton = () => import( "./common/proButton");
           }
         };
 
-        // 构建请求URL
-        const loginUrl = `${pythonServiceConfig.baseUrl}/login/${provider}`;
+        // 构建请求URL，添加重定向参数
+        const loginUrl = `${pythonServiceConfig.baseUrl}/login/${provider}?redirect=${encodeURIComponent(currentPath)}`;
 
         // 记录当前登录方式
         localStorage.setItem('thirdPartyLoginProvider', provider);

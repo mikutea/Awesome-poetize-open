@@ -386,6 +386,7 @@ const card = () => import( "./common/card");
   .user-title {
     text-align: right;
     user-select: none;
+    min-width: 60px;
   }
 
   .user-content {
@@ -576,7 +577,7 @@ const card = () => import( "./common/card");
     .site-info-box {
       margin-left: 0;
     }
-    
+
     .info-item {
       flex-direction: column;
     }

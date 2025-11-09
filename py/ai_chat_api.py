@@ -14,11 +14,9 @@ import httpx
 import asyncio
 import time
 import platform
-import re
 import logging
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
-from config import JAVA_BACKEND_URL, FRONTEND_URL
 from datetime import datetime
 from auth_decorator import admin_required
 from typing import List

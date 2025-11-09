@@ -73,7 +73,7 @@ import upload from '../../utils/ajaxUpload';
       },
       accept: {
         type: String,
-        default: "image/*"
+        default: "image/*,.tiff,.tif,.bmp,.psd,.svg"
       },
       maxSize: {
         type: Number,
@@ -222,6 +222,58 @@ import upload from '../../utils/ajaxUpload';
       },
       // 上传文件之前的钩子，参数为上传的文件，若返回 false 或者返回 Promise 且被 reject，则停止上传
       beforeUpload(file) {
+        // 支持的格式：JPEG, PNG, GIF, BMP, WEBP, TIFF, PSD, SVG
+        const isImage = file.type.startsWith('image/');
+        const isValidType = [
+          'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp',
+          'image/tiff', 'image/x-photoshop', 'image/svg+xml', 'application/octet-stream'
+        ].includes(file.type);
+        const isValidExt = /\.(jpg|jpeg|png|gif|bmp|webp|tiff|tif|psd|svg)$/i.test(file.name);
+
+        if (!isImage && !isValidExt) {
+          this.$message({
+            message: '只能上传图片文件！',
+            type: 'error'
+          });
+          return false;
+        }
+
+        if (!isValidType && !isValidExt) {
+          this.$message({
+            message: '文件类型不被支持！支持：JPEG, PNG, GIF, BMP, WEBP, TIFF, PSD, SVG',
+            type: 'error'
+          });
+          return false;
+        }
+
+        if (!isValidExt) {
+          this.$message({
+            message: '文件扩展名不匹配！',
+            type: 'error'
+          });
+          return false;
+        }
+
+        // 防止文件名欺骗：检查文件名是否可疑
+        const suspiciousPatterns = /(\.php|\.jsp|\.asp|\.aspx|\.sh|\.py|\.pl|\.exe|\.dll|\.bat|\.cmd|\.jar|\.class)$/i;
+        if (suspiciousPatterns.test(file.name)) {
+          this.$message({
+            message: '检测到危险文件类型，禁止上传！',
+            type: 'error'
+          });
+          return false;
+        }
+
+        // TIFF/PSD/SVG文件可能较大
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (['.tiff', '.tif', '.psd', '.svg'].includes(ext)) {
+          this.$message({
+            message: '注意：专业格式文件可能较大，上传时间可能较长',
+            type: 'warning'
+          });
+        }
+
+        return true;
       },
       // 文件列表移除文件时的钩子
       handleRemove(file, fileList) {

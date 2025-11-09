@@ -5023,35 +5023,35 @@ const uploadPicture = () => import( "../common/uploadPicture");
     .el-table__header-wrapper {
       font-size: 13px;
     }
-    
+
     .el-table--small td {
       padding: 8px 0;
     }
-    
+
     .mobile-table .el-table__row {
       cursor: pointer;
       transition: background-color 0.2s ease;
     }
-    
+
     .mobile-table .el-table__row:active {
       background-color: #f5f7fa !important;
     }
-    
+
     .mobile-table .el-table__row:hover {
       background-color: #f0f9ff !important;
     }
-    
+
     .table-actions {
       display: flex;
       flex-wrap: wrap;
       justify-content: flex-start;
     }
-    
+
     .table-actions .el-button {
       margin: 2px 5px;
       padding: 5px;
     }
-    
+
     .delete-btn {
       color: #f56c6c;
     }

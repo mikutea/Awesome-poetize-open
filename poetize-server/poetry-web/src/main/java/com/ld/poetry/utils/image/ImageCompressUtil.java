@@ -23,6 +23,9 @@ import java.util.Iterator;
 @Slf4j
 public class ImageCompressUtil {
 
+    // 用于测试时注入模拟对象
+    private static SysConfigService testSysConfigService = null;
+
     // 压缩配置常量
     private static final int MAX_WIDTH = 1920;        // 最大宽度
     private static final int MAX_HEIGHT = 1080;       // 最大高度
@@ -44,132 +47,140 @@ public class ImageCompressUtil {
     /**
      * 智能压缩图片（自定义参数）
      */
-    public static CompressResult smartCompress(MultipartFile file, int maxWidth, int maxHeight, 
+    public static CompressResult smartCompress(MultipartFile file, int maxWidth, int maxHeight,
                                              float quality, long targetSize) throws IOException {
-        // 检查文件类型
         String contentType = file.getContentType();
-        if (!isImageFile(contentType)) {
-            throw new IllegalArgumentException("不支持的图片格式: " + contentType);
-        }
 
         // 从系统配置中读取压缩配置
-        SysConfigService sysConfigService = SpringContextUtil.getBean(SysConfigService.class);
-        
+        SysConfigService sysConfigService = testSysConfigService != null
+            ? testSysConfigService
+            : SpringContextUtil.getBean(SysConfigService.class);
+
         // 检查是否启用压缩
         String compressEnabledStr = sysConfigService.getConfigValueByKey("image.compress.enabled");
         boolean compressEnabled = compressEnabledStr == null || "true".equalsIgnoreCase(compressEnabledStr);
-        
+
         if (!compressEnabled) {
             log.info("图片压缩已在系统配置中禁用，将直接使用原图");
             byte[] originalBytes = file.getBytes();
             return new CompressResult(originalBytes, contentType, 0, file.getSize(), file.getSize());
         }
-        
+
         // 获取压缩模式
         String compressMode = sysConfigService.getConfigValueByKey("image.compress.mode");
         if (compressMode == null) {
             compressMode = COMPRESSION_MODE_LOSSY; // 默认为有损压缩
         }
-        
+
         boolean isLosslessMode = COMPRESSION_MODE_LOSSLESS.equalsIgnoreCase(compressMode);
         log.info("当前压缩模式: {}", isLosslessMode ? "无损压缩" : "有损压缩");
 
-        try (InputStream inputStream = file.getInputStream()) {
-            BufferedImage originalImage = ImageIO.read(inputStream);
-            if (originalImage == null) {
-                throw new IOException("无法读取图片文件");
-            }
-
-            long originalSize = file.getSize();
-            int originalWidth = originalImage.getWidth();
-            int originalHeight = originalImage.getHeight();
-
-            log.info("开始压缩图片 - 原始尺寸: {}x{}, 原始大小: {}KB", 
-                    originalWidth, originalHeight, originalSize / 1024);
-
-            byte[] compressedBytes;
-            
-            // 第一步：尺寸压缩（无论有损还是无损模式都进行尺寸压缩）
-            BufferedImage resizedImage = resizeImage(originalImage, maxWidth, maxHeight);
-            
-            if (isLosslessMode) {
-                // 无损模式：只进行尺寸调整，不进行质量压缩
-                compressedBytes = losslessCompress(resizedImage, contentType);
-                log.info("使用无损压缩模式，仅调整尺寸");
-            } else {
-                // 有损模式：进行质量压缩
-                // 第二步：质量压缩
-                compressedBytes = compressImageQuality(resizedImage, quality, contentType);
-                
-                // 第三步：如果还是太大，进一步压缩
-                if (compressedBytes.length > targetSize) {
-                    compressedBytes = progressiveCompress(resizedImage, contentType, targetSize);
-                }
-            }
-
-            // 第四步：WebP格式转换
-            // 从系统配置中读取WebP转换的配置
-            String webpEnabledStr = sysConfigService.getConfigValueByKey("image.webp.enabled");
-            boolean webpEnabled = webpEnabledStr == null || "true".equalsIgnoreCase(webpEnabledStr);
-            
-            // 获取最小转换大小和最小节省比例
-            String minSizeStr = sysConfigService.getConfigValueByKey("image.webp.min-size");
-            int minSize = 50 * 1024; // 默认50KB
-            try {
-                if (minSizeStr != null) {
-                    minSize = Integer.parseInt(minSizeStr) * 1024;
-                }
-            } catch (NumberFormatException e) {
-                log.warn("解析WebP最小转换大小配置失败，使用默认值50KB: {}", e.getMessage());
-            }
-            
-            String minSavingRatioStr = sysConfigService.getConfigValueByKey("image.webp.min-saving-ratio");
-            double minSavingRatio = 0.1; // 默认10%
-            try {
-                if (minSavingRatioStr != null) {
-                    minSavingRatio = Double.parseDouble(minSavingRatioStr) / 100.0;
-                }
-            } catch (NumberFormatException e) {
-                log.warn("解析WebP最小节省比例配置失败，使用默认值10%: {}", e.getMessage());
-            }
-            
-            // 如果WebP转换已启用，且不是已经是WebP，并且文件大于最小转换大小，尝试WebP转换
-            if (webpEnabled && !contentType.contains("webp") && compressedBytes.length > minSize) {
-                try {
-                    byte[] webpBytes;
-                    if (isLosslessMode) {
-                        // 无损模式下使用无损WebP
-                        webpBytes = convertToLosslessWebP(resizedImage);
-                    } else {
-                        // 有损模式下使用有损WebP
-                        webpBytes = convertToWebP(resizedImage);
-                    }
-                    
-                    // 只有当WebP转换后的大小比原格式小指定比例以上才使用WebP
-                    if (webpBytes.length < compressedBytes.length * (1 - minSavingRatio)) {
-                        log.info("使用WebP格式({}模式)，减小了{}%的体积", 
-                                isLosslessMode ? "无损" : "有损",
-                                String.format("%.1f", (1.0 - (double) webpBytes.length / compressedBytes.length) * 100));
-                        compressedBytes = webpBytes;
-                        contentType = "image/webp";
-                    } else {
-                        log.info("WebP转换后体积未显著减小，保持原格式");
-                    }
-                } catch (IOException e) {
-                    log.warn("WebP转换失败，使用原格式: {}", e.getMessage());
-                }
-            } else if (!webpEnabled) {
-                log.info("WebP转换已在系统配置中禁用");
-            }
-
-            long finalSize = compressedBytes.length;
-            double compressionRatio = (1.0 - (double) finalSize / originalSize) * 100;
-
-            log.info("图片处理完成 - 处理后大小: {}KB, 压缩率: {:.1f}%, 最终格式: {}", 
-                    finalSize / 1024, compressionRatio, contentType);
-
-            return new CompressResult(compressedBytes, contentType, compressionRatio, originalSize, finalSize);
+        // SVG是矢量图，不进行压缩处理
+        if (contentType.contains("svg") || (file.getOriginalFilename() != null && file.getOriginalFilename().toLowerCase().endsWith(".svg"))) {
+            log.info("检测到SVG文件，直接存储不进行压缩");
+            byte[] originalBytes = file.getBytes();
+            return new CompressResult(originalBytes, contentType, 0, file.getSize(), file.getSize());
         }
+
+        // 正常格式直接读取
+        BufferedImage originalImage;
+        try (InputStream inputStream = file.getInputStream()) {
+            originalImage = ImageIO.read(inputStream);
+        }
+
+        if (originalImage == null) {
+            throw new IOException("无法读取图片文件，格式可能不受支持或文件损坏");
+        }
+
+        long originalSize = file.getSize();
+        int originalWidth = originalImage.getWidth();
+        int originalHeight = originalImage.getHeight();
+
+        log.info("开始压缩图片 - 原始尺寸: {}x{}, 原始大小: {}KB",
+                originalWidth, originalHeight, originalSize / 1024);
+
+        byte[] compressedBytes;
+
+        // 第一步：尺寸压缩（无论有损还是无损模式都进行尺寸压缩）
+        BufferedImage resizedImage = resizeImage(originalImage, maxWidth, maxHeight);
+
+        if (isLosslessMode) {
+            // 无损模式：只进行尺寸调整，不进行质量压缩
+            compressedBytes = losslessCompress(resizedImage, contentType);
+            log.info("使用无损压缩模式，仅调整尺寸");
+        } else {
+            // 有损模式：进行质量压缩
+            // 第二步：质量压缩
+            compressedBytes = compressImageQuality(resizedImage, quality, contentType);
+
+            // 第三步：如果还是太大，进一步压缩
+            if (compressedBytes.length > targetSize) {
+                compressedBytes = progressiveCompress(resizedImage, contentType, targetSize);
+            }
+        }
+
+        // 第四步：WebP格式转换
+        // 从系统配置中读取WebP转换的配置
+        String webpEnabledStr = sysConfigService.getConfigValueByKey("image.webp.enabled");
+        boolean webpEnabled = webpEnabledStr == null || "true".equalsIgnoreCase(webpEnabledStr);
+
+        // 获取最小转换大小和最小节省比例
+        String minSizeStr = sysConfigService.getConfigValueByKey("image.webp.min-size");
+        int minSize = 50 * 1024; // 默认50KB
+        try {
+            if (minSizeStr != null) {
+                minSize = Integer.parseInt(minSizeStr) * 1024;
+            }
+        } catch (NumberFormatException e) {
+            log.warn("解析WebP最小转换大小配置失败，使用默认值50KB: {}", e.getMessage());
+        }
+
+        String minSavingRatioStr = sysConfigService.getConfigValueByKey("image.webp.min-saving-ratio");
+        double minSavingRatio = 0.1; // 默认10%
+        try {
+            if (minSavingRatioStr != null) {
+                minSavingRatio = Double.parseDouble(minSavingRatioStr) / 100.0;
+            }
+        } catch (NumberFormatException e) {
+            log.warn("解析WebP最小节省比例配置失败，使用默认值10%: {}", e.getMessage());
+        }
+
+        // 如果WebP转换已启用，且不是已经是WebP，并且文件大于最小转换大小，尝试WebP转换
+        if (webpEnabled && !contentType.contains("webp") && compressedBytes.length > minSize) {
+            try {
+                byte[] webpBytes;
+                if (isLosslessMode) {
+                    // 无损模式下使用无损WebP
+                    webpBytes = convertToLosslessWebP(resizedImage);
+                } else {
+                    // 有损模式下使用有损WebP
+                    webpBytes = convertToWebP(resizedImage);
+                }
+
+                // 只有当WebP转换后的大小比原格式小指定比例以上才使用WebP
+                if (webpBytes.length < compressedBytes.length * (1 - minSavingRatio)) {
+                    log.info("使用WebP格式({}模式)，减小了{}%的体积",
+                            isLosslessMode ? "无损" : "有损",
+                            String.format("%.1f", (1.0 - (double) webpBytes.length / compressedBytes.length) * 100));
+                    compressedBytes = webpBytes;
+                    contentType = "image/webp";
+                } else {
+                    log.info("WebP转换后体积未显著减小，保持原格式");
+                }
+            } catch (IOException e) {
+                log.warn("WebP转换失败，使用原格式: {}", e.getMessage());
+            }
+        } else if (!webpEnabled) {
+            log.info("WebP转换已在系统配置中禁用");
+        }
+
+        long finalSize = compressedBytes.length;
+        double compressionRatio = (1.0 - (double) finalSize / originalSize) * 100;
+
+        log.info("图片处理完成 - 处理后大小: {}KB, 压缩率: {:.1f}%, 最终格式: {}",
+                finalSize / 1024, compressionRatio, contentType);
+
+        return new CompressResult(compressedBytes, contentType, compressionRatio, originalSize, finalSize);
     }
 
     /**
@@ -212,15 +223,22 @@ public class ImageCompressUtil {
     /**
      * 质量压缩
      */
-    private static byte[] compressImageQuality(BufferedImage image, float quality, String contentType) 
+    private static byte[] compressImageQuality(BufferedImage image, float quality, String contentType)
             throws IOException {
+        // SVG是矢量图，不进行压缩处理
+        if (contentType.contains("svg")) {
+            log.info("SVG是矢量图，不进行压缩处理");
+            // SVG需要特殊处理，这里先不实现
+            return new byte[0];
+        }
+
         String formatName = getFormatName(contentType);
-        
+
         // JPEG格式支持质量压缩
         if ("jpeg".equalsIgnoreCase(formatName) || "jpg".equalsIgnoreCase(formatName)) {
             return compressJPEG(image, quality);
         }
-        
+
         // PNG格式直接输出
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ImageIO.write(image, formatName, baos);
@@ -363,7 +381,7 @@ public class ImageCompressUtil {
     }
 
     /**
-     * 使用cwebp命令行工具转换图片
+     * 使用cwebp命令行工具转换图片（安全的命令执行）
      * @param image 图片对象
      * @param lossless 是否无损压缩
      * @return WebP格式的字节数组，失败返回null
@@ -371,16 +389,40 @@ public class ImageCompressUtil {
     private static byte[] convertToWebPUsingCwebp(BufferedImage image, boolean lossless) throws IOException {
         java.io.File tempInputFile = null;
         java.io.File tempOutputFile = null;
-        
+
         try {
             // 创建临时文件
             tempInputFile = java.io.File.createTempFile("img_input_", ".png");
             tempOutputFile = java.io.File.createTempFile("img_output_", ".webp");
-            
+
+            // 严格验证文件路径，防止路径穿越攻击
+            String inputPath = tempInputFile.getAbsolutePath();
+            String outputPath = tempOutputFile.getAbsolutePath();
+            String tempDir = System.getProperty("java.io.tmpdir");
+
+            if (!inputPath.startsWith(tempDir) || !outputPath.startsWith(tempDir)) {
+                throw new SecurityException("非法文件路径，临时文件必须在系统临时目录中");
+            }
+
+            // 验证文件路径中不包含特殊字符
+            if (inputPath.contains("..") || outputPath.contains("..")
+                || inputPath.contains(";") || outputPath.contains(";")
+                || inputPath.contains("|") || outputPath.contains("|")
+                || inputPath.contains("&") || outputPath.contains("&")
+                || inputPath.contains("$") || outputPath.contains("$")
+                || inputPath.contains("`") || outputPath.contains("`")) {
+                throw new SecurityException("文件路径包含非法字符");
+            }
+
             // 将BufferedImage保存为临时PNG文件
             ImageIO.write(image, "png", tempInputFile);
-            
-            // 构建cwebp命令
+
+            // 验证文件确实创建成功
+            if (!tempInputFile.exists() || tempInputFile.length() == 0) {
+                throw new IOException("创建临时输入文件失败");
+            }
+
+            // 构建cwebp命令 - 使用白名单方式，只允许预定义的参数
             ProcessBuilder processBuilder;
             if (lossless) {
                 // 无损模式：-lossless -z 9 (最高压缩比)
@@ -390,8 +432,8 @@ public class ImageCompressUtil {
                     "-z", "9",          // 压缩级别0-9，9为最高
                     "-m", "6",          // 压缩方法0-6，6为最慢但最优
                     "-mt",              // 多线程
-                    tempInputFile.getAbsolutePath(),
-                    "-o", tempOutputFile.getAbsolutePath()
+                    inputPath,          // 使用绝对路径
+                    "-o", outputPath    // 使用绝对路径
                 );
             } else {
                 // 有损模式：质量85
@@ -400,15 +442,36 @@ public class ImageCompressUtil {
                     "-q", "85",         // 质量0-100
                     "-m", "6",          // 压缩方法
                     "-mt",              // 多线程
-                    tempInputFile.getAbsolutePath(),
-                    "-o", tempOutputFile.getAbsolutePath()
+                    inputPath,          // 使用绝对路径
+                    "-o", outputPath    // 使用绝对路径
                 );
             }
-            
+
+            // 设置严格的安全环境变量
+            processBuilder.environment().put("PATH", "/usr/bin:/bin");
+            // 移除潜在的危险环境变量
+            processBuilder.environment().remove("LD_PRELOAD");
+            processBuilder.environment().remove("LD_LIBRARY_PATH");
+            processBuilder.environment().remove("BASH_ENV");
+            processBuilder.environment().remove("ENV");
+            processBuilder.environment().remove("PROFILER");
+
+            // 禁用文件创建继承
+            processBuilder.inheritIO();
+
             // 执行命令
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
-            
+
+            // 设置超时机制，防止进程无限期挂起
+            // 等待30秒超时
+            boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                log.warn("cwebp命令执行超时，强制终止进程");
+                process.destroyForcibly();
+                return null;
+            }
+
             // 读取命令输出（用于日志）
             StringBuilder output = new StringBuilder();
             try (java.io.BufferedReader reader = new java.io.BufferedReader(
@@ -418,30 +481,37 @@ public class ImageCompressUtil {
                     output.append(line).append("\n");
                 }
             }
-            
+
             // 等待命令完成
-            int exitCode = process.waitFor();
-            
+            int exitCode = process.exitValue();
+
             if (exitCode != 0) {
                 log.warn("cwebp命令执行失败，退出代码: {}, 输出: {}", exitCode, output);
                 return null;
             }
-            
+
             // 读取输出文件
             if (!tempOutputFile.exists() || tempOutputFile.length() == 0) {
                 log.warn("cwebp未生成输出文件或文件为空");
                 return null;
             }
-            
+
+            // 验证输出文件大小合理性（不能超过输入文件10倍）
+            if (tempOutputFile.length() > tempInputFile.length() * 10) {
+                log.warn("cwebp生成的输出文件异常大，可能存在安全问题");
+                return null;
+            }
+
             byte[] webpData = java.nio.file.Files.readAllBytes(tempOutputFile.toPath());
-            
+
             return webpData;
-            
+
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("cwebp命令执行被中断", e);
             return null;
         } catch (Exception e) {
+            log.error("cwebp命令执行失败: {}", e.getMessage());
             return null;
         } finally {
             // 清理临时文件
@@ -452,20 +522,6 @@ public class ImageCompressUtil {
                 tempOutputFile.delete();
             }
         }
-    }
-
-    /**
-     * 检查是否为图片文件
-     */
-    private static boolean isImageFile(String contentType) {
-        return contentType != null && (
-                contentType.startsWith("image/jpeg") ||
-                contentType.startsWith("image/jpg") ||
-                contentType.startsWith("image/png") ||
-                contentType.startsWith("image/gif") ||
-                contentType.startsWith("image/bmp") ||
-                contentType.startsWith("image/webp")
-        );
     }
 
     /**
@@ -480,6 +536,16 @@ public class ImageCompressUtil {
             return "gif";
         } else if (contentType.contains("bmp")) {
             return "bmp";
+        } else if (contentType.contains("webp")) {
+            return "webp";
+        } else if (contentType.contains("tiff") || contentType.contains("tif")) {
+            return "tiff";
+        } else if (contentType.contains("photoshop")) {
+            // PSD格式无法直接压缩，建议转换为JPEG
+            return "jpeg";
+        } else if (contentType.contains("svg")) {
+            // SVG是矢量图，不进行压缩处理
+            return "svg";
         }
         return "jpeg"; // 默认格式
     }
@@ -508,5 +574,19 @@ public class ImageCompressUtil {
         public double getCompressionRatio() { return compressionRatio; }
         public long getOriginalSize() { return originalSize; }
         public long getCompressedSize() { return compressedSize; }
+    }
+
+    /**
+     * 设置测试用的SysConfigService（仅用于测试）
+     */
+    public static void setTestSysConfigService(SysConfigService service) {
+        testSysConfigService = service;
+    }
+
+    /**
+     * 清除测试用的SysConfigService（仅用于测试）
+     */
+    public static void clearTestSysConfigService() {
+        testSysConfigService = null;
     }
 } 

@@ -20,7 +20,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from config import SECRET_KEY, JAVA_BACKEND_URL, FRONTEND_URL, JAVA_CONFIG_URL, PYTHON_SERVICE_PORT
+from config import SECRET_KEY, JAVA_BACKEND_URL, PYTHON_SERVICE_PORT, get_frontend_url, init_frontend_url
 from py_three_login import oauth_login, oauth_callback
 from redis_oauth_state_manager import oauth_state_manager
 
@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # ========== 启动时执行 ==========
     logger.info("应用启动中，开始初始化...")
+    
+    # 初始化前端URL
+    await init_frontend_url()
+    
     logger.info("应用启动完成")
     
     yield  # 应用运行中
@@ -82,7 +86,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.get("/")
 async def index():
-    return RedirectResponse(url=FRONTEND_URL)
+    frontend_url = await get_frontend_url()
+    return RedirectResponse(url=frontend_url)
 
 # 健康检查接口
 @app.get("/api/health")
@@ -140,7 +145,7 @@ if __name__ == '__main__':
     logger.info(f"服务端口: {port}")
     logger.info(f"调试模式: {debug}")
     logger.info(f"Java后端: {JAVA_BACKEND_URL}")
-    logger.info(f"前端地址: {FRONTEND_URL}")
+    logger.info("前端地址: 将在首次请求时动态获取")
     logger.info("==========================================")
     
     uvicorn.run(
@@ -150,4 +155,4 @@ if __name__ == '__main__':
         reload=debug,
         log_level="info",
         access_log=False  # 禁用访问日志，不再显示每个请求
-    ) 
+    )

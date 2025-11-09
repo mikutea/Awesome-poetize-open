@@ -113,7 +113,7 @@ function configureTimeout(config) {
 }
 
 // 添加请求拦截器
-axios.interceptors.request.use(function (config) {
+axios.interceptors.request.use(async function (config) {
   // 统一处理超时配置
   config = configureTimeout(config);
 
@@ -142,7 +142,7 @@ axios.interceptors.request.use(function (config) {
         } else {
           // 加密请求数据
           try {
-            const encryptedData = cryptoUtil.encrypt(config.data);
+            const encryptedData = await cryptoUtil.encrypt(config.data);
             if (encryptedData) {
               config.data = {
                 encrypted: encryptedData
@@ -181,7 +181,7 @@ axios.interceptors.request.use(function (config) {
 });
 
 // 添加响应拦截器
-axios.interceptors.response.use(function (response) {
+axios.interceptors.response.use(async function (response) {
   if (response.data !== null && response.data.hasOwnProperty("code") && response.data.code !== 200) {
     if (response.data.code === 300 || response.data.code === 401) {
       // token失效，使用统一的token过期处理逻辑
@@ -192,15 +192,15 @@ axios.interceptors.response.use(function (response) {
     }
     return Promise.reject(new Error(response.data.message || '请求失败'));
   }
-  
+
   // 处理验证码配置响应的解密
-  if (response.config.url && response.config.url.includes('/captcha/getConfig') && 
+  if (response.config.url && response.config.url.includes('/captcha/getConfig') &&
       response.config.method === 'get' && response.data && response.data.data) {
     try {
       // 检查响应是否加密
       if (response.data.data.encrypted) {
         // 使用decryptBase64方法解密验证码配置响应数据
-        const decryptedData = cryptoUtil.decryptBase64(response.data.data.encrypted);
+        const decryptedData = await cryptoUtil.decryptBase64(response.data.data.encrypted);
         if (decryptedData) {
           response.data.data = decryptedData;
         }
@@ -210,17 +210,17 @@ axios.interceptors.response.use(function (response) {
       // 解密失败时返回原始数据
     }
   }
-  
+
   // 处理验证码验证响应的解密
-  if (response.config.url && 
-      (response.config.url.includes('/captcha/verify-checkbox') || 
-       response.config.url.includes('/captcha/verify-slide')) && 
+  if (response.config.url &&
+      (response.config.url.includes('/captcha/verify-checkbox') ||
+       response.config.url.includes('/captcha/verify-slide')) &&
       response.config.method === 'post' && response.data && response.data.data) {
     try {
       // 检查响应是否加密
       if (response.data.data.encrypted) {
         // 使用decryptBase64方法解密验证码验证响应数据
-        const decryptedData = cryptoUtil.decryptBase64(response.data.data.encrypted);
+        const decryptedData = await cryptoUtil.decryptBase64(response.data.data.encrypted);
         if (decryptedData) {
           response.data.data = decryptedData;
         }
@@ -230,15 +230,15 @@ axios.interceptors.response.use(function (response) {
       // 解密失败时返回原始数据
     }
   }
-  
+
   // 处理登录接口响应的解密
-  if (response.config.url && 
-      response.config.url.includes('/user/login') && 
-      response.config.method === 'post' && response.data && response.data.data && 
+  if (response.config.url &&
+      response.config.url.includes('/user/login') &&
+      response.config.method === 'post' && response.data && response.data.data &&
       response.data.data.data) {
     try {
       // 使用decryptBase64方法解密登录响应数据
-      const decryptedData = cryptoUtil.decryptBase64(response.data.data.data);
+      const decryptedData = await cryptoUtil.decryptBase64(response.data.data.data);
       if (decryptedData) {
         response.data.data = decryptedData;
       }
@@ -247,7 +247,7 @@ axios.interceptors.response.use(function (response) {
       // 解密失败时返回原始数据
     }
   }
-  
+
   return response;
 }, function (error) {
   // 处理网络错误

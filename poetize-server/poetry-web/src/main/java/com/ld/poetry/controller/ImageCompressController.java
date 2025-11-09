@@ -4,7 +4,8 @@ import com.ld.poetry.aop.LoginCheck;
 import com.ld.poetry.config.PoetryResult;
 import com.ld.poetry.service.AsyncImageCompressService;
 import com.ld.poetry.utils.image.ImageCompressUtil;
-import com.ld.poetry.vo.FileVO;
+import com.ld.poetry.utils.security.FileSecurityValidator;
+import com.ld.poetry.vo.CompressTestResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +24,9 @@ public class ImageCompressController {
 
     @Autowired
     private AsyncImageCompressService asyncImageCompressService;
+
+    @Autowired
+    private FileSecurityValidator fileSecurityValidator;
 
     /**
      * 获取图片压缩统计信息
@@ -51,23 +55,30 @@ public class ImageCompressController {
     @LoginCheck
     public PoetryResult<Object> testCompress(@RequestParam("file") MultipartFile file) {
         try {
-            if (!isImageFile(file.getContentType())) {
-                return PoetryResult.fail("请上传图片文件！");
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
             }
 
 
             ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
 
-            return PoetryResult.success(new Object() {
-                public final String originalFilename = file.getOriginalFilename();
-                public final String contentType = result.getContentType();
-                public final long originalSize = result.getOriginalSize();
-                public final long compressedSize = result.getCompressedSize();
-                public final double compressionRatio = result.getCompressionRatio();
-                public final String originalSizeDisplay = formatFileSize(result.getOriginalSize());
-                public final String compressedSizeDisplay = formatFileSize(result.getCompressedSize());
-                public final String savedSizeDisplay = formatFileSize(result.getOriginalSize() - result.getCompressedSize());
-            });
+            CompressTestResult resultData = new CompressTestResult(
+                file.getOriginalFilename(),
+                result.getContentType(),
+                result.getOriginalSize(),
+                result.getCompressedSize(),
+                result.getCompressionRatio(),
+                formatFileSize(result.getOriginalSize()),
+                formatFileSize(result.getCompressedSize()),
+                formatFileSize(result.getOriginalSize() - result.getCompressedSize())
+            );
+
+            return PoetryResult.success(resultData);
 
         } catch (Exception e) {
             log.error("测试压缩失败: {}", e.getMessage(), e);
@@ -82,8 +93,13 @@ public class ImageCompressController {
     @LoginCheck
     public PoetryResult<String> compressAsync(@RequestParam("file") MultipartFile file) {
         try {
-            if (!isImageFile(file.getContentType())) {
-                return PoetryResult.fail("请上传图片文件！");
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
             }
 
             CompletableFuture<ImageCompressUtil.CompressResult> future = 
@@ -106,6 +122,17 @@ public class ImageCompressController {
         try {
             if (files == null || files.length == 0) {
                 return PoetryResult.fail("请选择要压缩的图片文件！");
+            }
+
+            // 验证所有文件的安全性
+            for (MultipartFile file : files) {
+                FileSecurityValidator.ValidationResult validationResult =
+                        fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+                if (!validationResult.isSuccess()) {
+                    log.warn("批量压缩中有文件验证失败: {}", validationResult.getMessage());
+                    return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+                }
             }
 
 
@@ -133,47 +160,40 @@ public class ImageCompressController {
             @RequestParam(value = "targetSize", defaultValue = "512000") long targetSize) {
 
         try {
-            if (!isImageFile(file.getContentType())) {
-                return PoetryResult.fail("请上传图片文件！");
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
             }
 
 
-            ImageCompressUtil.CompressResult result = 
+            ImageCompressUtil.CompressResult result =
                     ImageCompressUtil.smartCompress(file, maxWidth, maxHeight, quality, targetSize);
 
-            return PoetryResult.success(new Object() {
-                public final String originalFilename = file.getOriginalFilename();
-                public final String contentType = result.getContentType();
-                public final long originalSize = result.getOriginalSize();
-                public final long compressedSize = result.getCompressedSize();
-                public final double compressionRatio = result.getCompressionRatio();
-                public final String originalSizeDisplay = formatFileSize(result.getOriginalSize());
-                public final String compressedSizeDisplay = formatFileSize(result.getCompressedSize());
-                public final String savedSizeDisplay = formatFileSize(result.getOriginalSize() - result.getCompressedSize());
-                public final int targetWidth = maxWidth;
-                public final int targetHeight = maxHeight;
-                public final float targetQuality = quality;
-                public final String targetSizeDisplay = formatFileSize(targetSize);
-            });
+            CompressTestResult resultData = new CompressTestResult(
+                file.getOriginalFilename(),
+                result.getContentType(),
+                result.getOriginalSize(),
+                result.getCompressedSize(),
+                result.getCompressionRatio(),
+                formatFileSize(result.getOriginalSize()),
+                formatFileSize(result.getCompressedSize()),
+                formatFileSize(result.getOriginalSize() - result.getCompressedSize()),
+                maxWidth,
+                maxHeight,
+                quality,
+                formatFileSize(targetSize)
+            );
+
+            return PoetryResult.success(resultData);
 
         } catch (Exception e) {
             log.error("自定义参数压缩测试失败: {}", e.getMessage(), e);
             return PoetryResult.fail("自定义参数压缩测试失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 检查是否为图片文件
-     */
-    private boolean isImageFile(String contentType) {
-        return contentType != null && (
-                contentType.startsWith("image/jpeg") ||
-                contentType.startsWith("image/jpg") ||
-                contentType.startsWith("image/png") ||
-                contentType.startsWith("image/gif") ||
-                contentType.startsWith("image/bmp") ||
-                contentType.startsWith("image/webp")
-        );
     }
 
     /**

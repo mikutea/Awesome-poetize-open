@@ -53,7 +53,7 @@ const proButton = () => import( "../common/proButton");
 
     },
     methods: {
-      login() {
+      async login() {
         if (this.$common.isEmpty(this.account) || this.$common.isEmpty(this.password)) {
           this.$message({
             message: "请输入账号或密码！",
@@ -62,52 +62,59 @@ const proButton = () => import( "../common/proButton");
           return;
         }
 
-        let user = {
-          account: this.account.trim(),
-          password: this.$common.encrypt(this.password.trim()),
-          isAdmin: true
-        };
+        try {
+          let user = {
+            account: this.account.trim(),
+            password: await this.$common.encrypt(this.password.trim()),
+            isAdmin: true
+          };
 
-        // 对整个请求体进行加密
-        let encryptedUser = this.$common.encrypt(JSON.stringify(user));
+          // 对整个请求体进行加密
+          let encryptedUser = await this.$common.encrypt(JSON.stringify(user));
 
-        this.$http.post(this.$constant.baseURL + "/user/login", {data: encryptedUser}, true, true)
-          .then((res) => {
-            if (!this.$common.isEmpty(res.data)) {
-              // 清除旧的缓存数据
-              localStorage.removeItem("currentAdmin");
-              localStorage.removeItem("currentUser");
+          this.$http.post(this.$constant.baseURL + "/user/login", {data: encryptedUser}, true, true)
+            .then((res) => {
+              if (!this.$common.isEmpty(res.data)) {
+                // 清除旧的缓存数据
+                localStorage.removeItem("currentAdmin");
+                localStorage.removeItem("currentUser");
 
-              // 设置新的token
-              localStorage.setItem("userToken", res.data.accessToken);
-              localStorage.setItem("adminToken", res.data.accessToken);
+                // 设置新的token
+                localStorage.setItem("userToken", res.data.accessToken);
+                localStorage.setItem("adminToken", res.data.accessToken);
 
-              // 更新Store状态
-              this.mainStore.loadCurrentUser( res.data);
-              this.mainStore.loadCurrentAdmin( res.data);
+                // 更新Store状态
+                this.mainStore.loadCurrentUser( res.data);
+                this.mainStore.loadCurrentAdmin( res.data);
 
-              this.account = "";
-              this.password = "";
+                this.account = "";
+                this.password = "";
 
-              // 显示登录成功消息
-              if (this.$route.query.expired === 'true') {
-                this.$message.success('重新登录成功');
-              } else {
-                this.$message.success('登录成功');
+                // 显示登录成功消息
+                if (this.$route.query.expired === 'true') {
+                  this.$message.success('重新登录成功');
+                } else {
+                  this.$message.success('登录成功');
+                }
+
+                // 使用统一的重定向处理逻辑
+                handleLoginRedirect(this.$route, this.$router, {
+                  defaultPath: '/welcome'
+                });
               }
-
-              // 使用统一的重定向处理逻辑
-              handleLoginRedirect(this.$route, this.$router, {
-                defaultPath: '/welcome'
+            })
+            .catch((error) => {
+              this.$message({
+                message: error.message,
+                type: "error"
               });
-            }
-          })
-          .catch((error) => {
-            this.$message({
-              message: error.message,
-              type: "error"
             });
+        } catch (error) {
+          this.$message({
+            message: error.message || "登录失败",
+            type: "error"
           });
+        }
       }
     }
   }

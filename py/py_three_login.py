@@ -13,12 +13,13 @@ import os
 import logging
 import httpx
 from typing import Dict, Any, Optional
+from urllib.parse import quote_plus
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 # 导入现有模块（保持兼容性）
-from config import SECRET_KEY, JAVA_BACKEND_URL, FRONTEND_URL
+from config import SECRET_KEY, JAVA_BACKEND_URL, get_frontend_url
 from redis_oauth_state_manager import oauth_state_manager, get_session_id
 import httpx
 
@@ -139,13 +140,18 @@ class OAuthService:
     async def _handle_oauth2_login(self, provider, request: Request) -> RedirectResponse:
         """处理OAuth 2.0登录"""
         try:
+            # 获取重定向参数
+            redirect_path = request.query_params.get("redirect")
+            
             # 生成state token
             session_id = get_session_id(request)
             state = oauth_state_manager.generate_state(provider.provider_name, session_id)
             
-            # 备份到session
+            # 备份到session，包括重定向路径
             try:
                 request.session[f"{provider.provider_name}_state"] = state
+                if redirect_path:
+                    request.session[f"{provider.provider_name}_redirect"] = redirect_path
             except Exception as e:
                 logger.error(f"备份state token失败: {str(e)}")
             # 生成授权URL
@@ -176,7 +182,8 @@ class OAuthService:
             # 检查OAuth错误
             if error:
                 logger.warning(f"授权失败: provider={provider}, error={error}")
-                return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error}&platform={provider}")
+                frontend_url = await get_frontend_url()
+                return RedirectResponse(f"{frontend_url}/oauth-callback?error={error}&platform={provider}")
             
             # 创建提供商实例
             oauth_provider = self.factory.create_provider(provider)
@@ -184,7 +191,8 @@ class OAuthService:
             # 验证state（OAuth 2.0）
             if provider != "x":
                 if not await self._validate_oauth2_state(state, provider):
-                    return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=state_validation_failed&platform={provider}")
+                    frontend_url = await get_frontend_url()
+                    return RedirectResponse(f"{frontend_url}/oauth-callback?error=state_validation_failed&platform={provider}")
             
             # 获取用户信息
             if provider == "x":
@@ -197,13 +205,16 @@ class OAuthService:
             
         except ConfigurationError as e:
             logger.error(f"配置错误: {e.message}")
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=config_error&platform={provider}")
+            frontend_url = await get_frontend_url()
+            return RedirectResponse(f"{frontend_url}/oauth-callback?error=config_error&platform={provider}")
         except OAuthError as e:
             logger.error(f"回调处理失败: {e.message}")
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=oauth_error&platform={provider}")
+            frontend_url = await get_frontend_url()
+            return RedirectResponse(f"{frontend_url}/oauth-callback?error=oauth_error&platform={provider}")
         except Exception as e:
             logger.error(f"回调异常: provider={provider}, error={str(e)}")
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=callback_error&platform={provider}")
+            frontend_url = await get_frontend_url()
+            return RedirectResponse(f"{frontend_url}/oauth-callback?error=callback_error&platform={provider}")
     
     async def _validate_oauth2_state(self, state: str, provider: str) -> bool:
         """验证OAuth 2.0 state"""
@@ -259,6 +270,9 @@ class OAuthService:
     async def _process_login_result(self, user_data: Dict[str, Any], provider: str, request: Request) -> RedirectResponse:
         """处理登录结果"""
         try:
+            # 获取保存的重定向路径
+            redirect_path = request.session.get(f"{provider}_redirect")
+            
             # 使用本模块的Java后端调用逻辑（保持兼容性）
             java_response = await call_java_login_api(user_data)
             response_data = java_response.json()
@@ -269,19 +283,36 @@ class OAuthService:
                 response_message = response_data.get("message", "")
 
                 if access_token:
+                    # 获取前端URL
+                    frontend_url = await get_frontend_url()
+                    
                     # 检查是否需要邮箱收集
                     if response_message == "EMAIL_COLLECTION_NEEDED":
-                        return RedirectResponse(f"{FRONTEND_URL}?userToken={access_token}&emailCollectionNeeded=true")
+                        redirect_url = f"{frontend_url}?userToken={access_token}&emailCollectionNeeded=true"
+                        if redirect_path:
+                            redirect_url += f"&redirect={quote_plus(redirect_path)}"
+                        return RedirectResponse(redirect_url)
                     else:
-                        return RedirectResponse(f"{FRONTEND_URL}?userToken={access_token}")
+                        redirect_url = f"{frontend_url}?userToken={access_token}"
+                        if redirect_path:
+                            redirect_url += f"&redirect={quote_plus(redirect_path)}"
+                        return RedirectResponse(redirect_url)
 
             # 登录失败
             error_message = response_data.get("message", "登录失败")
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error={error_message}&platform={provider}")
+            frontend_url = await get_frontend_url()
+            error_url = f"{frontend_url}/oauth-callback?error={error_message}&platform={provider}"
+            if redirect_path:
+                error_url += f"&redirect={quote_plus(redirect_path)}"
+            return RedirectResponse(error_url)
 
         except Exception as e:
             logger.error(f"处理登录结果失败: {str(e)}")
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback?error=login_processing_failed&platform={provider}")
+            frontend_url = await get_frontend_url()
+            error_url = f"{frontend_url}/oauth-callback?error=login_processing_failed&platform={provider}"
+            if redirect_path:
+                error_url += f"&redirect={quote_plus(redirect_path)}"
+            return RedirectResponse(error_url)
 
 
 # 创建OAuth服务实例

@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-11-07
+## 修改时间: 2025-11-10
 ## 描述: Poetize 博客系统全局管理命令
-## 版本: 1.7.0
+## 版本: 1.7.1
 
 # 定义颜色
 RED='\033[0;31m'
@@ -1677,7 +1677,7 @@ run_update() {
         local delete_backup="n"
         read -t 30 -rp "请选择 (y/n，默认n，30秒后自动选择n): " delete_backup
         delete_backup=${delete_backup:-n}
-        
+        printf "\n"
         case "$delete_backup" in
             [Yy]|[Yy][Ee][Ss])
                 info "正在删除备份目录..."

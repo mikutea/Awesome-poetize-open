@@ -69,30 +69,91 @@ export default {
   },
 
   /**
-   * 加密
+   * 加密 - 使用AES-GCM模式（异步）
    */
-  encrypt(plaintText) {
-    let options = {
-      mode: CryptoJS.mode.ECB,
-      padding: CryptoJS.pad.Pkcs7
-    };
-    let key = CryptoJS.enc.Utf8.parse(constant.cryptojs_key);
-    let encryptedData = CryptoJS.AES.encrypt(plaintText, key, options);
-    return encryptedData.toString().replace(/\//g, "_").replace(/\+/g, "-");
+  async encrypt(plaintText) {
+    try {
+      // 使用Web Crypto API实现GCM模式
+      const key = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(constant.cryptojs_key),
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt']
+      );
+
+      // 生成随机IV
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+
+      // 加密
+      const encrypted = await crypto.subtle.encrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv,
+          tagLength: 128
+        },
+        key,
+        new TextEncoder().encode(plaintText)
+      );
+
+      // 组合IV和密文
+      const combined = new Uint8Array(iv.length + encrypted.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(encrypted), iv.length);
+
+      // 转换为Base64并处理特殊字符
+      const base64 = btoa(String.fromCharCode(...combined));
+      return base64.replace(/\//g, "_").replace(/\+/g, "-");
+    } catch (error) {
+      console.error('加密失败:', error);
+      return plaintText; // 失败时返回原文本
+    }
   },
 
   /**
-   * 解密
+   * 解密 - 使用AES-GCM模式（异步）
    */
-  decrypt(encryptedBase64Str) {
-    let val = encryptedBase64Str.replace(/\-/g, '+').replace(/_/g, '/');
-    let options = {
-      mode: CryptoJS.mode.ECB,
-      padding: CryptoJS.pad.Pkcs7
-    };
-    let key = CryptoJS.enc.Utf8.parse(constant.cryptojs_key);
-    let decryptedData = CryptoJS.AES.decrypt(val, key, options);
-    return CryptoJS.enc.Utf8.stringify(decryptedData);
+  async decrypt(encryptedBase64Str) {
+    try {
+      // 还原Base64特殊字符
+      let base64 = encryptedBase64Str.replace(/-/g, '+').replace(/_/g, '/');
+
+      // 转换为ArrayBuffer
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      // 提取IV和密文
+      const iv = bytes.slice(0, 12);
+      const ciphertext = bytes.slice(12);
+
+      // 导入密钥
+      const key = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(constant.cryptojs_key),
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+
+      // 解密
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: iv,
+          tagLength: 128
+        },
+        key,
+        ciphertext
+      );
+
+      return new TextDecoder().decode(decrypted);
+    } catch (error) {
+      console.error('解密失败:', error);
+      return null;
+    }
   },
 
   /**

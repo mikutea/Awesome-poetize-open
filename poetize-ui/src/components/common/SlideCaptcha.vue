@@ -260,9 +260,9 @@ export default {
     },
     
     // 后端验证（新增）
-    verifyWithServer() {
+    async verifyWithServer() {
       const totalTime = Date.now() - this.slideStartTime;
-      
+
       // 准备验证数据
       const verifyData = {
         slideTrack: this.slideTrack,
@@ -271,13 +271,13 @@ export default {
         finalPosition: this.slidePosition,
         browserFingerprint: this.browserFingerprint
       };
-      
-      // 加密请求数据
-      const encryptedData = cryptoUtil.encrypt(JSON.stringify(verifyData));
+
+      // 加密请求数据 - 使用GCM模式
+      const encryptedData = await cryptoUtil.encrypt(verifyData);
       const encryptedRequest = {
         encrypted: encryptedData
       };
-      
+
       // 调用后端验证接口
       axios.post(this.$constant.baseURL + "/captcha/verify-slide", encryptedRequest)
         .then(res => {

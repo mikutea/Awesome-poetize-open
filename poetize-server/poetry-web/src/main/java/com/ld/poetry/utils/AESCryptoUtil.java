@@ -7,8 +7,10 @@ import org.springframework.util.StringUtils;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
+import javax.crypto.spec.GCMParameterSpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.security.SecureRandom;
 
 /**
  * AES加密工具类
@@ -29,13 +31,15 @@ public class AESCryptoUtil {
     private String secretKey;
 
     private static final String ALGORITHM = "AES";
-    private static final String TRANSFORMATION = "AES/ECB/PKCS5Padding";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_IV_LENGTH = 12; // GCM模式推荐12字节IV
+    private static final int GCM_TAG_LENGTH = 128; // 128位认证标签
 
     /**
      * 加密数据
      *
      * @param data 原始数据
-     * @return Base64编码的加密数据，加密失败返回null
+     * @return Base64编码的加密数据（格式：IV+密文），加密失败返回null
      */
     public String encrypt(String data) {
         if (!StringUtils.hasText(data)) {
@@ -47,11 +51,26 @@ public class AESCryptoUtil {
             byte[] keyBytes = get16ByteKey(secretKey);
             SecretKeySpec secretKeySpec = new SecretKeySpec(keyBytes, ALGORITHM);
 
+            // 生成随机IV
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            SecureRandom random = new SecureRandom();
+            random.nextBytes(iv);
+
+            // 初始化GCM参数
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+
+            // 加密
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, gcmSpec);
 
             byte[] encryptedBytes = cipher.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(encryptedBytes);
+
+            // 组合IV和密文
+            byte[] combined = new byte[iv.length + encryptedBytes.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(encryptedBytes, 0, combined, iv.length, encryptedBytes.length);
+
+            return Base64.getEncoder().encodeToString(combined);
 
         } catch (Exception e) {
             log.error("数据加密失败: {}", e.getMessage(), e);
@@ -62,7 +81,7 @@ public class AESCryptoUtil {
     /**
      * 解密数据
      *
-     * @param encryptedData Base64编码的加密数据
+     * @param encryptedData Base64编码的加密数据（格式：IV+密文）
      * @return 解密后的原始数据，解密失败返回null
      */
     public String decrypt(String encryptedData) {
@@ -75,18 +94,40 @@ public class AESCryptoUtil {
             byte[] keyBytes = get16ByteKey(secretKey);
             SecretKeySpec secretKeySpec = new SecretKeySpec(keyBytes, ALGORITHM);
 
+            // 解码Base64，支持URL安全编码（替换'-'和'_'为标准Base64字符）
+            String urlSafeEncoded = encryptedData.replace('-', '+').replace('_', '/');
+            // 确保填充正确
+            int padding = urlSafeEncoded.length() % 4;
+            if (padding > 0) {
+                urlSafeEncoded += "===".substring(0, 4 - padding);
+            }
+            byte[] combined = Base64.getDecoder().decode(urlSafeEncoded);
+
+            // 验证数据长度
+            if (combined.length < GCM_IV_LENGTH) {
+                log.error("数据长度不足，无法解密: 长度={}", combined.length);
+                return null;
+            }
+
+            // 提取IV（前12字节）
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
+
+            // 提取密文
+            byte[] ciphertext = new byte[combined.length - GCM_IV_LENGTH];
+            System.arraycopy(combined, GCM_IV_LENGTH, ciphertext, 0, ciphertext.length);
+
+            // 解密
+            GCMParameterSpec gcmSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, gcmSpec);
 
-            byte[] decodedBytes = Base64.getDecoder().decode(encryptedData);
-            byte[] decryptedBytes = cipher.doFinal(decodedBytes);
-
+            byte[] decryptedBytes = cipher.doFinal(ciphertext);
             return new String(decryptedBytes, StandardCharsets.UTF_8);
 
         } catch (Exception e) {
             log.error("数据解密失败: {}", e.getMessage(), e);
-            // 解密失败时返回原文本（可能是未加密的旧数据）
-            return encryptedData;
+            return null;
         }
     }
 

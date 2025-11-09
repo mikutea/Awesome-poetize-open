@@ -10,6 +10,7 @@ import com.ld.poetry.service.SearchEnginePushService;
 import com.ld.poetry.service.SitemapService;
 import com.ld.poetry.service.CacheService;
 import com.ld.poetry.utils.PrerenderClient;
+import com.ld.poetry.utils.security.FileSecurityValidator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -71,6 +72,9 @@ public class AdminSeoController {
 
     @Autowired
     private com.ld.poetry.config.PoetryApplicationRunner poetryApplicationRunner;
+
+    @Autowired
+    private FileSecurityValidator fileSecurityValidator;
 
     /**
      * 清除nginx SEO缓存
@@ -295,6 +299,15 @@ public class AdminSeoController {
             @RequestParam(value = "target_type", defaultValue = "logo") String targetType,
             @RequestParam(value = "preferred_format", required = false) String preferredFormat) {
         try {
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
             Map<String, Object> result = seoImageService.processImage(imageFile, targetType, preferredFormat);
             
             if ((Integer) result.get("code") != 200) {
@@ -317,6 +330,15 @@ public class AdminSeoController {
             @RequestParam("image") MultipartFile imageFile,
             @RequestParam(value = "iconTypes", required = false) java.util.List<String> iconTypes) {
         try {
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
             Map<String, Object> result = seoImageService.batchProcessIcons(imageFile, iconTypes);
             
             if ((Integer) result.get("code") != 200) {
@@ -337,6 +359,15 @@ public class AdminSeoController {
     @LoginCheck(1)
     public PoetryResult<Map<String, Object>> getImageInfo(@RequestParam("image") MultipartFile imageFile) {
         try {
+            // 验证文件安全性
+            FileSecurityValidator.ValidationResult validationResult =
+                    fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
+
+            if (!validationResult.isSuccess()) {
+                log.warn("文件安全验证失败: {}", validationResult.getMessage());
+                return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
+            }
+
             Map<String, Object> result = seoImageService.getImageInfo(imageFile);
             
             if ((Integer) result.get("code") != 200) {
