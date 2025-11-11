@@ -141,6 +141,16 @@ public class ResourceController {
                         compressResult.getData()
                 );
 
+                // 如果压缩后格式发生改变，更新文件路径的扩展名
+                String newExtension = getExtensionFromContentType(compressResult.getContentType());
+                if (!newExtension.isEmpty()) {
+                    String oldRelativePath = fileVO.getRelativePath();
+                    String newRelativePath = updateExtension(oldRelativePath, newExtension);
+                    if (!oldRelativePath.equals(newRelativePath)) {
+                        fileVO.setRelativePath(newRelativePath);
+                        log.info("文件已转换格式，更新路径: {} -> {}", oldRelativePath, newRelativePath);
+                    }
+                }
 
             } catch (IOException e) {
                 // 压缩失败时使用原文件（非图片文件会走到这里）
@@ -223,11 +233,11 @@ public class ResourceController {
             }
 
             log.info("智能压缩上传 - 文件安全验证通过: {}, Content-Type: {}", file.getOriginalFilename(), file.getContentType());
-            
+
             // 执行智能压缩
-            ImageCompressUtil.CompressResult compressResult = 
+            ImageCompressUtil.CompressResult compressResult =
                     ImageCompressUtil.smartCompress(file, maxWidth, maxHeight, quality, targetSize);
-            
+
             // 创建压缩后的文件
             MultipartFile compressedFile = new CompressedMultipartFile(
                     file.getName(),
@@ -235,6 +245,17 @@ public class ResourceController {
                     compressResult.getContentType(),
                     compressResult.getData()
             );
+
+            // 如果压缩后格式发生改变，更新文件路径的扩展名
+            String newExtension = getExtensionFromContentType(compressResult.getContentType());
+            if (!newExtension.isEmpty()) {
+                String oldRelativePath = fileVO.getRelativePath();
+                String newRelativePath = updateExtension(oldRelativePath, newExtension);
+                if (!oldRelativePath.equals(newRelativePath)) {
+                    fileVO.setRelativePath(newRelativePath);
+                    log.info("文件已转换格式，更新路径: {} -> {}", oldRelativePath, newRelativePath);
+                }
+            }
 
             // 在存储前检查压缩后文件大小是否超过Integer.MAX_VALUE，防止溢出
             long fileSize = compressedFile.getSize();
@@ -351,6 +372,47 @@ public class ResourceController {
     }
 
     /**
+     * 根据ContentType获取对应的文件扩展名
+     */
+    private String getExtensionFromContentType(String contentType) {
+        if (contentType == null) {
+            return "";
+        }
+        if (contentType.contains("webp")) {
+            return "webp";
+        } else if (contentType.contains("jpeg") || contentType.contains("jpg")) {
+            return "jpg";
+        } else if (contentType.contains("png")) {
+            return "png";
+        } else if (contentType.contains("gif")) {
+            return "gif";
+        }
+        return "";
+    }
+
+    /**
+     * 更新文件路径的扩展名
+     */
+    private String updateExtension(String filePath, String newExtension) {
+        if (filePath == null || filePath.isEmpty()) {
+            return filePath;
+        }
+
+        // 移除原有扩展名
+        int lastDotIndex = filePath.lastIndexOf('.');
+        int lastSlashIndex = filePath.lastIndexOf('/');
+
+        // 只有当点号在最后一个斜杠之后，才认为是文件扩展名
+        if (lastDotIndex > lastSlashIndex) {
+            String nameWithoutExt = filePath.substring(0, lastDotIndex);
+            return nameWithoutExt + "." + newExtension;
+        } else {
+            // 没有扩展名，直接添加
+            return filePath + "." + newExtension;
+        }
+    }
+
+    /**
      * 自定义MultipartFile实现，用于压缩后的文件数据
      */
     private static class CompressedMultipartFile implements MultipartFile {
@@ -363,38 +425,7 @@ public class ResourceController {
             this.name = name;
             this.contentType = contentType;
             this.content = content;
-            
-            // 根据实际的contentType更新文件扩展名
-            this.originalFilename = updateFileExtension(originalFilename, contentType);
-        }
-        
-        /**
-         * 根据内容类型更新文件扩展名
-         */
-        private String updateFileExtension(String filename, String contentType) {
-            if (filename == null || filename.isEmpty()) {
-                return filename;
-            }
-            
-            // 移除原有扩展名
-            int dotIndex = filename.lastIndexOf('.');
-            String nameWithoutExt = (dotIndex > 0) ? filename.substring(0, dotIndex) : filename;
-            
-            // 根据contentType添加新扩展名
-            if (contentType != null) {
-                if (contentType.contains("webp")) {
-                    return nameWithoutExt + ".webp";
-                } else if (contentType.contains("jpeg") || contentType.contains("jpg")) {
-                    return nameWithoutExt + ".jpg";
-                } else if (contentType.contains("png")) {
-                    return nameWithoutExt + ".png";
-                } else if (contentType.contains("gif")) {
-                    return nameWithoutExt + ".gif";
-                }
-            }
-            
-            // 如果无法确定类型，保留原文件名
-            return filename;
+            this.originalFilename = originalFilename;
         }
 
         @Override
