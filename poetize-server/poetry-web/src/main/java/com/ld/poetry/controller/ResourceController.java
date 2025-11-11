@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * <p>
@@ -59,6 +60,13 @@ public class ResourceController {
         if (!StringUtils.hasText(resource.getType()) || !StringUtils.hasText(resource.getPath())) {
             return PoetryResult.fail("资源类型和资源路径不能为空！");
         }
+        
+        // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+        if (resource.getSize() != null && resource.getSize() > Integer.MAX_VALUE) {
+            log.error("资源大小超过系统限制: {} bytes, 最大允许: {} bytes", resource.getSize(), Integer.MAX_VALUE);
+            return PoetryResult.fail("资源大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请使用较小的文件");
+        }
+        
         Resource re = new Resource();
         re.setPath(resource.getPath());
         re.setType(resource.getType());
@@ -100,7 +108,8 @@ public class ResourceController {
      */
     @PostMapping("/upload")
     @LoginCheck
-    public PoetryResult<String> upload(@RequestParam("file") MultipartFile file, FileVO fileVO) {
+    @Transactional(rollbackFor = Exception.class)
+    public synchronized PoetryResult<String> upload(@RequestParam("file") MultipartFile file, FileVO fileVO) {
         if (file == null || !StringUtils.hasText(fileVO.getType()) || !StringUtils.hasText(fileVO.getRelativePath())) {
             return PoetryResult.fail("文件和资源类型和资源路径不能为空！");
         }
@@ -137,15 +146,22 @@ public class ResourceController {
                 // 压缩失败时使用原文件（非图片文件会走到这里）
             }
 
+            // 在存储前检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = processedFile.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             fileVO.setFile(processedFile);
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO result = storeService.saveFile(fileVO);
-            log.info("文件上传成功 - 路径: {}", result.getVisitPath());
+            // log.info("文件上传成功 - 路径: {}", result.getVisitPath());
 
             Resource re = new Resource();
             re.setPath(result.getVisitPath());
             re.setType(fileVO.getType());
-            re.setSize(Integer.valueOf(Long.toString(processedFile.getSize())));
+            re.setSize(Integer.valueOf(Long.toString(fileSize)));
             re.setMimeType(processedFile.getContentType());
             re.setStoreType(fileVO.getStoreType());
             re.setOriginalName(fileVO.getOriginalName());
@@ -159,7 +175,7 @@ public class ResourceController {
             if (existingResource != null) {
                 // 如果存在，更新资源信息
                 existingResource.setType(fileVO.getType());
-                existingResource.setSize(Integer.valueOf(Long.toString(processedFile.getSize())));
+                existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
                 existingResource.setOriginalName(fileVO.getOriginalName());
                 existingResource.setMimeType(processedFile.getContentType());
                 existingResource.setStoreType(fileVO.getStoreType());
@@ -183,7 +199,8 @@ public class ResourceController {
      */
     @PostMapping("/uploadImageWithCompress")
     @LoginCheck
-    public PoetryResult<Object> uploadImageWithCompress(
+    @Transactional(rollbackFor = Exception.class)
+    public synchronized PoetryResult<Object> uploadImageWithCompress(
             @RequestParam("file") MultipartFile file,
             FileVO fileVO,
             @RequestParam(value = "maxWidth", defaultValue = "1920") int maxWidth,
@@ -219,6 +236,13 @@ public class ResourceController {
                     compressResult.getData()
             );
 
+            // 在存储前检查压缩后文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = compressedFile.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("压缩后文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("压缩后文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请调整压缩参数");
+            }
+
             fileVO.setFile(compressedFile);
             StoreService storeService = fileStorageService.getFileStorage(fileVO.getStoreType());
             FileVO result = storeService.saveFile(fileVO);
@@ -226,7 +250,7 @@ public class ResourceController {
             Resource re = new Resource();
             re.setPath(result.getVisitPath());
             re.setType(fileVO.getType());
-            re.setSize(Integer.valueOf(Long.toString(compressedFile.getSize())));
+            re.setSize(Integer.valueOf(Long.toString(fileSize)));
             re.setMimeType(compressedFile.getContentType());
             re.setStoreType(fileVO.getStoreType());
             re.setOriginalName(fileVO.getOriginalName());
@@ -240,7 +264,7 @@ public class ResourceController {
             if (existingResource != null) {
                 // 如果存在，更新资源信息
                 existingResource.setType(fileVO.getType());
-                existingResource.setSize(Integer.valueOf(Long.toString(compressedFile.getSize())));
+                existingResource.setSize(Integer.valueOf(Long.toString(fileSize)));
                 existingResource.setOriginalName(fileVO.getOriginalName());
                 existingResource.setMimeType(compressedFile.getContentType());
                 existingResource.setStoreType(fileVO.getStoreType());
@@ -337,9 +361,40 @@ public class ResourceController {
 
         public CompressedMultipartFile(String name, String originalFilename, String contentType, byte[] content) {
             this.name = name;
-            this.originalFilename = originalFilename;
             this.contentType = contentType;
             this.content = content;
+            
+            // 根据实际的contentType更新文件扩展名
+            this.originalFilename = updateFileExtension(originalFilename, contentType);
+        }
+        
+        /**
+         * 根据内容类型更新文件扩展名
+         */
+        private String updateFileExtension(String filename, String contentType) {
+            if (filename == null || filename.isEmpty()) {
+                return filename;
+            }
+            
+            // 移除原有扩展名
+            int dotIndex = filename.lastIndexOf('.');
+            String nameWithoutExt = (dotIndex > 0) ? filename.substring(0, dotIndex) : filename;
+            
+            // 根据contentType添加新扩展名
+            if (contentType != null) {
+                if (contentType.contains("webp")) {
+                    return nameWithoutExt + ".webp";
+                } else if (contentType.contains("jpeg") || contentType.contains("jpg")) {
+                    return nameWithoutExt + ".jpg";
+                } else if (contentType.contains("png")) {
+                    return nameWithoutExt + ".png";
+                } else if (contentType.contains("gif")) {
+                    return nameWithoutExt + ".gif";
+                }
+            }
+            
+            // 如果无法确定类型，保留原文件名
+            return filename;
         }
 
         @Override

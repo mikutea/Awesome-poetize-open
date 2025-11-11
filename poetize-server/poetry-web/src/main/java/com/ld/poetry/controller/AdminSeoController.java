@@ -299,6 +299,13 @@ public class AdminSeoController {
             @RequestParam(value = "target_type", defaultValue = "logo") String targetType,
             @RequestParam(value = "preferred_format", required = false) String preferredFormat) {
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = imageFile.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
@@ -330,6 +337,13 @@ public class AdminSeoController {
             @RequestParam("image") MultipartFile imageFile,
             @RequestParam(value = "iconTypes", required = false) java.util.List<String> iconTypes) {
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = imageFile.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());
@@ -359,6 +373,13 @@ public class AdminSeoController {
     @LoginCheck(1)
     public PoetryResult<Map<String, Object>> getImageInfo(@RequestParam("image") MultipartFile imageFile) {
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = imageFile.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(imageFile, imageFile.getOriginalFilename(), imageFile.getContentType());

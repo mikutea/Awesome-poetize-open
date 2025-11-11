@@ -55,6 +55,13 @@ public class ImageCompressController {
     @LoginCheck
     public PoetryResult<Object> testCompress(@RequestParam("file") MultipartFile file) {
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = file.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
@@ -63,7 +70,6 @@ public class ImageCompressController {
                 log.warn("文件安全验证失败: {}", validationResult.getMessage());
                 return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
             }
-
 
             ImageCompressUtil.CompressResult result = ImageCompressUtil.smartCompress(file);
 
@@ -93,6 +99,13 @@ public class ImageCompressController {
     @LoginCheck
     public PoetryResult<String> compressAsync(@RequestParam("file") MultipartFile file) {
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = file.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
@@ -124,8 +137,15 @@ public class ImageCompressController {
                 return PoetryResult.fail("请选择要压缩的图片文件！");
             }
 
-            // 验证所有文件的安全性
+            // 验证所有文件的大小和安全性
             for (MultipartFile file : files) {
+                // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+                long fileSize = file.getSize();
+                if (fileSize > Integer.MAX_VALUE) {
+                    log.error("批量压缩中有文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                    return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+                }
+
                 FileSecurityValidator.ValidationResult validationResult =
                         fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
 
@@ -134,7 +154,6 @@ public class ImageCompressController {
                     return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
                 }
             }
-
 
             CompletableFuture<AsyncImageCompressService.BatchCompressResult> future = 
                     asyncImageCompressService.batchCompressAsync(files);
@@ -160,6 +179,13 @@ public class ImageCompressController {
             @RequestParam(value = "targetSize", defaultValue = "512000") long targetSize) {
 
         try {
+            // 检查文件大小是否超过Integer.MAX_VALUE，防止溢出
+            long fileSize = file.getSize();
+            if (fileSize > Integer.MAX_VALUE) {
+                log.error("文件大小超过系统限制: {} bytes, 最大允许: {} bytes", fileSize, Integer.MAX_VALUE);
+                return PoetryResult.fail("文件大小超过系统限制(" + (Integer.MAX_VALUE / 1024 / 1024) + "MB)，请上传较小的文件");
+            }
+
             // 验证文件安全性
             FileSecurityValidator.ValidationResult validationResult =
                     fileSecurityValidator.validateFile(file, file.getOriginalFilename(), file.getContentType());
@@ -168,7 +194,6 @@ public class ImageCompressController {
                 log.warn("文件安全验证失败: {}", validationResult.getMessage());
                 return PoetryResult.fail("文件验证失败: " + validationResult.getMessage());
             }
-
 
             ImageCompressUtil.CompressResult result =
                     ImageCompressUtil.smartCompress(file, maxWidth, maxHeight, quality, targetSize);
@@ -210,4 +235,4 @@ public class ImageCompressController {
             return String.format("%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
         }
     }
-} 
+}
