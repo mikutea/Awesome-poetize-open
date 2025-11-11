@@ -1,7 +1,7 @@
 // 使用window.OriginTitile，这样其他组件可以更新它
 window.OriginTitile = document.title;
 let titleTime;
-let enableDynamicTitle = true; // 默认启用动态标题
+let enableDynamicTitle = true; // 默认开启动态标题
 
 // 尝试从缓存获取网站配置
 try {
@@ -12,13 +12,18 @@ try {
       window.OriginTitile = cachedWebInfo.data.webTitle;
       document.title = window.OriginTitile;
     }
-    // 检查是否启用动态标题
+    // 检查是否启用动态标题 - 优先使用缓存中的配置
     if (cachedWebInfo.data.hasOwnProperty('enableDynamicTitle')) {
       enableDynamicTitle = cachedWebInfo.data.enableDynamicTitle;
+    } else {
+      // 如果缓存中没有该字段，保持默认开启状态
+      enableDynamicTitle = true;
     }
   }
 } catch (e) {
   console.error("获取缓存配置失败:", e);
+  // 出错时保持默认开启状态
+  enableDynamicTitle = true;
 }
 
 // 只有启用动态标题时才添加事件监听器

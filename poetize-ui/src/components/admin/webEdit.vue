@@ -247,8 +247,17 @@
               }">
               {{ webInfo.enableDynamicTitle ? '已开启' : '已关闭' }}
             </span>
-          <div style="margin-top: 5px; font-size: 12px; color: #909399;">
-            关闭后将直接显示页面标题，不会在离开/返回页面时变化
+          <div style="margin-top: 8px; font-size: 12px; color: #909399; line-height: 1.5;">
+            <template v-if="webInfo.enableDynamicTitle">
+              <span style="color: #67c23a;">✨ 当前状态：</span>
+              当您离开页面时，标题会温柔地挽留"<span style="color: #f56c6c;">w(ﾟДﾟ)w 不要走！再看看嘛！</span>"；
+              当您返回时，会热情地欢迎"<span style="color: #409EFF;">♪(^∇^*)欢迎肥来！</span>"，
+              2秒后自动恢复原标题～
+            </template>
+            <template v-else>
+              <span style="color: #c0c4cc;">📄 当前状态：</span>
+              页面标题始终保持不变
+            </template>
           </div>
         </el-form-item>
 
@@ -2033,6 +2042,7 @@ const uploadPicture = () => import( "../common/uploadPicture");
           autoNightStart: 23,
           autoNightEnd: 7,
           enableGrayMode: false,
+          enableDynamicTitle: true, // 动态标题开关，默认开启
           homePagePullUpHeight: 50,
         },
         // 网站地址编辑状态
@@ -2515,6 +2525,9 @@ const uploadPicture = () => import( "../common/uploadPicture");
               
               this.webInfo.homePagePullUpHeight = res.data.homePagePullUpHeight > 0 ? res.data.homePagePullUpHeight : 50;
               
+              // 加载动态标题配置
+              this.webInfo.enableDynamicTitle = res.data.enableDynamicTitle ?? true;
+              
               // 加载页脚背景配置
               if (this.webInfo.footerBackgroundConfig) {
                 try {
@@ -2612,7 +2625,8 @@ const uploadPicture = () => import( "../common/uploadPicture");
               enableAutoNight: this.webInfo.enableAutoNight,
               autoNightStart: this.webInfo.autoNightStart,
               autoNightEnd: this.webInfo.autoNightEnd,
-              enableGrayMode: this.webInfo.enableGrayMode
+              enableGrayMode: this.webInfo.enableGrayMode,
+              enableDynamicTitle: this.webInfo.enableDynamicTitle
             };
 
             this.updateWebInfo(basicInfoToUpdate);

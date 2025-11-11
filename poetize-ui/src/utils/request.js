@@ -282,6 +282,11 @@ export default {
     
     // 注意：token处理已移至请求拦截器中统一处理，此处不再重复处理
 
+    // 显式设置Content-Type，确保JSON请求正确识别
+    if (json) {
+      config.headers['Content-Type'] = 'application/json;charset=UTF-8';
+    }
+    
     // 如果不是json格式，将参数转换为URLSearchParams
     const data = json ? params : new URLSearchParams(params);
 

@@ -72,7 +72,8 @@ export const useMainStore = defineStore('main', {
       minimalFooter: false,
       navConfig: '[]',  // 初始为空数组字符串
       homePagePullUpHeight: 50,  // 首页横幅高度默认值
-      mobileDrawerConfig: ''  // 移动端侧边栏配置
+      mobileDrawerConfig: '',  // 移动端侧边栏配置
+      enableDynamicTitle: true  // 动态标题开关，默认开启
     }),
     
     // 访问量统计
