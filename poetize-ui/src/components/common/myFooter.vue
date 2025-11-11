@@ -145,10 +145,11 @@ export default {
           zIndex: 10
         };
 
-        // 如果有背景图片，设置文字颜色但不添加阴影
+        // 如果有背景图片，设置文字颜色和阴影
         if (webInfo.footerBackgroundImage) {
           let bgConfig = {
-            textColor: '#ffffff'
+            textColor: '#ffffff',
+            textShadow: false
           };
 
           // 解析页脚背景配置
@@ -164,6 +165,13 @@ export default {
           // 设置文字颜色
           if (bgConfig.textColor) {
             style.color = bgConfig.textColor;
+          }
+
+          // 设置文字阴影（增强可读性）
+          if (bgConfig.textShadow) {
+            style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6)';
+          } else {
+            style.textShadow = 'none';
           }
         }
 

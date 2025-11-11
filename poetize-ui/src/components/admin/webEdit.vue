@@ -384,11 +384,12 @@
             <el-row :gutter="20">
               <el-col :span="12">
                 <el-form-item label="透明度" label-width="80px">
-                  <el-slider v-model="footerBgConfig.opacity" 
-                           :min="0" 
-                           :max="100" 
+                  <el-slider v-model="footerBgConfig.opacity"
+                           :min="0"
+                           :max="100"
                            :step="5"
-                           :format-tooltip="val => val + '%'">
+                           :format-tooltip="val => val + '%'"
+                           @input="handleOpacityChange">
                   </el-slider>
                 </el-form-item>
               </el-col>
@@ -406,7 +407,8 @@
                     <el-color-picker v-model="footerBgConfig.maskColor"
                                    :predefine="['#000000', '#1a1a1a', '#333333', '#444444', '#555555', '#666666', '#FFFFFF']"
                                    show-alpha
-                                   color-format="rgba">
+                                   color-format="rgba"
+                                   @change="handleMaskColorChange">
                     </el-color-picker>
                     <span style="color: #999; font-size: 12px;">调整遮罩颜色和透明度</span>
                   </div>
@@ -415,7 +417,19 @@
               <el-col :span="12">
                 <el-form-item label="效果预览" label-width="80px">
                   <div style="width: 100px; height: 30px; border: 1px solid #ddd; border-radius: 4px; position: relative; overflow: hidden;">
-                    <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
+                    <div v-if="webInfo.footerBackgroundImage"
+                         :style="{
+                           position: 'absolute',
+                           top: 0,
+                           left: 0,
+                           right: 0,
+                           bottom: 0,
+                           backgroundImage: 'url(' + webInfo.footerBackgroundImage + ')',
+                           backgroundSize: footerBgConfig.backgroundSize || 'cover',
+                           backgroundPosition: footerBgConfig.backgroundPosition || 'center center',
+                           backgroundRepeat: footerBgConfig.backgroundRepeat || 'no-repeat'
+                         }"></div>
+                    <div v-else style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #f0f0f0;"></div>
                     <div :style="{
                       position: 'absolute',
                       top: 0,
@@ -424,7 +438,16 @@
                       bottom: 0,
                       background: footerBgConfig.maskColor || 'rgba(0, 0, 0, 0.5)'
                     }"></div>
-                    <span style="position: relative; z-index: 10; color: white; font-size: 11px; display: block; text-align: center; line-height: 30px;">样例文字</span>
+                    <span :style="{
+                      position: 'relative',
+                      zIndex: 10,
+                      color: 'white',
+                      fontSize: '11px',
+                      display: 'block',
+                      textAlign: 'center',
+                      lineHeight: '30px',
+                      textShadow: footerBgConfig.textShadow ? '0 2px 8px rgba(0, 0, 0, 0.8), 0 1px 3px rgba(0, 0, 0, 0.6)' : 'none'
+                    }">样例文字</span>
                   </div>
                 </el-form-item>
               </el-col>
@@ -2422,6 +2445,53 @@ const uploadPicture = () => import( "../common/uploadPicture");
           console.error("初始化数据时出错:", error);
         }
       },
+
+      // 处理透明度变化
+      handleOpacityChange(val) {
+        // 获取当前遮罩颜色
+        let maskColor = this.footerBgConfig.maskColor;
+        if (!maskColor) {
+          maskColor = 'rgba(0, 0, 0, 0.5)';
+        }
+
+        // 如果是 rgba 格式，直接替换 alpha 值
+        const rgbaMatch = maskColor.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)$/);
+        if (rgbaMatch) {
+          const r = parseInt(rgbaMatch[1]);
+          const g = parseInt(rgbaMatch[2]);
+          const b = parseInt(rgbaMatch[3]);
+          const alpha = (val / 100).toFixed(2);
+          this.footerBgConfig.maskColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        } else {
+          // 如果是其他格式（hex等），转为 rgba
+          const hex = maskColor.replace('#', '');
+          let r, g, b;
+          if (hex.length === 3) {
+            r = parseInt(hex[0] + hex[0], 16);
+            g = parseInt(hex[1] + hex[1], 16);
+            b = parseInt(hex[2] + hex[2], 16);
+          } else {
+            r = parseInt(hex.substring(0, 2), 16);
+            g = parseInt(hex.substring(2, 4), 16);
+            b = parseInt(hex.substring(4, 6), 16);
+          }
+          const alpha = (val / 100).toFixed(2);
+          this.footerBgConfig.maskColor = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+      },
+
+      // 处理遮罩颜色变化
+      handleMaskColorChange(val) {
+        // 从新的 maskColor 中提取 alpha 值，更新透明度滑块
+        if (val) {
+          const rgbaMatch = val.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)$/);
+          if (rgbaMatch && rgbaMatch[4]) {
+            const alpha = parseFloat(rgbaMatch[4]);
+            this.footerBgConfig.opacity = Math.round(alpha * 100);
+          }
+        }
+      },
+
       addBackgroundImage(res) {
         this.webInfo.backgroundImage = res;
       },
