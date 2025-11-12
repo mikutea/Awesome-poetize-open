@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-11-07
+## 修改时间: 2025-11-13
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.9.2
+## 版本: 1.10.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -87,6 +87,20 @@ LOG_FILE="deploy.log"
 DISABLE_DOCKER_CACHE=true  # 默认禁用Docker构建缓存
 POETIZE_KEEP_GIT=false      # 默认删除Git仓库，不依赖git更新
 HTTP_PORT=""                # 自定义HTTP端口（支持任何域名）
+
+# 外部数据库配置变量
+DB_HOST=""                   # 外部MariaDB主机地址
+DB_PORT=""                   # 外部MariaDB端口
+DB_NAME=""                   # 外部数据库名称
+DB_USER=""                   # 外部数据库用户名
+DB_PWD=""                    # 外部数据库密码
+DB_TYPE=""                   # 数据库类型（mariadb/mysql）
+
+# 外部Redis配置变量
+REDIS_HOST=""                # 外部Redis主机地址
+REDIS_PORT=""                # 外部Redis端口
+REDIS_PWD=""                 # 外部Redis密码
+REDIS_DB=""                  # 外部Redis数据库编号
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
@@ -379,6 +393,19 @@ show_help() {
   echo "  --httpport PORT         设置HTTP端口（支持任何域名，使用自定义端口时会自动禁用HTTPS）"
   echo "  --disable-https         禁用HTTPS（默认启用）"
   echo ""
+  echo "外部数据库选项:"
+  echo "  --db-host HOST          设置外部MariaDB主机地址"
+  echo "  --db-port PORT          设置外部MariaDB端口（默认3306）"
+  echo "  --db-name NAME          设置外部数据库名称（默认poetize）"
+  echo "  --db-user USER          设置外部数据库用户名（默认poetize）"
+  echo "  --db-pwd PASSWORD       设置外部数据库密码"
+  echo ""
+  echo "外部Redis选项:"
+  echo "  --redis-host HOST       设置外部Redis主机地址"
+  echo "  --redis-port PORT       设置外部Redis端口（默认6379）"
+  echo "  --redis-pwd PASSWORD    设置外部Redis密码"
+  echo "  --redis-db NUMBER       设置Redis数据库编号（默认0）"
+  echo ""
   echo "Git仓库选项:"
   echo "  --keep-git              保留Git仓库（可选，支持git更新）"
   echo "  --no-git, --remove-git  删除Git仓库（默认，节省磁盘空间）"
@@ -482,6 +509,42 @@ parse_arguments() {
         ;;
       --httpport)
         HTTP_PORT="$2"
+        shift 2
+        ;;
+      --db-host)
+        DB_HOST="$2"
+        shift 2
+        ;;
+      --db-port)
+        DB_PORT="$2"
+        shift 2
+        ;;
+      --db-name)
+        DB_NAME="$2"
+        shift 2
+        ;;
+      --db-user)
+        DB_USER="$2"
+        shift 2
+        ;;
+      --db-pwd)
+        DB_PWD="$2"
+        shift 2
+        ;;
+      --redis-host)
+        REDIS_HOST="$2"
+        shift 2
+        ;;
+      --redis-port)
+        REDIS_PORT="$2"
+        shift 2
+        ;;
+      --redis-pwd)
+        REDIS_PWD="$2"
+        shift 2
+        ;;
+      --redis-db)
+        REDIS_DB="$2"
         shift 2
         ;;
       *)
@@ -3127,6 +3190,296 @@ setup_timezone() {
   fi
 }
 
+# ================外部数据库和Redis配置================
+
+# 交互式配置外部数据库和Redis
+interactive_configure_external_services() {
+  # 如果已经通过命令行参数设置了外部服务，跳过交互式配置
+  if [ -z "$DB_HOST" ] && [ -z "$REDIS_HOST" ]; then
+    echo ""
+    info "=== 外部服务配置 ==="
+
+    # 外部数据库配置（默认使用本地数据库，按n使用外部数据库）
+    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "y"; then
+      info "将使用本地MariaDB数据库"
+    else
+      # 用户选择使用外部数据库
+      echo ""
+      info "请选择数据库类型:"
+      echo "  1) MariaDB"
+      echo "  2) MySQL"
+      read -p "请选择 (1-2，默认: 1): " DB_TYPE_CHOICE
+      if [ -z "$DB_TYPE_CHOICE" ] || [ "$DB_TYPE_CHOICE" = "1" ]; then
+        DB_TYPE="mariadb"
+      else
+        DB_TYPE="mysql"
+      fi
+
+      read -p "数据库主机地址: " DB_HOST
+      read -p "数据库端口 [3306]: " DB_PORT_INPUT
+      if [ -n "$DB_PORT_INPUT" ]; then
+        DB_PORT="$DB_PORT_INPUT"
+      fi
+      read -p "数据库名称 [poetize]: " DB_NAME_INPUT
+      if [ -n "$DB_NAME_INPUT" ]; then
+        DB_NAME="$DB_NAME_INPUT"
+      fi
+      read -p "数据库用户名 [poetize]: " DB_USER_INPUT
+      if [ -n "$DB_USER_INPUT" ]; then
+        DB_USER="$DB_USER_INPUT"
+      fi
+      read -s -p "数据库密码: " DB_PWD
+      echo ""
+    fi
+
+    # 外部Redis配置（默认使用本地Redis，按n使用外部Redis）
+    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "y"; then
+      info "将使用本地Redis"
+    else
+      # 用户选择使用外部Redis
+      read -p "Redis主机地址: " REDIS_HOST
+      read -p "Redis端口 [6379]: " REDIS_PORT_INPUT
+      if [ -n "$REDIS_PORT_INPUT" ]; then
+        REDIS_PORT="$REDIS_PORT_INPUT"
+      fi
+      read -s -p "Redis密码: " REDIS_PWD
+      echo ""
+      read -p "Redis数据库编号 [0]: " REDIS_DB_INPUT
+      if [ -n "$REDIS_DB_INPUT" ]; then
+        REDIS_DB="$REDIS_DB_INPUT"
+      fi
+    fi
+  fi
+
+  # # 显示配置摘要（不保存文件）
+  # if [ -n "$DB_HOST" ] || [ -n "$REDIS_HOST" ]; then
+  #   echo ""
+  #   info "外部服务配置摘要:"
+  #   if [ -n "$DB_HOST" ]; then
+  #     info "  MariaDB: ${DB_HOST}:${DB_PORT:-3306}/${DB_NAME:-poetize}"
+  #   fi
+  #   if [ -n "$REDIS_HOST" ]; then
+  #     info "  Redis: ${REDIS_HOST}:${REDIS_PORT:-6379}"
+  #   fi
+  #   echo ""
+  # fi
+}
+
+# 禁用 mysql 容器（使用外部数据库）
+disable_mysql_service() {
+  info "禁用mysql容器（使用外部数据库）..."
+
+  # 恢复 docker-compose.yml（确保没有被注释）
+  restore_mysql_service
+
+  # 禁用mysql服务
+  awk '
+  /^  mysql:/ {
+    in_mysql = 1
+    print "  # " $0 " # 已禁用（使用外部数据库）"
+    next
+  }
+  in_mysql {
+    # 检查是否到了下一个服务定义（以两个空格开头后跟非空格字符）
+    if (/^  [^ ]/) {
+      in_mysql = 0
+      print
+    } else if (/^$/) {
+      # 空行保持原样
+      print
+    } else {
+      # 注释掉mysql服务内的所有行
+      print "  #" $0
+    }
+    next
+  }
+  {
+    print
+  }
+  ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
+
+  success "已禁用mysql容器"
+}
+
+# 禁用 redis 容器（使用外部Redis）
+disable_redis_service() {
+  info "禁用redis容器（使用外部Redis）..."
+
+  # 恢复 docker-compose.yml（确保没有被注释）
+  restore_redis_service
+
+  # 禁用redis服务
+  awk '
+  /^  redis:/ {
+    in_redis = 1
+    print "  # " $0 " # 已禁用（使用外部Redis）"
+    next
+  }
+  in_redis {
+    # 检查是否到了下一个服务定义
+    if (/^  [^ ]/) {
+      in_redis = 0
+      print
+    } else if (/^$/) {
+      print
+    } else {
+      print "  #" $0
+    }
+    next
+  }
+  {
+    print
+  }
+  ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
+
+  success "已禁用redis容器"
+}
+
+# 恢复 mysql 容器
+restore_mysql_service() {
+  # 恢复被注释的mysql服务
+  sed -i 's/^#   mysql:/  mysql:/g' docker-compose.yml
+  sed -i 's/^#     # 已禁用（使用外部数据库）//g' docker-compose.yml
+  sed -i 's/^#     /    /g' docker-compose.yml
+}
+
+# 恢复 redis 容器
+restore_redis_service() {
+  # 恢复被注释的redis服务
+  sed -i 's/^#   redis:/  redis:/g' docker-compose.yml
+  sed -i 's/^#     # 已禁用（使用外部Redis）//g' docker-compose.yml
+  sed -i 's/^#     /    /g' docker-compose.yml
+}
+
+# 更新应用服务的数据库连接配置
+update_db_connection_config() {
+  if [ -n "$DB_HOST" ]; then
+    # 使用外部数据库
+    info "配置外部数据库连接..."
+
+    # 根据数据库类型设置连接URL和驱动类名
+    local db_url=""
+    local db_driver=""
+    if [ "$DB_TYPE" = "mysql" ]; then
+      db_url="jdbc:mysql://${DB_HOST}:${DB_PORT:-3306}/${DB_NAME:-poetize}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+      db_driver="com.mysql.cj.jdbc.Driver"
+    else
+      # 默认使用MariaDB
+      db_url="jdbc:mariadb://${DB_HOST}:${DB_PORT:-3306}/${DB_NAME:-poetize}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+      db_driver="org.mariadb.jdbc.Driver"
+    fi
+
+    # 更新 Java 服务配置
+    sed_i "s|SPRING_DATASOURCE_URL=.*|SPRING_DATASOURCE_URL=${db_url}|g" docker-compose.yml
+    sed_i "s|SPRING_DATASOURCE_USERNAME=.*|SPRING_DATASOURCE_USERNAME=${DB_USER:-poetize}|g" docker-compose.yml
+    sed_i "s|SPRING_DATASOURCE_PASSWORD=.*|SPRING_DATASOURCE_PASSWORD=${DB_PWD}|g" docker-compose.yml
+    sed_i "s|SPRING_DATASOURCE_DRIVER_CLASS_NAME=.*|SPRING_DATASOURCE_DRIVER_CLASS_NAME=${db_driver}|g" docker-compose.yml
+
+    success "已配置外部${DB_TYPE:-mariadb}连接"
+  else
+    # 使用本地数据库
+    info "配置本地MariaDB连接..."
+
+    # 读取 .config/db_credentials.txt 中的密码
+    if [ -f ".config/db_credentials.txt" ]; then
+      local root_pwd=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: //')
+      local user_pwd=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: //')
+
+      sed_i "s|SPRING_DATASOURCE_URL=.*|SPRING_DATASOURCE_URL=jdbc:mariadb://mysql:3306/poetize?useUnicode=true\\&characterEncoding=utf8\\&serverTimezone=Asia/Shanghai\\&useSSL=false\\&allowPublicKeyRetrieval=true|g" docker-compose.yml
+      sed_i "s|SPRING_DATASOURCE_USERNAME=.*|SPRING_DATASOURCE_USERNAME=poetize|g" docker-compose.yml
+      sed_i "s|SPRING_DATASOURCE_PASSWORD=.*|SPRING_DATASOURCE_PASSWORD=${user_pwd}|g" docker-compose.yml
+      sed_i "s|SPRING_DATASOURCE_DRIVER_CLASS_NAME=.*|SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.mariadb.jdbc.Driver|g" docker-compose.yml
+    fi
+  fi
+}
+
+# 更新应用服务的Redis连接配置
+update_redis_connection_config() {
+  info "配置Redis连接..."
+
+  # 确定Redis配置
+  local redis_host="${REDIS_HOST:-redis}"
+  local redis_port="${REDIS_PORT:-6379}"
+  local redis_pwd="${REDIS_PWD}"
+  local redis_db="${REDIS_DB:-0}"
+
+  # 更新 Java 服务配置
+  sed_i "s|SPRING_REDIS_HOST=.*|SPRING_REDIS_HOST=${redis_host}|g" docker-compose.yml
+  sed_i "s|SPRING_REDIS_PORT=.*|SPRING_REDIS_PORT=${redis_port}|g" docker-compose.yml
+  sed_i "s|SPRING_REDIS_PASSWORD=.*|SPRING_REDIS_PASSWORD=${redis_pwd}|g" docker-compose.yml
+  sed_i "s|SPRING_REDIS_DATABASE=.*|SPRING_REDIS_DATABASE=${redis_db}|g" docker-compose.yml
+
+  # 更新 Python 服务配置
+  sed_i "s|REDIS_HOST=.*|REDIS_HOST=${redis_host}|g" docker-compose.yml
+  sed_i "s|REDIS_PORT=.*|REDIS_PORT=${redis_port}|g" docker-compose.yml
+  sed_i "s|REDIS_PASSWORD=.*|REDIS_PASSWORD=${redis_pwd}|g" docker-compose.yml
+  sed_i "s|REDIS_DB=.*|REDIS_DB=${redis_db}|g" docker-compose.yml
+
+  success "已配置Redis连接"
+}
+
+# 保存Redis配置到文件
+save_redis_config() {
+  if [ ! -d ".config" ]; then
+    mkdir -p .config
+  fi
+
+  local redis_host="${REDIS_HOST:-redis}"
+  local redis_port="${REDIS_PORT:-6379}"
+  # 只有在用户没有明确设置密码且使用本地Redis时才使用默认值
+  local redis_pwd="${REDIS_PWD}"
+  if [ -z "$redis_pwd" ] && [ -z "$REDIS_HOST" ]; then
+    # 只在使用本地Redis时才使用默认密码
+    redis_pwd="poetize_redis_2025"
+  fi
+  local redis_db="${REDIS_DB:-0}"
+  local is_external=false
+
+  if [ -n "$REDIS_HOST" ]; then
+    is_external=true
+  fi
+
+  cat > .config/redis_config.txt <<EOF
+# Redis 配置
+# 生成时间: $(date)
+
+Redis外部模式: ${is_external}
+Redis主机地址: ${redis_host}
+Redis端口: ${redis_port}
+Redis密码: ${redis_pwd}
+Redis数据库编号: ${redis_db}
+EOF
+
+  success "Redis配置已保存到 .config/redis_config.txt"
+}
+
+# 保存数据库凭据
+save_db_credentials_extended() {
+  if [ ! -d ".config" ]; then
+    mkdir -p .config
+  fi
+
+  # 外部数据库
+  cat > .config/db_credentials.txt <<EOF
+# 外部数据库凭据
+# 生成时间: $(date)
+
+数据库外部模式: true
+数据库类型: ${DB_TYPE:-mariadb}
+数据库主机地址: ${DB_HOST}
+数据库端口: ${DB_PORT:-3306}
+数据库名称: ${DB_NAME:-poetize}
+数据库用户名: ${DB_USER:-poetize}
+数据库密码: ${DB_PWD}
+
+# 应用服务已配置为连接外部数据库
+EOF
+
+  success "数据库凭据已保存到 .config/db_credentials.txt"
+}
+
+# ===============================================
+
 # 初始化部署
 init_deploy() {
   info "正在初始化部署环境..."
@@ -3136,12 +3489,53 @@ init_deploy() {
   
   # 配置swap空间
   setup_swap
-  
-  # 替换默认数据库密码为随机强密码
-  replace_db_passwords
-  
-  # 替换默认Redis密码为随机强密码
-  replace_redis_password
+
+  # 检查是否使用外部数据库或Redis
+  if [ -n "$DB_HOST" ] || [ -n "$REDIS_HOST" ]; then
+    # 使用外部数据库或Redis
+    info "检测到外部数据库/Redis配置..."
+
+    # 恢复可能被注释的mysql和redis服务（为重新配置做准备）
+    restore_mysql_service
+    restore_redis_service
+
+    # 更新数据库和Redis连接配置
+    update_db_connection_config
+    update_redis_connection_config
+
+    # 如果使用MySQL，替换poetry.sql为poetry_old.sql（兼容MySQL语法）
+    if [ "$DB_TYPE" = "mysql" ]; then
+      info "检测到MySQL数据库，替换poetry.sql为兼容版本..."
+      if [ -f "poetize-server/sql/poetry_old.sql" ]; then
+        cp "poetize-server/sql/poetry_old.sql" "poetize-server/sql/poetry.sql"
+        success "已替换为MySQL兼容版本"
+      else
+        warning "未找到poetry_old.sql文件，将使用原始poetry.sql"
+      fi
+    fi
+
+    # 保存配置到文件
+    save_redis_config
+    save_db_credentials_extended
+
+    # 根据配置禁用不需要的容器
+    if [ -n "$DB_HOST" ]; then
+      disable_mysql_service
+    fi
+
+    if [ -n "$REDIS_HOST" ]; then
+      disable_redis_service
+    fi
+
+    success "外部数据库/Redis配置完成"
+  else
+    # 使用本地数据库和Redis
+    # 替换默认数据库密码为随机强密码
+    replace_db_passwords
+
+    # 替换默认Redis密码为随机强密码
+    replace_redis_password
+  fi
 
   # 配置Docker Compose AES密钥
   replace_docker_compose_aes_key
@@ -6857,6 +7251,38 @@ main() {
   else
     # 通过命令行参数指定了域名，横幅显示后再选择主域名
     select_primary_domain
+  fi
+
+  # 检查是否有数据库配置文件?
+  # 如果有
+  #      -> 可能是迁移模式，也可能是外部数据库模式
+  # 如果没有
+  #      -> 则提示用户是否使用外部数据库
+  if [ -f ".config/db_credentials.txt" ] || [ -f ".config/redis_config.txt" ]; then
+    # 检查数据库配置文件中是否设置为外部数据库模式
+    if grep -q "数据库外部模式: true" .config/db_credentials.txt 2>/dev/null; then
+      info "检测到数据库配置文件中设置为外部数据库模式"
+
+      DB_TYPE=$(grep "数据库类型:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+      DB_HOST=$(grep "数据库主机地址:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+      DB_PORT=$(grep "数据库端口:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+      DB_NAME=$(grep "数据库名称:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+      DB_USER=$(grep "数据库用户名:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+      DB_PWD=$(grep "数据库密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+
+    fi
+
+    if grep -q "Redis外部模式: true" .config/redis_config.txt 2>/dev/null; then
+      info "检测到Redis配置文件中设置为外部Redis模式"
+      REDIS_PASSWORD=$(grep "Redis密码:" .config/redis_config.txt | cut -d':' -f2 | tr -d ' ')
+      REDIS_HOST=$(grep "Redis主机地址:" .config/redis_config.txt | cut -d':' -f2 | tr -d ' ')
+      REDIS_PORT=$(grep "Redis端口:" .config/redis_config.txt | cut -d':' -f2 | tr -d ' ')
+      REDIS_DB=$(grep "Redis数据库编号:" .config/redis_config.txt | cut -d':' -f2 | tr -d ' ')
+    fi
+    
+  else
+    # 询问是否使用外部数据库和Redis
+    interactive_configure_external_services
   fi
 
   check_write_permission

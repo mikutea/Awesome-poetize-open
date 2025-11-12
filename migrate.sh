@@ -1,8 +1,8 @@
 #!/bin/bash
 ## 作者: LeapYa
-## 修改时间: 2025-10-23
+## 修改时间: 2025-11-13
 ## 描述: Poetize 博客系统自动迁移脚本
-## 版本: 1.2.0
+## 版本: 1.3.0
 
 # 定义颜色
 RED='\033[0;31m'
@@ -31,6 +31,8 @@ IS_CHINA_ENV=false
 CURRENT_DIR=$(dirname "$(pwd)" | sed 's:/*$::')  # 当前目录，去除末尾的一个或多个斜杠
 MIGRATE_UPLOADS="yes"    # 是否迁移用户上传文件，默认为yes
 extract_dir="Awesome-poetize-open"  # 项目提取目录
+USE_EXTERNAL_DB=false  # 是否使用外部数据库
+USE_EXTERNAL_REDIS=false  # 是否使用外部Redis
 
 # 动态生成volume名称的函数
 get_volume_name() {
@@ -177,6 +179,8 @@ save_nginx_domains() {
 # 保存环境检测结果
 save_environment_info() {
     save_variable "IS_CHINA_ENV" "$IS_CHINA_ENV"
+    save_variable "USE_EXTERNAL_DB" "$USE_EXTERNAL_DB"
+    save_variable "USE_EXTERNAL_REDIS" "$USE_EXTERNAL_REDIS"
     info "环境信息已保存"
 }
 
@@ -382,20 +386,39 @@ check_prerequisites() {
         exit 1
     fi
     
+    # 检查是否使用外部数据库模式
+    if grep -q "数据库外部模式: true" .config/db_credentials.txt 2>/dev/null; then
+        USE_EXTERNAL_DB=true
+        info "检测到外部数据库模式"
+    fi
+    
+    # 检查是否使用外部Redis模式
+    if grep -q "Redis外部模式: true" .config/redis_config.txt 2>/dev/null; then
+        USE_EXTERNAL_REDIS=true
+        info "检测到外部Redis模式"
+    fi
+    
     # 检查py/data目录
     if [ ! -d "py/data" ]; then
         error "配置目录 py/data 不存在"
         exit 1
     fi
     
-    # 检查docker-compose是否运行（假设源服务器上只有一个要迁移的MariaDB容器）
-    local running_container=$(sudo docker ps --format "{{.Names}}" | grep "mariadb" | head -1)
-    if [ -z "$running_container" ]; then
-        error "数据库容器未运行，请先启动服务: docker-compose up -d"
-        exit 1
+    # 如果不是外部数据库模式，检查docker-compose是否运行
+    if [ "$USE_EXTERNAL_DB" = false ]; then
+        # 检查docker-compose是否运行（假设源服务器上只有一个要迁移的MariaDB容器）
+        local running_container=$(sudo docker ps --format "{{.Names}}" | grep "mariadb" | head -1)
+        if [ -z "$running_container" ]; then
+            error "数据库容器未运行，请先启动服务: docker-compose up -d"
+            exit 1
+        else
+            info "检测到运行中的MariaDB容器: $running_container"
+        fi
     else
-        info "检测到运行中的MariaDB容器: $running_container"
+        info "外部数据库模式，跳过容器检查"
     fi
+    # 保存环境检测结果
+    save_environment_info
     
     save_state "$STEP_PREREQUISITES" "completed"
     success "前置条件检查通过"
@@ -592,6 +615,15 @@ backup_database() {
     fi
     
     save_state "$STEP_BACKUP_DB" "in_progress"
+    
+    # 如果使用外部数据库模式，跳过备份
+    if [ "$USE_EXTERNAL_DB" = true ]; then
+        info "检测到外部数据库模式，跳过数据库备份"
+        save_state "$STEP_BACKUP_DB" "completed"
+        success "数据库备份步骤已跳过（外部数据库模式）"
+        return 0
+    fi
+    
     info "开始备份数据库..."
     
     # 创建临时备份目录
@@ -869,25 +901,30 @@ transfer_files() {
     local target_path
     target_path="$CURRENT_DIR/$extract_dir"
     
-    # 传输数据库备份文件
-    info "传输数据库备份文件..."
-    if ! scp_retry "数据库备份文件" "$BACKUP_DIR/poetry.sql" "$target_path/poetize-server/sql/poetry.sql"; then
-        save_state "$STEP_TRANSFER_FILES" "failed"
-        error "数据库备份文件传输失败"
-        exit 1
+    # 如果不是外部数据库模式，传输数据库备份文件
+    if [ "$USE_EXTERNAL_DB" = false ]; then
+        info "传输数据库备份文件..."
+        if ! scp_retry "数据库备份文件" "$BACKUP_DIR/poetry.sql" "$target_path/poetize-server/sql/poetry.sql"; then
+            save_state "$STEP_TRANSFER_FILES" "failed"
+            error "数据库备份文件传输失败"
+            exit 1
+        fi
+    else
+        info "外部数据库模式，跳过数据库备份文件传输"
     fi
     
-    # 传输数据库凭据文件
-    info "传输数据库凭据文件..."
+    # 传输整个.config目录（包含db_credentials.txt和redis_config.txt等所有配置）
+    info "传输配置目录..."
     if ! ssh_retry "创建配置目录" "mkdir -p $target_path/.config" "true"; then
         save_state "$STEP_TRANSFER_FILES" "failed"
         error "创建配置目录失败"
         exit 1
     fi
     
-    if ! scp_retry "数据库凭据文件" ".config/db_credentials.txt" "$target_path/.config/db_credentials.txt"; then
+    # 传输整个.config目录中的所有文件
+    if ! scp_retry "配置文件" ".config/" "$target_path/" "-r"; then
         save_state "$STEP_TRANSFER_FILES" "failed"
-        error "数据库凭据文件传输失败"
+        error "配置文件传输失败"
         exit 1
     fi
     
@@ -1034,6 +1071,15 @@ execute_sql_scripts_on_target() {
     # 检查是否已完成
     if is_step_completed "$STEP_EXECUTE_SQL"; then
         success "SQL脚本执行已完成，跳过此步骤"
+        return 0
+    fi
+    
+    # 如果目标服务器使用外部数据库模式，跳过SQL脚本执行
+    if [ "$USE_EXTERNAL_DB" = true ]; then
+        save_state "$STEP_EXECUTE_SQL" "in_progress"
+        info "目标服务器使用外部数据库模式，跳过SQL脚本执行"
+        save_state "$STEP_EXECUTE_SQL" "completed"
+        success "SQL脚本执行步骤已跳过（外部数据库模式）"
         return 0
     fi
     
