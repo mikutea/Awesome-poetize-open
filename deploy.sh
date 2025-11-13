@@ -3094,7 +3094,7 @@ install_docker() {
       echo "2. 在 Docker Desktop 设置中启用对应 WSL 发行版的集成"
       echo "3. 重启 Docker Desktop 和当前 WSL 终端"
       echo ""
-      auto_confirm "仍然在当前 WSL 中尝试安装 Docker？ [y/n]（30 秒后默认 y）: " "N" 30 "YN"
+      auto_confirm "仍然在当前 WSL 中尝试安装 Docker？ [y/n]（30 秒后默认 n）: " "N" 30 "YN"
       if [[ ! $REPLY =~ ^[Yy]$ ]]; then
           error "已根据建议取消在 WSL 中安装 Docker"
           exit 1
@@ -3489,7 +3489,7 @@ interactive_configure_external_services() {
     info "=== 外部服务配置 ==="
 
     # 外部数据库配置（默认使用本地数据库，按n使用外部数据库）
-    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "Y" 30 "YN"; then
+    if auto_confirm "是否使用本地MariaDB数据库？[y/n]（30 秒后默认 y）" "Y" 30 "YN"; then
       info "将使用本地MariaDB数据库"
     else
       # 用户选择使用外部数据库
@@ -3522,7 +3522,7 @@ interactive_configure_external_services() {
     fi
 
     # 外部Redis配置（默认使用本地Redis，按n使用外部Redis）
-    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "Y" 30 "YN"; then
+    if auto_confirm "是否使用本地Redis？[y/n]（30 秒后默认 y）" "Y" 30 "YN"; then
       info "将使用本地Redis"
     else
       # 用户选择使用外部Redis
