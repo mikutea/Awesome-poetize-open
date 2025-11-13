@@ -17,6 +17,7 @@ services:
       - poetize_im_dist:/usr/share/nginx/html/im
       - poetize_uploads:/usr/share/nginx/html/uploads
       - ./docker/nginx/enable-https.sh:/enable-https.sh
+      - ./docker/nginx/default.http.conf:/etc/nginx/conf.d/default.conf:ro
       - ./py/data:/app/data
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt

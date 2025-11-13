@@ -1,106 +1,136 @@
-#!/bin/bash
+﻿#!/bin/bash
 ## 作者: LeapYa
 ## 修改时间: 2025-11-13
 ## 描述: 部署 Poetize 博客系统安装脚本
-## 版本: 1.10.0
+## 版本: 1.10.1
+
+set -euo pipefail
 
 # 定义颜色
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 # 初始化变量
 # 自动确认模式（后台运行时自动回答yes）
-AUTO_YES=${AUTO_YES:-false}
+: "${AUTO_YES:=false}"          # 自动确认模式（后台运行时自动回答yes）
 
-# 函数：自动确认提示
+# 统一的交互式确认函数
+# auto_confirm "提示" "默认值(Y/N/...)" "超时时间(秒,默认30)" "允许输入字符集(可选)"
 auto_confirm() {
-  local prompt="$1"
-  local default_answer="${2:-y}"
-  local options="${3:--n 1 -r}"
-  
-  # 如果是自动确认模式，直接返回默认答案
+  local prompt="${1:-是否继续?}"
+  local default_answer="${2:-Y}"
+  local timeout="${3:-30}"
+  local allowed="${4:-}"
+  local answer=""
+  local default_upper="${default_answer^^}"
+  local allowed_upper="${allowed^^}"
+  local effective_timeout="$timeout"
+
   if [ "$AUTO_YES" = "true" ]; then
     echo "$prompt"
     echo "自动回答: $default_answer (AUTO_YES=true)"
     REPLY="$default_answer"
-    echo ""
-    # 根据默认答案返回相应的退出码
-    case "$default_answer" in
-      [Yy]|[Yy][Ee][Ss]) return 0 ;;
-      [Nn]|[Nn][Oo]) return 1 ;;
+    case "$default_upper" in
+      N|NO) return 1 ;;
       *) return 0 ;;
     esac
   fi
-  
-  # 带超时的用户输入
-  echo -n "$prompt"
-  if read -t 30 $options; then
-    # 用户在30秒内输入了内容
-    echo ""
-  else
-    # 超时或用户未输入，使用默认答案
-    echo ""
-    echo "30秒内未收到输入，自动选择默认选项: $default_answer"
-    REPLY="$default_answer"
-  fi
-  echo ""
-  
-  # 根据用户输入返回相应的退出码
-  case "$REPLY" in
-    [Yy]|[Yy][Ee][Ss]) return 0 ;;
-    [Nn]|[Nn][Oo]) return 1 ;;
-    "") 
-      # 空输入使用默认答案
-      case "$default_answer" in
-        [Yy]|[Yy][Ee][Ss]) return 0 ;;
-        [Nn]|[Nn][Oo]) return 1 ;;
-        *) return 0 ;;
-      esac
-      ;;
-    *) 
-      # 其他输入使用默认答案
-      case "$default_answer" in
-        [Yy]|[Yy][Ee][Ss]) return 0 ;;
-        [Nn]|[Nn][Oo]) return 1 ;;
+
+  while true; do
+    printf "%s " "$prompt"
+    if [ "$effective_timeout" -gt 0 ]; then
+      if ! IFS= read -r -t "$effective_timeout" -n 1 answer; then
+        echo ""
+        echo "$effective_timeout 秒内未收到输入，自动选择默认选项: $default_answer"
+        answer="$default_answer"
+      else
+        echo ""
+      fi
+    else
+      IFS= read -r -n 1 answer || answer=""
+      echo ""
+    fi
+
+    [ -z "$answer" ] && answer="$default_answer"
+    local answer_upper="${answer^^}"
+
+    if [ -n "$allowed_upper" ] && [[ "$allowed_upper" != *"$answer_upper"* ]]; then
+      echo "无效输入: $answer，仅接受 [${allowed_upper}]。请重新输入。"
+      answer=""
+      effective_timeout=0
+      continue
+    fi
+
+    REPLY="$answer"
+    break
+  done
+
+  case "${REPLY^^}" in
+    Y|YES) return 0 ;;
+    N|NO) return 1 ;;
+    *)
+      case "$default_upper" in
+        N|NO) return 1 ;;
         *) return 0 ;;
       esac
       ;;
   esac
 }
 
-# 初始化默认参数
-RUN_IN_BACKGROUND=false
-DOMAINS=()
-PRIMARY_DOMAIN=""
-EMAIL="example@qq.com"
-ENABLE_HTTPS=true
-CONFIG_FILE=".poetize-config"
-SAVE_CONFIG=false
-LOW_MEMORY_MODE=false
-ENABLE_SWAP=true  # 默认启用swap
-SWAP_SIZE=1G      # 默认swap大小为1G（对于2GB及以下内存将自动增加到2G）
-RUN_IN_BACKGROUND=false
-LOG_FILE="deploy.log"
-DISABLE_DOCKER_CACHE=true  # 默认禁用Docker构建缓存
-POETIZE_KEEP_GIT=false      # 默认删除Git仓库，不依赖git更新
-HTTP_PORT=""                # 自定义HTTP端口（支持任何域名）
+# 0）先兜底并加载外部配置文件
+: "${CONFIG_FILE:=.poetize-config}"
+[ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
 
-# 外部数据库配置变量
-DB_HOST=""                   # 外部MariaDB主机地址
-DB_PORT=""                   # 外部MariaDB端口
-DB_NAME=""                   # 外部数据库名称
-DB_USER=""                   # 外部数据库用户名
-DB_PWD=""                    # 外部数据库密码
-DB_TYPE=""                   # 数据库类型（mariadb/mysql）
+# 1) 初始化默认参数（仅在未设或为空时赋值；与 set -u 兼容）
+: "${RUN_IN_BACKGROUND:=false}"
 
-# 外部Redis配置变量
-REDIS_HOST=""                # 外部Redis主机地址
-REDIS_PORT=""                # 外部Redis端口
-REDIS_PWD=""                 # 外部Redis密码
-REDIS_DB=""                  # 外部Redis数据库编号
+# 数组：确保 DOMAINS 始终是数组（兼容从配置文件加载的字符串）
+if declare -p DOMAINS >/dev/null 2>&1; then
+  if ! declare -p DOMAINS 2>/dev/null | grep -q 'declare \-a'; then
+    DOMAINS_TMP="${DOMAINS:-}"
+    unset DOMAINS
+    if [ -n "$DOMAINS_TMP" ]; then
+      IFS=' ' read -r -a DOMAINS <<< "$DOMAINS_TMP"
+    else
+      declare -a DOMAINS=()
+    fi
+    unset DOMAINS_TMP
+  fi
+else
+  declare -a DOMAINS=()
+fi
+
+PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-}"
+: "${EMAIL:=example@qq.com}"
+: "${ENABLE_HTTPS:=true}"
+: "${SAVE_CONFIG:=false}"
+: "${LOW_MEMORY_MODE:=false}"
+: "${ENABLE_SWAP:=true}"           # 默认启用swap
+: "${SWAP_SIZE:=1G}"               # 默认swap大小1G（对2GB及以下内存将自动增加到2G）
+: "${LOG_FILE:=deploy.log}"
+: "${DISABLE_DOCKER_CACHE:=true}"  # 默认禁用Docker构建缓存
+: "${POETIZE_KEEP_GIT:=false}"     # 默认删除Git仓库，不依赖git更新
+: "${HTTP_PORT:=}"                 # 自定义HTTP端口（支持任何域名）
+: "${TOTAL_MEM_GB:=0}"
+: "${SKIP_SWAP:=0}"
+
+# 2) 外部数据库配置变量
+: "${DB_HOST:=}"                  # 外部MariaDB主机地址
+: "${DB_PORT:=}"                  # 外部MariaDB端口
+: "${DB_NAME:=}"                  # 外部数据库名称
+: "${DB_USER:=}"                  # 外部数据库用户名
+: "${DB_PWD:=}"                   # 外部数据库密码
+: "${DB_TYPE:=}"                  # 数据库类型（mariadb/mysql）
+
+# 3) 外部Redis配置变量
+: "${REDIS_HOST:=}"                # 外部Redis主机地址
+: "${REDIS_PORT:=}"                # 外部Redis端口
+: "${REDIS_PWD:=}"                 # 外部Redis密码
+: "${REDIS_DB:=}"                  # 外部Redis数据库编号
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
@@ -131,6 +161,249 @@ info() { echo -e "${BLUE}[信息]${NC} $1"; }
 success() { echo -e "${GREEN}[成功]${NC} $1"; }
 error() { echo -e "${RED}[失败]${NC} $1"; }
 warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
+
+# 通用依赖移除工具：从指定服务的depends_on中删除某个依赖
+remove_dependency_from_service() {
+  local service_name="$1"
+  local dependency_name="$2"
+  local compose_file="docker-compose.yml"
+
+  [ -f "$compose_file" ] || return 0
+
+  local python_bin=""
+  if command -v python3 >/dev/null 2>&1; then
+    python_bin="python3"
+  elif command -v python >/dev/null 2>&1; then
+    python_bin="python"
+  else
+    warning "无法移除 ${service_name} 对 ${dependency_name} 的依赖（未找到python命令）"
+    return 1
+  fi
+
+  "$python_bin" - "$compose_file" "$service_name" "$dependency_name" <<'PY'
+import sys
+from pathlib import Path
+
+compose_path, service, dependency = sys.argv[1:4]
+path = Path(compose_path)
+if not path.exists():
+    sys.exit(0)
+
+lines = path.read_text().splitlines()
+output = []
+inside_service = False
+inside_dep = False
+skip_next = 0
+service_prefix = f"  {service}:"
+
+for line in lines:
+    if skip_next:
+        skip_next -= 1
+        continue
+
+    if line.startswith("  ") and not line.startswith("    "):
+        inside_service = line.startswith(service_prefix)
+        inside_dep = False
+
+    if inside_service and line.startswith("    depends_on:"):
+        inside_dep = True
+    elif inside_service and inside_dep:
+        if line.startswith("      ") and line.strip().endswith(":"):
+            current_dep = line.strip()[:-1]
+            if current_dep == dependency:
+                skip_next = 1  # skip the condition line
+                continue
+        elif line.startswith("    ") and not line.startswith("      "):
+            inside_dep = False
+
+    output.append(line)
+
+path.write_text("\n".join(output) + "\n")
+PY
+}
+
+# 确保 .config 目录可写（首次写入凭据文件可能需要sudo修正权限）
+ensure_config_dir_writable() {
+  local config_dir=".config"
+
+  if [ -d "$config_dir" ] && [ -w "$config_dir" ]; then
+    return 0
+  fi
+
+  if [ ! -d "$config_dir" ]; then
+    if ! mkdir -p "$config_dir" 2>/dev/null; then
+      if command -v sudo >/dev/null 2>&1; then
+        if ! sudo mkdir -p "$config_dir" 2>/dev/null; then
+          return 1
+        fi
+        sudo chown "$(id -u):$(id -g)" "$config_dir" 2>/dev/null || true
+      else
+        return 1
+      fi
+    fi
+  fi
+
+  if [ ! -w "$config_dir" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      if sudo chown "$(id -u):$(id -g)" "$config_dir" 2>/dev/null; then
+        return 0
+      fi
+      if sudo chmod u+w "$config_dir" 2>/dev/null; then
+        return 0
+      fi
+    fi
+    return 1
+  fi
+
+  return 0
+}
+
+prepare_config_file() {
+  local target_file="${1:-}"
+  if [ -z "$target_file" ]; then
+    return 1
+  fi
+
+  if ! ensure_config_dir_writable; then
+    return 1
+  fi
+
+  if touch "$target_file" 2>/dev/null; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    if sudo touch "$target_file" 2>/dev/null; then
+      if sudo chown "$(id -u):$(id -g)" "$target_file" 2>/dev/null; then
+        return 0
+      fi
+    fi
+  fi
+
+  return 1
+}
+
+# 读取cgroup内存限制（返回KB），用于容器环境下的准确内存探测
+read_cgroup_memory_limit_kb() {
+  local limit_file limit_value
+  for limit_file in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+    if [ -r "$limit_file" ]; then
+      limit_value="$(cat "$limit_file" 2>/dev/null || echo "")"
+      if [ -n "$limit_value" ] && [ "$limit_value" != "max" ]; then
+        case "$limit_value" in
+          ''|*[!0-9]*)
+            continue
+            ;;
+          0)
+            continue
+            ;;
+          *)
+            echo $(( limit_value / 1024 ))
+            return 0
+            ;;
+        esac
+      fi
+    fi
+  done
+  return 1
+}
+
+# 获取在任何环境下都可靠的内存总量（KB）
+detect_effective_memory_kb() {
+  local cgroup_kb=""
+  cgroup_kb="$(read_cgroup_memory_limit_kb 2>/dev/null || echo "")"
+  if [ -n "$cgroup_kb" ] && [ "$cgroup_kb" -gt 0 ] 2>/dev/null; then
+    echo "$cgroup_kb"
+    return 0
+  fi
+
+  if [ -r /proc/meminfo ]; then
+    local meminfo_kb
+    meminfo_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")"
+    echo "${meminfo_kb:-0}"
+    return 0
+  fi
+
+  echo "0"
+  return 0
+}
+
+# 读取可用内存（KB），优先使用 /proc/meminfo 的 MemAvailable 字段
+read_available_memory_kb() {
+  if [ -r /proc/meminfo ]; then
+    local available_kb
+    available_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo "")"
+    if [[ "$available_kb" =~ ^[0-9]+$ ]]; then
+      echo "$available_kb"
+      return 0
+    fi
+  fi
+
+  if command -v free >/dev/null 2>&1; then
+    local free_kb
+    free_kb="$(free -k | awk '/^Mem:/ {print $7}' 2>/dev/null || echo "")"
+    if [[ "$free_kb" =~ ^[0-9]+$ ]]; then
+      echo "$free_kb"
+      return 0
+    fi
+  fi
+
+  echo "0"
+  return 1
+}
+
+# swap/zram检测，避免重复创建和重复修改
+has_swap_active() {
+  if command -v swapon >/dev/null 2>&1; then
+    if swapon --show --noheadings 2>/dev/null | grep -q .; then
+      return 0
+    fi
+  fi
+
+  if [ -r /proc/swaps ]; then
+    awk 'NR>1{found=1} END{exit(found?0:1)}' /proc/swaps && return 0
+  fi
+
+  return 1
+}
+
+has_fstab_swap() {
+  if [ -r /etc/fstab ]; then
+    if grep -Eiq '^[[:space:]]*[^#].*[[:space:]]swap[[:space:]]' /etc/fstab; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+has_zram_active() {
+  if command -v lsmod >/dev/null 2>&1 && lsmod | grep -qw zram; then
+    local zram_file
+    for zram_file in /sys/block/zram*/disksize; do
+      if [ -r "$zram_file" ]; then
+        local disksize
+        disksize="$(cat "$zram_file" 2>/dev/null || echo "0")"
+        if [ -n "$disksize" ] && [ "$disksize" -gt 0 ] 2>/dev/null; then
+          return 0
+        fi
+      fi
+    done
+  fi
+  return 1
+}
+
+should_skip_swap_ops() {
+  if has_zram_active || has_swap_active || has_fstab_swap; then
+    return 0
+  fi
+  return 1
+}
+
+# 统计指定Docker服务是否处于Up状态
+count_running_containers() {
+  local name_filter="$1"
+  sudo docker ps --filter "$name_filter" --format "{{.Status}}" | awk '/Up/ {count++} END{print count+0}'
+}
 
 # 检测是否在WSL环境中
 is_wsl() {
@@ -275,8 +548,8 @@ print_summary() {
     printf "${CYAN}数据库凭据信息${NC}\n"
     printf "${CYAN}%s${NC}\n" "$(printf '%*s' 14 '' | tr ' ' '-')"
     
-    DB_ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
-    DB_USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ')
+    DB_ROOT_PASSWORD=$({ grep "数据库ROOT密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ' ; } || true)
+    DB_USER_PASSWORD=$({ grep "数据库poetize用户密码:" .config/db_credentials.txt | cut -d':' -f2 | tr -d ' ' ; } || true)
     
     printf "  ROOT密码: ${YELLOW}%s${NC}\n" "$DB_ROOT_PASSWORD"
     printf "  poetize用户密码: ${YELLOW}%s${NC}\n" "$DB_USER_PASSWORD"
@@ -1143,10 +1416,12 @@ choose_docker_registry_mirror() {
     
     # 交互：5 秒内未输入或输入 Y/y，都视为同意自动配置
     echo -n "是否自动配置所有可用镜像源？[Y/n]（5 秒后默认 Y）: "
-    read -t 5 -n 1 REPLY
+    if ! read -t 5 -n 1 REPLY; then
+      REPLY=""
+    fi
     echo   # 换行
 
-    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
         info "将自动配置所有可用的镜像源作为备用"
         echo ""
 
@@ -1189,7 +1464,7 @@ configure_docker_registry() {
     
     # 备份原配置文件
     if [ -f "$docker_config_file" ]; then
-        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？[Y/n]" "y"; then
+        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？[Y/n]" "Y"; then
             info "跳过更换镜像源，保持原有配置"
             return 0
         else
@@ -2815,7 +3090,7 @@ install_docker() {
       echo "2. 在设置中启用WSL集成"
       echo "3. 重启Docker Desktop和WSL"
       echo ""
-      auto_confirm "仍然尝试安装Docker? (y/n): " "y" "-n 1 -r"
+      auto_confirm "仍然尝试安装Docker? (y/n): " "Y"
       if [[ ! $REPLY =~ ^[Yy]$ ]]; then
           error "用户取消安装"
           exit 1
@@ -2870,6 +3145,16 @@ install_docker() {
 # 创建并启用swap空间
 setup_swap() {
   if [ "$ENABLE_SWAP" = true ]; then
+    # 再次确认是否需要跳过swap（例如直接调用此函数时）
+    if [ "${SKIP_SWAP:-0}" -eq 0 ] && should_skip_swap_ops; then
+      SKIP_SWAP=1
+    fi
+
+    if [ "${SKIP_SWAP:-0}" -eq 1 ]; then
+      info "检测到系统已存在 swap/zram 或 /etc/fstab 声明，跳过swap配置步骤。"
+      return 0
+    fi
+
     info "检查并配置swap空间..."
     
     # 检查是否已存在swap
@@ -3054,7 +3339,7 @@ setup_docker_compose_command() {
             echo "   - 勾选 'Use the WSL 2 based engine'"
             echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
             echo ""
-            auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " -n 1 -r
+            auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "Y" 30 "YNS"
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
               if ! install_docker; then
@@ -3200,7 +3485,7 @@ interactive_configure_external_services() {
     info "=== 外部服务配置 ==="
 
     # 外部数据库配置（默认使用本地数据库，按n使用外部数据库）
-    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "y"; then
+    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "Y"; then
       info "将使用本地MariaDB数据库"
     else
       # 用户选择使用外部数据库
@@ -3233,7 +3518,7 @@ interactive_configure_external_services() {
     fi
 
     # 外部Redis配置（默认使用本地Redis，按n使用外部Redis）
-    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "y"; then
+    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "Y"; then
       info "将使用本地Redis"
     else
       # 用户选择使用外部Redis
@@ -3299,6 +3584,9 @@ disable_mysql_service() {
   ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
 
   success "已禁用mysql容器"
+
+  # 移除对mysql服务的依赖，避免docker compose报错
+  remove_dependency_from_service "java-backend" "mysql"
 }
 
 # 禁用 redis 容器（使用外部Redis）
@@ -3333,6 +3621,10 @@ disable_redis_service() {
   ' docker-compose.yml > docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
 
   success "已禁用redis容器"
+
+  # 移除对redis服务的依赖，避免docker compose报错
+  remove_dependency_from_service "python-backend" "redis"
+  remove_dependency_from_service "java-backend" "redis"
 }
 
 # 恢复 mysql 容器
@@ -3368,9 +3660,10 @@ update_db_connection_config() {
       db_url="jdbc:mariadb://${DB_HOST}:${DB_PORT:-3306}/${DB_NAME:-poetize}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
       db_driver="org.mariadb.jdbc.Driver"
     fi
+    local db_url_escaped="${db_url//&/\\&}"
 
     # 更新 Java 服务配置
-    sed_i "s|SPRING_DATASOURCE_URL=.*|SPRING_DATASOURCE_URL=${db_url}|g" docker-compose.yml
+    sed_i "s|SPRING_DATASOURCE_URL=.*|SPRING_DATASOURCE_URL=${db_url_escaped}|g" docker-compose.yml
     sed_i "s|SPRING_DATASOURCE_USERNAME=.*|SPRING_DATASOURCE_USERNAME=${DB_USER:-poetize}|g" docker-compose.yml
     sed_i "s|SPRING_DATASOURCE_PASSWORD=.*|SPRING_DATASOURCE_PASSWORD=${DB_PWD}|g" docker-compose.yml
     sed_i "s|SPRING_DATASOURCE_DRIVER_CLASS_NAME=.*|SPRING_DATASOURCE_DRIVER_CLASS_NAME=${db_driver}|g" docker-compose.yml
@@ -3420,8 +3713,10 @@ update_redis_connection_config() {
 
 # 保存Redis配置到文件
 save_redis_config() {
-  if [ ! -d ".config" ]; then
-    mkdir -p .config
+  local config_file=".config/redis_config.txt"
+  if ! prepare_config_file "$config_file"; then
+    warning "无法写入 ${config_file}（权限不足），已跳过本地Redis配置保存。"
+    return 0
   fi
 
   local redis_host="${REDIS_HOST:-redis}"
@@ -3439,7 +3734,7 @@ save_redis_config() {
     is_external=true
   fi
 
-  cat > .config/redis_config.txt <<EOF
+  cat > "$config_file" <<EOF
 # Redis 配置
 # 生成时间: $(date)
 
@@ -3450,17 +3745,19 @@ Redis密码: ${redis_pwd}
 Redis数据库编号: ${redis_db}
 EOF
 
-  success "Redis配置已保存到 .config/redis_config.txt"
+  success "Redis配置已保存到 ${config_file}"
 }
 
 # 保存数据库凭据
 save_db_credentials_extended() {
-  if [ ! -d ".config" ]; then
-    mkdir -p .config
+  local credential_file=".config/db_credentials.txt"
+  if ! prepare_config_file "$credential_file"; then
+    warning "无法写入 ${credential_file}（权限不足），请手动记录数据库凭据。"
+    return 0
   fi
 
   # 外部数据库
-  cat > .config/db_credentials.txt <<EOF
+  cat > "$credential_file" <<EOF
 # 外部数据库凭据
 # 生成时间: $(date)
 
@@ -3475,7 +3772,7 @@ save_db_credentials_extended() {
 # 应用服务已配置为连接外部数据库
 EOF
 
-  success "数据库凭据已保存到 .config/db_credentials.txt"
+  success "数据库凭据已保存到 ${credential_file}"
 }
 
 # ===============================================
@@ -4288,7 +4585,7 @@ check_domains_access() {
     echo "  - 服务器防火墙或安全组配置阻止了端口80的访问"
     echo "  - 如果使用了CDN (如Cloudflare)，请确保已正确配置源站IP"
     echo ""
-    auto_confirm "是否继续安装? (y/n): " "y" "-n 1 -r"
+    auto_confirm "是否继续安装? (y/n): " "Y"
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
       error "安装已取消。请修复域名配置后重试。"
       exit 1
@@ -4571,7 +4868,11 @@ confirm_setup() {
   echo "主域名: $PRIMARY_DOMAIN"
   echo "所有域名: ${DOMAINS[*]}"
   echo "管理员邮箱: $EMAIL"
-  echo "默认启用HTTPS"
+  if [ "$ENABLE_HTTPS" = true ]; then
+    echo "HTTPS 状态: 已启用（将自动申请证书）"
+  else
+    echo "HTTPS 状态: 已禁用"
+  fi
   echo ""
 }
 
@@ -4601,31 +4902,44 @@ check_system_resources() {
   info "检查系统资源..."
   
   # 检查磁盘空间 - 无需使用bc命令
-  local DISK_SPACE=$(df -h / | awk 'NR==2 {print $4}' | sed 's/G//')
-  # 使用纯整数比较，忽略小数部分
-  if [ "${DISK_SPACE%.*}" -lt 10 ]; then
+  local DISK_SPACE="0"
+  if command -v df >/dev/null 2>&1; then
+    DISK_SPACE=$(df -h / | awk 'NR==2 {print $4}' | sed 's/[^0-9.]//g')
+  fi
+  local DISK_SPACE_INT="${DISK_SPACE%.*}"
+  DISK_SPACE_INT="${DISK_SPACE_INT:-0}"
+  if [ "$DISK_SPACE_INT" -lt 10 ]; then
     warning "磁盘空间不足 (少于 10GB)，部署可能失败或影响性能"
   fi
   
-  # 检查内存
-  local MEMORY=$(free -g | awk '/^Mem:/{print $7}')
-  # 检查内存总量（以MB为单位）
-  local TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
-  local TOTAL_MEM_GB=$(awk "BEGIN {printf \"%.1f\", ${TOTAL_MEM}/1024}")
+  # 检查可用内存 (优先读取 /proc/meminfo 的 MemAvailable，单位GB)
+  local AVAILABLE_MEM_KB
+  AVAILABLE_MEM_KB="$(read_available_memory_kb)"
+  AVAILABLE_MEM_KB="${AVAILABLE_MEM_KB:-0}"
+  local AVAILABLE_MEM_GB
+  AVAILABLE_MEM_GB="$(awk -v kb="$AVAILABLE_MEM_KB" 'BEGIN { if (kb > 0) printf "%.2f", kb/1024/1024; else printf "0" }')"
+  local AVAILABLE_MEM_LOW="false"
+  if float_lte "$AVAILABLE_MEM_GB" "2.0"; then
+    AVAILABLE_MEM_LOW="true"
+  fi
   
+  # 计算总内存 (优先读取cgroup限额，兼容容器环境)
+  local MEM_KB
+  MEM_KB="$(detect_effective_memory_kb)"
+  MEM_KB="${MEM_KB:-0}"
+  local TOTAL_MEM_GB
+  TOTAL_MEM_GB="$(awk -v kb="$MEM_KB" 'BEGIN { if (kb > 0) printf "%.2f", kb/1024/1024; else printf "0" }')"
+  TOTAL_MEM_GB="${TOTAL_MEM_GB:-0}"
   
-  # 根据内存大小自动调整SWAP_SIZE
-  if command -v bc &>/dev/null; then
-    # 如果内存小于或等于2GB，将SWAP_SIZE设置为2G
-    if [ $(echo "$TOTAL_MEM_GB <= 1.0" | bc -l) -eq 1 ]; then
-      info "检测到1GB或更低内存环境，自动将交换空间设置为3G以提高性能"
-      SWAP_SIZE="3G"
-    elif [ $(echo "$TOTAL_MEM_GB <= 2.0" | bc -l) -eq 1 ]; then
-      info "检测到2GB或更低内存环境，自动将交换空间设置为2G以提高性能"
-      SWAP_SIZE="2G"
-    fi
+  # 检测是否需要跳过swap相关操作
+  if should_skip_swap_ops; then
+    info "检测到系统已存在 swap/zram 或 /etc/fstab 中已声明 swap，跳过自动创建/调整swap。"
+    SKIP_SWAP=1
   else
-    # 使用替代方法判断
+    SKIP_SWAP=0
+  fi
+  
+  if [ "$SKIP_SWAP" -eq 0 ] && [ "$ENABLE_SWAP" = true ]; then
     if float_lte "$TOTAL_MEM_GB" "1.0"; then
       info "检测到1GB或更低内存环境，自动将交换空间设置为3G以提高性能"
       SWAP_SIZE="3G"
@@ -4633,58 +4947,41 @@ check_system_resources() {
       info "检测到2GB或更低内存环境，自动将交换空间设置为2G以提高性能"
       SWAP_SIZE="2G"
     fi
+  else
+    info "尊重已有的 swap/zram 配置，未调整 SWAP_SIZE。"
   fi
   
-  if command -v bc &>/dev/null; then
-    # 使用bc命令进行比较
-    if [ $(echo "$TOTAL_MEM_GB <= 0.95" | bc -l) -eq 1 ]; then
-      warning "系统内存不足 (${TOTAL_MEM_GB}GB)，可能会导致部署失败或性能下降"
-      info "自动应用极低内存模式优化..."
-      apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
-    # 基于内存大小应用不同级别的优化
-    elif [ "$MEMORY" -lt 2 ] || [ $(echo "$TOTAL_MEM_GB <= 2.0" | bc -l) -eq 1 ]; then
+  if [ "$AVAILABLE_MEM_LOW" = "true" ] && ! float_lte "$TOTAL_MEM_GB" "2.0"; then
+    warning "当前可用内存仅 ${AVAILABLE_MEM_GB}GB（总内存: ${TOTAL_MEM_GB}GB），建议释放一些资源后再运行。"
+  fi
+  
+  # 根据内存档位应用优化策略（仅依据总内存，避免误判）
+  if float_lte "$TOTAL_MEM_GB" "0.95"; then
+    warning "系统内存不足 (${TOTAL_MEM_GB}GB)，可能会导致部署失败或性能下降"
+    info "自动应用极低内存模式优化..."
+    apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
+  elif float_lte "$TOTAL_MEM_GB" "2.0"; then
     warning "检测到低内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用极低内存模式优化..."
-      apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
-    elif [ $(echo "$TOTAL_MEM_GB <= 4.0" | bc -l) -eq 1 ]; then
-      warning "检测到中低内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用中低内存模式优化..."
-      apply_memory_optimizations "low" "$TOTAL_MEM_GB"
-    elif [ $(echo "$TOTAL_MEM_GB <= 8.0" | bc -l) -eq 1 ]; then
-      info "检测到中等内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用中等内存模式优化..."
-      apply_memory_optimizations "medium" "$TOTAL_MEM_GB"
-    else
-      info "检测到高内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "无需特别内存优化"
-    fi
+    info "自动应用极低内存模式优化..."
+    apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
+  elif float_lte "$TOTAL_MEM_GB" "4.0"; then
+    warning "检测到中低内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
+    info "自动应用中低内存模式优化..."
+    apply_memory_optimizations "low" "$TOTAL_MEM_GB"
+  elif float_lte "$TOTAL_MEM_GB" "8.0"; then
+    info "检测到中等内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
+    info "自动应用中等内存模式优化..."
+    apply_memory_optimizations "medium" "$TOTAL_MEM_GB"
   else
-    # 使用替代方法进行比较
-    if float_lte "$TOTAL_MEM_GB" "0.95"; then
-      warning "系统内存不足 (${TOTAL_MEM_GB}GB)，可能会导致部署失败或性能下降"
-      info "自动应用极低内存模式优化..."
-      apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
-    # 基于内存大小应用不同级别的优化
-    elif [ "$MEMORY" -lt 2 ] || float_lte "$TOTAL_MEM_GB" "2.0"; then
-      warning "检测到低内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用极低内存模式优化..."
-      apply_memory_optimizations "very-low" "$TOTAL_MEM_GB"
-    elif float_lte "$TOTAL_MEM_GB" "4.0"; then
-      warning "检测到中低内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用中低内存模式优化..."
-      apply_memory_optimizations "low" "$TOTAL_MEM_GB"
-    elif float_lte "$TOTAL_MEM_GB" "8.0"; then
-      info "检测到中等内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "自动应用中等内存模式优化..."
-      apply_memory_optimizations "medium" "$TOTAL_MEM_GB"
-    else
-      info "检测到高内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
-      info "无需特别内存优化"
-    fi
+    info "检测到高内存服务器 (内存: ${TOTAL_MEM_GB}GB)"
+    info "无需特别内存优化"
   fi
   
   # 检查CPU核心数
-  local CPU_CORES=$(nproc)
+  local CPU_CORES=1
+  if command -v nproc >/dev/null 2>&1; then
+    CPU_CORES=$(nproc)
+  fi
   if [ "$CPU_CORES" -lt 2 ]; then
     warning "CPU核心数较少，可能会影响系统性能"
   fi
@@ -5223,24 +5520,14 @@ check_and_install_bc() {
   return 0
 }
 
-# 自定义函数用于浮点数比较，不依赖bc命令
+# 自定义函数用于浮点数比较，不依赖bc命令（基于awk）
 float_lte() {
-  # 将参数转换为整数，扩大1000倍
-  local a=$(echo "$1" | sed 's/\.//')
-  local b=$(echo "$2" | sed 's/\.//')
-  
-  # 补齐位数，确保正确比较
-  while [ ${#a} -lt ${#b} ]; do
-    a="${a}0"
-  done
-  
-  while [ ${#b} -lt ${#a} ]; do
-    b="${b}0"
-  done
-  
-  # 整数比较
-  [ "$a" -le "$b" ]
-  return $?
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    if (a+0 <= b+0) {
+      exit 0
+    }
+    exit 1
+  }'
 }
 
 # 对docker-compose.yml进行修改之前，先定义一个验证函数
@@ -5418,16 +5705,36 @@ clean_docker_build_cache() {
 generate_secure_password() {
   length=${1:-24}  # 默认长度增加到24以补偿移除特殊字符带来的熵损失
   local charset=${2:-'a-zA-Z0-9'}
-  # 仅使用字母和数字，完全避免任何特殊字符
-  tr -dc "$charset" < /dev/urandom | head -c ${length}
+
+  local had_pipefail=0
+  if set -o | grep -q "pipefail.*on"; then
+    had_pipefail=1
+    set +o pipefail
+  fi
+
+  local password
+  password=$(LC_ALL=C tr -dc "$charset" < /dev/urandom | head -c "${length}" || true)
+
+  if [ "$had_pipefail" -eq 1 ]; then
+    set -o pipefail
+  fi
+
+  if [ -z "$password" ]; then
+    error "无法生成随机密码，请检查系统的 /dev/urandom 是否可用"
+    exit 1
+  fi
+
+  printf '%s' "$password"
 }
 
 # 保存数据库凭据（密码）函数
 save_db_file() {
-  if [ ! -d ".config" ]; then
-    mkdir -p .config
+  local credential_file=".config/db_credentials.txt"
+  if ! prepare_config_file "$credential_file"; then
+    warning "无法写入 ${credential_file}（权限不足），请手动记录数据库凭据。"
+    return 0
   fi
-  cat > .config/db_credentials.txt <<EOF
+  cat > "$credential_file" <<EOF
 # MariaDB 数据库凭据 - 请妥善保管此文件
 # 生成时间: $(date)
 
@@ -5441,17 +5748,44 @@ EOF
 
 # 替换数据库密码
 replace_db_passwords() {
+  local credential_file=".config/db_credentials.txt"
+  local credential_content=""
+
   # 检查是否存在现有的数据库凭据文件
-  if [ -f ".config/db_credentials.txt" ]; then
+  if [ -f "$credential_file" ]; then
     info "【迁移模式】检测到现有数据库凭据文件，读取现有密码..."
     
     # 从现有文件中读取密码
-    ROOT_PASSWORD=$(grep "数据库ROOT密码:" .config/db_credentials.txt | sed 's/数据库ROOT密码: //')
-    USER_PASSWORD=$(grep "数据库poetize用户密码:" .config/db_credentials.txt | sed 's/数据库poetize用户密码: //')
+    if [ -r "$credential_file" ]; then
+      credential_content="$(cat "$credential_file" 2>/dev/null || true)"
+    elif command -v sudo >/dev/null 2>&1; then
+      credential_content="$(sudo cat "$credential_file" 2>/dev/null || true)"
+    fi
+
+    if [ -n "$credential_content" ]; then
+      ROOT_PASSWORD="$(printf '%s\n' "$credential_content" | awk -F': ' 'toupper($0) ~ /ROOT/ {print $2; exit}' | tr -d '\r')"
+      USER_PASSWORD="$(printf '%s\n' "$credential_content" | awk -F': ' 'tolower($0) ~ /poetize/ {print $2; exit}' | tr -d '\r')"
+      # === 命令提示 ===
+      if [ -n "${ROOT_PASSWORD:-}" ]; then
+        info "已读取数据库 ROOT 密码: ${ROOT_PASSWORD}"
+      else
+        warning "未在凭据文件中找到数据库 ROOT 密码。"
+      fi
+    else
+      warning "警告: 无法读取 ${credential_file} 或文件为空，将生成新的随机密码..."
+      ROOT_PASSWORD=$(generate_secure_password 24)
+      USER_PASSWORD=$(generate_secure_password 24)
+    fi
+
+  if [ -n "${USER_PASSWORD:-}" ]; then
+    info "已读取数据库 poetize 用户密码: ${USER_PASSWORD}"
+  else
+    warning "未在凭据文件中找到 poetize 用户密码。"
+    fi
     
     # 验证密码是否成功读取
-    if [ -z "$ROOT_PASSWORD" ] || [ -z "$USER_PASSWORD" ]; then
-      warning "警告: 无法从现有凭据文件中读取密码，将生成新的随机密码..."
+    if [ -z "${ROOT_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
+      warning "警告: 无法读取现有凭据（可能缺少权限），将生成新的随机密码..."
       ROOT_PASSWORD=$(generate_secure_password 24)
       USER_PASSWORD=$(generate_secure_password 24)
       # 保存密码到本地安全文件
@@ -5486,8 +5820,16 @@ replace_db_passwords() {
   sed_i "s|mariadb-admin ping -h localhost -u poetize -ppoetize123|mariadb-admin ping -h localhost -u poetize -p${USER_PASSWORD}|g" docker-compose.yml
   sed_i "s|mariadb -h localhost -u poetize -ppoetize123|mariadb -h localhost -u poetize -p${USER_PASSWORD}|g" docker-compose.yml
   
-  # 设置安全权限
-  chmod 600 .config/db_credentials.txt
+  # 设置安全权限（容忍非 root 用户无法直接 chmod 的情况）
+  if ! chmod 600 .config/db_credentials.txt 2>/dev/null; then
+    if command -v sudo >/dev/null 2>&1; then
+      if ! sudo chmod 600 .config/db_credentials.txt 2>/dev/null; then
+        warning "无法修改 .config/db_credentials.txt 权限（需要root或sudo），请手动确保仅部署用户可读。"
+      fi
+    else
+      warning "无法修改 .config/db_credentials.txt 权限（当前用户无权限且缺少sudo）。"
+    fi
+  fi
 
   success "数据库密码已成功更新为随机强密码"
 }
@@ -5498,9 +5840,11 @@ replace_redis_password() {
   
   # 生成随机密码
   REDIS_PASSWORD=$(generate_secure_password 16 'a-zA-Z0-9!@#%^_+')
-  
+  local ESCAPED_REDIS_PASSWORD
+  ESCAPED_REDIS_PASSWORD="$(printf '%s' "$REDIS_PASSWORD" | sed -e 's/[\/&\\]/\\&/g')"
+
   # 替换docker-compose.yml中的默认密码
-  sed_i "s/poetize_redis_2025/${REDIS_PASSWORD}/g" docker-compose.yml
+  sed_i "s/poetize_redis_2025/${ESCAPED_REDIS_PASSWORD}/g" docker-compose.yml
   
   success "Redis密码已成功更新为随机强密码"
 
@@ -6195,7 +6539,7 @@ handle_environment_status() {
       echo "3) 取消安装"
       echo ""
 
-      auto_confirm "请输入选择 (1/2/3): " "1" "-n 1 -r"
+      auto_confirm "请输入选择 (1/2/3): " "3" 30 "123"
       # 如今pwd所在目录在例如/root/Awesome-poetize-open，那么我们就要回到/root目录
       local DIR=$(dirname "$(pwd)")
 
@@ -6241,7 +6585,7 @@ handle_environment_status() {
       echo "3) 取消安装"
       echo ""
       
-      auto_confirm "请输入选择 (1/2/3): " "1" "-n 1 -r"
+      auto_confirm "请输入选择 (1/2/3): " "3" 30 "123"
       # 找到项目目录及其完整路径，如/root/Awesome-poetize-open
       local DIR=$(find_directory "Awesome-poetize-open" | head -n 1)
 
@@ -7112,11 +7456,44 @@ BLOCK
 
 patch_dockerfile_alpine_mirror() {
   local df=$1
-  local num=$2
-  if [ -f "$df" ]; then    
-    sed_i "$num i\\
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories" "$df"
+  local insert_line="RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories"
+
+  if [ ! -f "$df" ]; then
+    return 0
   fi
+
+  local python_bin=""
+  if command -v python3 >/dev/null 2>&1; then
+    python_bin="python3"
+  elif command -v python >/dev/null 2>&1; then
+    python_bin="python"
+  else
+    warning "未找到 Python，无法为 $df 注入 Alpine 镜像配置"
+    return 0
+  fi
+
+  # 将要插入的行通过环境变量传给 Python（安全）
+  INSERT_LINE="$insert_line" "$python_bin" - "$df" <<'PY'
+import os
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+insert_line = os.environ["INSERT_LINE"]
+text = path.read_text()
+
+# Remove previously injected lines (handles duplicates)
+text = re.sub(r'^[^\S\r\n]*RUN\s+sed -i .*dl-cdn\.alpinelinux\.org.*\n', '', text, flags=re.MULTILINE)
+
+pattern = re.compile(r'(?im)^(FROM[^\n]*\balpine\b[^\n]*\n)')
+def repl(match):
+    return match.group(1) + insert_line + '\n'
+
+new_text, count = pattern.subn(repl, text)
+if count:
+    path.write_text(new_text)
+PY
 }
 
 check_registry() {
@@ -7300,10 +7677,12 @@ main() {
 
     # -t 5   → 等待 5 秒超时
     # -n 1   → 只读 1 个字符
-    read -t 5 -n 1 REPLY
+    if ! read -t 5 -n 1 REPLY; then
+      REPLY=""
+    fi
     echo                 # 换行
 
-    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
       info "开始更换国内源..."
       update_base_source
     else
@@ -7353,7 +7732,7 @@ main() {
       echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
       echo ""
       
-      auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "y" "-n 1 -r"
+      auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "Y" 30 "YNS"
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         if ! install_docker; then
           error "Docker安装失败，无法继续部署"
@@ -7391,7 +7770,7 @@ main() {
       echo ""
       
       warning "Docker Compose不可用，请检查Docker安装"
-      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "y" "-n 1 -r"
+      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "Y"
       if [[ $REPLY =~ ^[Nn]$ ]]; then
         error "已取消部署"
         exit 1
@@ -7400,7 +7779,7 @@ main() {
     else
       warning "Docker Compose不可用，请确保安装了完整的Docker Engine"
       info "现代Docker安装通常已包含docker compose插件"
-      auto_confirm "是否尝试下载Docker Compose二进制包进行安装? (y/n) [y=安装, n=跳过]: " "y" "-n 1 -r"
+      auto_confirm "是否尝试下载Docker Compose二进制包进行安装? (y/n) [y=安装, n=跳过]: " "Y"
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         install_docker_compose "/usr/local/bin"
         if sudo docker compose version &>/dev/null; then
@@ -7428,10 +7807,13 @@ main() {
     info "检测到国内网络环境"
     echo -n "是否为 Dockerfile 注入国内镜像加速指令？[Y/n]（5 秒后默认 Y）: "
 
-    read -t 5 -n 1 REPLY      # 5 秒超时读取 1 个字符
+    # 5 秒超时读取 1 个字符
+    if ! read -t 5 -n 1 REPLY; then
+      REPLY=""
+    fi      
     echo                       # 换行
 
-    if [[ -z "$REPLY" || "$REPLY" =~ ^[Yy]$ ]]; then
+    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
       info "开始处理 Dockerfile 国内镜像加速..."
       patch_dockerfile_mirror
     else
@@ -7515,11 +7897,11 @@ main() {
   
   # 检查服务状态
   info "检查服务状态..."
-  NGINX_RUNNING=$(sudo docker ps --filter "name=poetize-nginx" --format "{{.Status}}" | grep -c "Up")
-  JAVA_RUNNING=$(sudo docker ps --filter "name=poetize-java" --format "{{.Status}}" | grep -c "Up")
-  PYTHON_RUNNING=$(sudo docker ps --filter "name=poetize-python" --format "{{.Status}}" | grep -c "Up")
-  MYSQL_RUNNING=$(sudo docker ps --filter "name=poetize-mariadb" --format "{{.Status}}" | grep -c "Up")
-  PRERENDER_RUNNING=$(sudo docker ps --filter "name=poetize-prerender" --format "{{.Status}}" | grep -c "Up")
+  NGINX_RUNNING=$(count_running_containers "name=poetize-nginx")
+  JAVA_RUNNING=$(count_running_containers "name=poetize-java")
+  PYTHON_RUNNING=$(count_running_containers "name=poetize-python")
+  MYSQL_RUNNING=$(count_running_containers "name=poetize-mariadb")
+  PRERENDER_RUNNING=$(count_running_containers "name=poetize-prerender")
   
   if [ "$NGINX_RUNNING" -eq 1 ] && [ "$JAVA_RUNNING" -eq 1 ] && [ "$PYTHON_RUNNING" -eq 1 ] && [ "$MYSQL_RUNNING" -eq 1 ] && [ "$PRERENDER_RUNNING" -eq 1 ]; then
     success "所有服务已成功启动！"
