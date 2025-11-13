@@ -16,7 +16,43 @@ NC='\033[0m'
 
 # 初始化变量
 # 自动确认模式（后台运行时自动回答yes）
-AUTO_YES="${AUTO_YES:-false}"          # 自动确认模式（后台运行时自动回答yes）
+AUTO_YES="${AUTO_YES:-false}"          # 允许后台模式通过环境变量传递
+
+# 部署配置默认值
+# 本脚本不支持通过环境变量注入配置（例如 DB_HOST=... ./deploy.sh）。
+# 配置来源仅限：
+#  1) 命令行参数（--db-host, --redis-host, -d 等）
+#  2) .config 目录中的持久化文件
+# 以下初始化用于显式清理继承的环境变量，避免污染。
+CONFIG_FILE=".poetize-config"
+RUN_IN_BACKGROUND=false
+declare -a DOMAINS=()
+PRIMARY_DOMAIN=""
+EMAIL="example@qq.com"
+ENABLE_HTTPS=true
+SAVE_CONFIG=false
+LOW_MEMORY_MODE=false
+ENABLE_SWAP=true           # 默认启用swap
+SWAP_SIZE="1G"             # 默认swap大小1G（对2GB及以下内存将自动增加到2G）
+LOG_FILE="deploy.log"
+DISABLE_DOCKER_CACHE=true  # 默认禁用Docker构建缓存
+POETIZE_KEEP_GIT=false     # 默认删除Git仓库，不依赖git更新
+HTTP_PORT=""               # 自定义HTTP端口（支持任何域名）
+TOTAL_MEM_GB=0
+SKIP_SWAP=0
+DOCKER_REGISTRY_SOURCE=""
+# 外部数据库配置变量
+DB_HOST=""                  # 外部MariaDB主机地址
+DB_PORT=""                  # 外部MariaDB端口
+DB_NAME=""                  # 外部数据库名称
+DB_USER=""                  # 外部数据库用户名
+DB_PWD=""                   # 外部数据库密码
+DB_TYPE=""                  # 数据库类型（mariadb/mysql）
+# 外部Redis配置变量
+REDIS_HOST=""               # 外部Redis主机地址
+REDIS_PORT=""               # 外部Redis端口
+REDIS_PWD=""                # 外部Redis密码
+REDIS_DB=""                 # 外部Redis数据库编号
 
 # 统一的交互式确认函数
 # auto_confirm "提示" "默认值(Y/N/...)" "超时时间(秒,默认30)" "允许输入字符集(可选)"
@@ -81,12 +117,8 @@ auto_confirm() {
   esac
 }
 
-# 0）先兜底并加载外部配置文件
-[ -z "${CONFIG_FILE:-}" ] && CONFIG_FILE=".poetize-config"
+# 先兜底并加载外部配置文件
 [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
-
-# 1) 初始化默认参数（仅在未设或为空时赋值；与 set -u 兼容）
-RUN_IN_BACKGROUND="${RUN_IN_BACKGROUND:-false}"
 
 # 数组：确保 DOMAINS 始终是数组（兼容从配置文件加载的字符串）
 if declare -p DOMAINS >/dev/null 2>&1; then
@@ -103,35 +135,6 @@ if declare -p DOMAINS >/dev/null 2>&1; then
 else
   declare -a DOMAINS=()
 fi
-
-PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-}"
-EMAIL="${EMAIL:-example@qq.com}"
-ENABLE_HTTPS="${ENABLE_HTTPS:-true}"
-SAVE_CONFIG="${SAVE_CONFIG:-false}"
-LOW_MEMORY_MODE="${LOW_MEMORY_MODE:-false}"
-ENABLE_SWAP="${ENABLE_SWAP:-true}"           # 默认启用swap
-SWAP_SIZE="${SWAP_SIZE:-1G}"               # 默认swap大小1G（对2GB及以下内存将自动增加到2G）
-LOG_FILE="${LOG_FILE:-deploy.log}"
-DISABLE_DOCKER_CACHE="${DISABLE_DOCKER_CACHE:-true}"  # 默认禁用Docker构建缓存
-POETIZE_KEEP_GIT="${POETIZE_KEEP_GIT:-false}"     # 默认删除Git仓库，不依赖git更新
-HTTP_PORT="${HTTP_PORT:-}"                 # 自定义HTTP端口（支持任何域名）
-TOTAL_MEM_GB="${TOTAL_MEM_GB:-0}"
-SKIP_SWAP="${SKIP_SWAP:-0}"
-DOCKER_REGISTRY_SOURCE="${DOCKER_REGISTRY_SOURCE:-}"
-
-# 2) 外部数据库配置变量
-DB_HOST="${DB_HOST:-}"                  # 外部MariaDB主机地址
-DB_PORT="${DB_PORT:-}"                  # 外部MariaDB端口
-DB_NAME="${DB_NAME:-}"                  # 外部数据库名称
-DB_USER="${DB_USER:-}"                  # 外部数据库用户名
-DB_PWD="${DB_PWD:-}"                   # 外部数据库密码
-DB_TYPE="${DB_TYPE:-}"                  # 数据库类型（mariadb/mysql）
-
-# 3) 外部Redis配置变量
-REDIS_HOST="${REDIS_HOST:-}"                # 外部Redis主机地址
-REDIS_PORT="${REDIS_PORT:-}"                # 外部Redis端口
-REDIS_PWD="${REDIS_PWD:-}"                 # 外部Redis密码
-REDIS_DB="${REDIS_DB:-}"                  # 外部Redis数据库编号
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
