@@ -16,7 +16,7 @@ NC='\033[0m'
 
 # 初始化变量
 # 自动确认模式（后台运行时自动回答yes）
-: "${AUTO_YES:=false}"          # 自动确认模式（后台运行时自动回答yes）
+AUTO_YES="${AUTO_YES:-false}"          # 自动确认模式（后台运行时自动回答yes）
 
 # 统一的交互式确认函数
 # auto_confirm "提示" "默认值(Y/N/...)" "超时时间(秒,默认30)" "允许输入字符集(可选)"
@@ -82,11 +82,11 @@ auto_confirm() {
 }
 
 # 0）先兜底并加载外部配置文件
-: "${CONFIG_FILE:=.poetize-config}"
+[ -z "${CONFIG_FILE:-}" ] && CONFIG_FILE=".poetize-config"
 [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"
 
 # 1) 初始化默认参数（仅在未设或为空时赋值；与 set -u 兼容）
-: "${RUN_IN_BACKGROUND:=false}"
+RUN_IN_BACKGROUND="${RUN_IN_BACKGROUND:-false}"
 
 # 数组：确保 DOMAINS 始终是数组（兼容从配置文件加载的字符串）
 if declare -p DOMAINS >/dev/null 2>&1; then
@@ -105,32 +105,33 @@ else
 fi
 
 PRIMARY_DOMAIN="${PRIMARY_DOMAIN:-}"
-: "${EMAIL:=example@qq.com}"
-: "${ENABLE_HTTPS:=true}"
-: "${SAVE_CONFIG:=false}"
-: "${LOW_MEMORY_MODE:=false}"
-: "${ENABLE_SWAP:=true}"           # 默认启用swap
-: "${SWAP_SIZE:=1G}"               # 默认swap大小1G（对2GB及以下内存将自动增加到2G）
-: "${LOG_FILE:=deploy.log}"
-: "${DISABLE_DOCKER_CACHE:=true}"  # 默认禁用Docker构建缓存
-: "${POETIZE_KEEP_GIT:=false}"     # 默认删除Git仓库，不依赖git更新
-: "${HTTP_PORT:=}"                 # 自定义HTTP端口（支持任何域名）
-: "${TOTAL_MEM_GB:=0}"
-: "${SKIP_SWAP:=0}"
+EMAIL="${EMAIL:-example@qq.com}"
+ENABLE_HTTPS="${ENABLE_HTTPS:-true}"
+SAVE_CONFIG="${SAVE_CONFIG:-false}"
+LOW_MEMORY_MODE="${LOW_MEMORY_MODE:-false}"
+ENABLE_SWAP="${ENABLE_SWAP:-true}"           # 默认启用swap
+SWAP_SIZE="${SWAP_SIZE:-1G}"               # 默认swap大小1G（对2GB及以下内存将自动增加到2G）
+LOG_FILE="${LOG_FILE:-deploy.log}"
+DISABLE_DOCKER_CACHE="${DISABLE_DOCKER_CACHE:-true}"  # 默认禁用Docker构建缓存
+POETIZE_KEEP_GIT="${POETIZE_KEEP_GIT:-false}"     # 默认删除Git仓库，不依赖git更新
+HTTP_PORT="${HTTP_PORT:-}"                 # 自定义HTTP端口（支持任何域名）
+TOTAL_MEM_GB="${TOTAL_MEM_GB:-0}"
+SKIP_SWAP="${SKIP_SWAP:-0}"
+DOCKER_REGISTRY_SOURCE="${DOCKER_REGISTRY_SOURCE:-}"
 
 # 2) 外部数据库配置变量
-: "${DB_HOST:=}"                  # 外部MariaDB主机地址
-: "${DB_PORT:=}"                  # 外部MariaDB端口
-: "${DB_NAME:=}"                  # 外部数据库名称
-: "${DB_USER:=}"                  # 外部数据库用户名
-: "${DB_PWD:=}"                   # 外部数据库密码
-: "${DB_TYPE:=}"                  # 数据库类型（mariadb/mysql）
+DB_HOST="${DB_HOST:-}"                  # 外部MariaDB主机地址
+DB_PORT="${DB_PORT:-}"                  # 外部MariaDB端口
+DB_NAME="${DB_NAME:-}"                  # 外部数据库名称
+DB_USER="${DB_USER:-}"                  # 外部数据库用户名
+DB_PWD="${DB_PWD:-}"                   # 外部数据库密码
+DB_TYPE="${DB_TYPE:-}"                  # 数据库类型（mariadb/mysql）
 
 # 3) 外部Redis配置变量
-: "${REDIS_HOST:=}"                # 外部Redis主机地址
-: "${REDIS_PORT:=}"                # 外部Redis端口
-: "${REDIS_PWD:=}"                 # 外部Redis密码
-: "${REDIS_DB:=}"                  # 外部Redis数据库编号
+REDIS_HOST="${REDIS_HOST:-}"                # 外部Redis主机地址
+REDIS_PORT="${REDIS_PORT:-}"                # 外部Redis端口
+REDIS_PWD="${REDIS_PWD:-}"                 # 外部Redis密码
+REDIS_DB="${REDIS_DB:-}"                  # 外部Redis数据库编号
 
 # 添加sed_i跨平台兼容函数（在文件开头合适位置添加）
 sed_i() {
@@ -170,56 +171,65 @@ remove_dependency_from_service() {
 
   [ -f "$compose_file" ] || return 0
 
-  local python_bin=""
-  if command -v python3 >/dev/null 2>&1; then
-    python_bin="python3"
-  elif command -v python >/dev/null 2>&1; then
-    python_bin="python"
+  local tmp_file
+  tmp_file="$(mktemp "${TMPDIR:-/tmp}/poetize-compose.XXXXXX")" || {
+    warning "无法创建临时文件，跳过依赖移除"
+    return 1
+  }
+
+  if awk -v service="$service_name" -v dep="$dependency_name" '
+    BEGIN {
+      service_prefix = "  " service ":"
+      in_service = 0
+      inside_dep = 0
+      skip_next = 0
+    }
+    {
+      if (skip_next > 0) {
+        skip_next--
+        next
+      }
+
+      if ($0 ~ /^  / && $0 !~ /^    /) {
+        if (substr($0, 1, length(service_prefix)) == service_prefix) {
+          in_service = 1
+        } else {
+          in_service = 0
+        }
+        inside_dep = 0
+      }
+
+      if (in_service && $0 ~ /^    depends_on:/) {
+        inside_dep = 1
+      } else if (in_service && inside_dep) {
+        if ($0 ~ /^    / && $0 !~ /^      /) {
+          inside_dep = 0
+        }
+      }
+
+      if (in_service && inside_dep && $0 ~ /^      /) {
+        dep_name = $0
+        sub(/^ +/, "", dep_name)
+        sub(/:.*/, "", dep_name)
+        if (dep_name == dep) {
+          skip_next = 1
+          next
+        }
+      }
+
+      print
+    }
+  ' "$compose_file" >"$tmp_file"; then
+    if ! cmp -s "$compose_file" "$tmp_file" >/dev/null 2>&1; then
+      mv "$tmp_file" "$compose_file"
+    else
+      rm -f "$tmp_file"
+    fi
   else
-    warning "无法移除 ${service_name} 对 ${dependency_name} 的依赖（未找到python命令）"
+    rm -f "$tmp_file"
+    warning "无法解析 docker-compose.yml，跳过依赖清理"
     return 1
   fi
-
-  "$python_bin" - "$compose_file" "$service_name" "$dependency_name" <<'PY'
-import sys
-from pathlib import Path
-
-compose_path, service, dependency = sys.argv[1:4]
-path = Path(compose_path)
-if not path.exists():
-    sys.exit(0)
-
-lines = path.read_text().splitlines()
-output = []
-inside_service = False
-inside_dep = False
-skip_next = 0
-service_prefix = f"  {service}:"
-
-for line in lines:
-    if skip_next:
-        skip_next -= 1
-        continue
-
-    if line.startswith("  ") and not line.startswith("    "):
-        inside_service = line.startswith(service_prefix)
-        inside_dep = False
-
-    if inside_service and line.startswith("    depends_on:"):
-        inside_dep = True
-    elif inside_service and inside_dep:
-        if line.startswith("      ") and line.strip().endswith(":"):
-            current_dep = line.strip()[:-1]
-            if current_dep == dependency:
-                skip_next = 1  # skip the condition line
-                continue
-        elif line.startswith("    ") and not line.startswith("      "):
-            inside_dep = False
-
-    output.append(line)
-
-path.write_text("\n".join(output) + "\n")
-PY
 }
 
 # 确保 .config 目录可写（首次写入凭据文件可能需要sudo修正权限）
@@ -1415,13 +1425,7 @@ choose_docker_registry_mirror() {
     echo ""
     
     # 交互：5 秒内未输入或输入 Y/y，都视为同意自动配置
-    echo -n "是否自动配置所有可用镜像源？[Y/n]（5 秒后默认 Y）: "
-    if ! read -t 5 -n 1 REPLY; then
-      REPLY=""
-    fi
-    echo   # 换行
-
-    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
+    if auto_confirm "是否自动配置所有可用镜像源？[y/n]（5 秒后默认 y）: " "Y" 5 "YN"; then
         info "将自动配置所有可用的镜像源作为备用"
         echo ""
 
@@ -1464,7 +1468,7 @@ configure_docker_registry() {
     
     # 备份原配置文件
     if [ -f "$docker_config_file" ]; then
-        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？[Y/n]" "Y"; then
+        if auto_confirm "检测到 Docker 配置文件已存在，是否跳过更换镜像源？[y/n]（30 秒后默认 y）: " "Y" 30 "YN"; then
             info "跳过更换镜像源，保持原有配置"
             return 0
         else
@@ -3082,17 +3086,17 @@ install_docker() {
     
   # 检查是否在WSL环境中
   if grep -q Microsoft /proc/version 2>/dev/null; then
-      warning "检测到WSL环境，建议使用Docker Desktop for Windows"
+      warning "检测到 WSL 环境，推荐使用 Windows 端的 Docker Desktop + WSL2 集成"
       info "请参考: https://docs.docker.com/desktop/wsl/"
       echo ""
       echo -e "${BLUE}=== 推荐安装方法 ===${NC}"
-      echo "1. 下载安装Docker Desktop: https://www.docker.com/products/docker-desktop/"
-      echo "2. 在设置中启用WSL集成"
-      echo "3. 重启Docker Desktop和WSL"
+      echo "1. 下载安装 Docker Desktop : https://www.docker.com/products/docker-desktop/"
+      echo "2. 在 Docker Desktop 设置中启用对应 WSL 发行版的集成"
+      echo "3. 重启 Docker Desktop 和当前 WSL 终端"
       echo ""
-      auto_confirm "仍然尝试安装Docker? (y/n): " "Y"
+      auto_confirm "仍然在当前 WSL 中尝试安装 Docker？ [y/n]（30 秒后默认 y）: " "N" 30 "YN"
       if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-          error "用户取消安装"
+          error "已根据建议取消在 WSL 中安装 Docker"
           exit 1
       fi
   fi
@@ -3339,7 +3343,7 @@ setup_docker_compose_command() {
             echo "   - 勾选 'Use the WSL 2 based engine'"
             echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
             echo ""
-            auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "Y" 30 "YNS"
+            auto_confirm "是否安装Docker? [y/n/s] [y=安装, n=退出, s=跳过尝试继续]（30 秒后默认 s）: " "S" 30 "YNS"
             echo ""
             if [[ $REPLY =~ ^[Yy]$ ]]; then
               if ! install_docker; then
@@ -3485,7 +3489,7 @@ interactive_configure_external_services() {
     info "=== 外部服务配置 ==="
 
     # 外部数据库配置（默认使用本地数据库，按n使用外部数据库）
-    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "Y"; then
+    if auto_confirm "是否使用本地MariaDB数据库？(默认: 是，30秒自动确认)" "Y" 30 "YN"; then
       info "将使用本地MariaDB数据库"
     else
       # 用户选择使用外部数据库
@@ -3518,7 +3522,7 @@ interactive_configure_external_services() {
     fi
 
     # 外部Redis配置（默认使用本地Redis，按n使用外部Redis）
-    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "Y"; then
+    if auto_confirm "是否使用本地Redis？(默认: 是，30秒自动确认)" "Y" 30 "YN"; then
       info "将使用本地Redis"
     else
       # 用户选择使用外部Redis
@@ -3925,7 +3929,7 @@ update_nginx_volumes() {
     TEMP_FILE=$(mktemp)
     
     # 找到nginx配置文件挂载的行
-    NGINX_CONF_LINE=$(grep -n "default.http.conf" docker-compose.yml | cut -d ":" -f1)
+    NGINX_CONF_LINE=$(grep -n "default.http.conf" docker-compose.yml 2>/dev/null | cut -d ":" -f1 || true)
     
     # 确保NGINX_CONF_LINE只包含数字
     NGINX_CONF_LINE=$(echo "$NGINX_CONF_LINE" | tr -cd '0-9')
@@ -4585,7 +4589,7 @@ check_domains_access() {
     echo "  - 服务器防火墙或安全组配置阻止了端口80的访问"
     echo "  - 如果使用了CDN (如Cloudflare)，请确保已正确配置源站IP"
     echo ""
-    auto_confirm "是否继续安装? (y/n): " "Y"
+    auto_confirm "是否继续安装? [y/n]（30 秒后默认 y）: " "Y" 30 "YN"
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
       error "安装已取消。请修复域名配置后重试。"
       exit 1
@@ -7673,16 +7677,7 @@ main() {
   # 检测并询问是否切换国内软件源
   if is_china_environment; then
     info "检测到国内网络环境"
-    echo -n "是否自动更换系统软件源为国内镜像？[Y/n]（5 秒后默认 Y）: "
-
-    # -t 5   → 等待 5 秒超时
-    # -n 1   → 只读 1 个字符
-    if ! read -t 5 -n 1 REPLY; then
-      REPLY=""
-    fi
-    echo                 # 换行
-
-    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
+    if auto_confirm "是否自动更换系统软件源为国内镜像？[y/n]（5 秒后默认 y）: " "Y" 5 "YN"; then
       info "开始更换国内源..."
       update_base_source
     else
@@ -7732,7 +7727,7 @@ main() {
       echo "   - 在 'Resources > WSL Integration' 中启用当前WSL发行版"
       echo ""
       
-      auto_confirm "是否安装Docker? (y/n/s) [y=安装, n=退出, s=跳过尝试继续]: " "Y" 30 "YNS"
+      auto_confirm "是否安装Docker? [y/n/s] [y=安装, n=退出, s=跳过尝试继续]（30 秒后默认 s）: " "S" 30 "YNS"
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         if ! install_docker; then
           error "Docker安装失败，无法继续部署"
@@ -7770,7 +7765,7 @@ main() {
       echo ""
       
       warning "Docker Compose不可用，请检查Docker安装"
-      auto_confirm "是否继续部署? (y/n) [y=继续, n=退出]: " "Y"
+      auto_confirm "是否继续部署? [y/n]（30 秒后默认 y）:: " "Y" 30 "YN"
       if [[ $REPLY =~ ^[Nn]$ ]]; then
         error "已取消部署"
         exit 1
@@ -7779,7 +7774,7 @@ main() {
     else
       warning "Docker Compose不可用，请确保安装了完整的Docker Engine"
       info "现代Docker安装通常已包含docker compose插件"
-      auto_confirm "是否尝试下载Docker Compose二进制包进行安装? (y/n) [y=安装, n=跳过]: " "Y"
+      auto_confirm "是否尝试下载Docker Compose二进制包进行安装? [y/n]（30 秒后默认 y）:: " "Y" 30 "YN"
       if [[ $REPLY =~ ^[Yy]$ ]]; then
         install_docker_compose "/usr/local/bin"
         if sudo docker compose version &>/dev/null; then
@@ -7805,15 +7800,7 @@ main() {
   # 处理Dockerfile国内镜像加速
   if is_china_environment; then
     info "检测到国内网络环境"
-    echo -n "是否为 Dockerfile 注入国内镜像加速指令？[Y/n]（5 秒后默认 Y）: "
-
-    # 5 秒超时读取 1 个字符
-    if ! read -t 5 -n 1 REPLY; then
-      REPLY=""
-    fi      
-    echo                       # 换行
-
-    if [ "$REPLY" = "y" ] || [ "$REPLY" = "Y" ] || [ -z "$REPLY" ]; then
+    if auto_confirm "是否为 Dockerfile 注入国内镜像加速指令？[y/n]（5 秒后默认 y）: " "Y" 5 "YN"; then
       info "开始处理 Dockerfile 国内镜像加速..."
       patch_dockerfile_mirror
     else
